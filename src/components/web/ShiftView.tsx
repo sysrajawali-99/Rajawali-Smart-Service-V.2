@@ -21,10 +21,17 @@ import {
   Check,
   ChevronDown,
   Info,
+  CheckSquare,
+  Square,
+  ListPlus,
+  Layers,
+  FileText,
+  RotateCcw,
 } from 'lucide-react';
 import { useCleaning } from '../../context/CleaningContext';
-import { Shift, Cleaner, AttendanceStatusCode } from '../../types';
+import { Shift, Cleaner, AttendanceStatusCode, ShiftPlottingAllocation } from '../../types';
 import { calculateShiftDuration } from '../../utils/shiftUtils';
+import { INITIAL_SHIFTS } from '../../data/initialData';
 
 interface ShiftFormState {
   name: string;
@@ -34,6 +41,7 @@ interface ShiftFormState {
   color: string;
   personnelCount: number;
   description: string;
+  plottingAllocations: ShiftPlottingAllocation[];
 }
 
 const SHIFT_PRESETS: Array<{
@@ -42,7 +50,9 @@ const SHIFT_PRESETS: Array<{
   startTime: string;
   endTime: string;
   color: string;
+  personnelCount: number;
   description: string;
+  plottingAllocations: ShiftPlottingAllocation[];
 }> = [
   {
     name: 'Shift 1 ( satu )',
@@ -50,7 +60,45 @@ const SHIFT_PRESETS: Array<{
     startTime: '07:00',
     endTime: '15:00',
     color: '#0284c7',
+    personnelCount: 6,
     description: 'Pembersihan awal harian, dusting meja kerja, sanitasi toilet pagi, lobby utama.',
+    plottingAllocations: [
+      {
+        id: 'alloc-s1-1',
+        areaName: 'Toilet Pria & Wanita Lt. 1 & Lt. 2',
+        taskDescription: 'Pembersihan kloset & urinal, pel lantai wangi, pembersihan cermin & wastafel, restock sabun & tissue',
+        personnelQuota: 2,
+        priority: 'intensif',
+      },
+      {
+        id: 'alloc-s1-2',
+        areaName: 'Lobby Utama, Receptionist & Teras Depan',
+        taskDescription: 'Dusting meja resepsionis, pembersihan pintu kaca lobi, sweeping & mopping marmer, kosongkan sampah',
+        personnelQuota: 1,
+        priority: 'rutin',
+      },
+      {
+        id: 'alloc-s1-3',
+        areaName: 'Koridor Barat & Tangga Darurat Fl. 1-3',
+        taskDescription: 'Dusting railing tangga, pel koridor utama, pembersihan noda dinding, cek tempat sampah pilah',
+        personnelQuota: 1,
+        priority: 'rutin',
+      },
+      {
+        id: 'alloc-s1-4',
+        areaName: 'Pantry Karyawan Lt. 1 & Area Makan',
+        taskDescription: 'Pembersihan sink cuci piring, lap microwave & kulkas luar, steril meja makan, pengangkutan sampah basah',
+        personnelQuota: 1,
+        priority: 'rutin',
+      },
+      {
+        id: 'alloc-s1-5',
+        areaName: 'Musholla & Tempat Wudhu Lt. 1',
+        taskDescription: 'Dry vacuum karpet sholat, pengeringan area wudhu, sanitasi lantai & dinding wudhu, tata rapi sandal',
+        personnelQuota: 1,
+        priority: 'rutin',
+      },
+    ],
   },
   {
     name: 'Shift 2 ( Midle )',
@@ -58,7 +106,31 @@ const SHIFT_PRESETS: Array<{
     startTime: '11:00',
     endTime: '19:00',
     color: '#0d9488',
+    personnelCount: 4,
     description: 'Shift transisi & backup jam sibuk siang ke sore, sanitasi area publik intensif.',
+    plottingAllocations: [
+      {
+        id: 'alloc-s2-1',
+        areaName: 'Toilet High-Traffic Jam Sibuk Siang (Lt. 1 & 2)',
+        taskDescription: 'Kontrol kebersihan tiap 1 jam, dry mopping lantai basah becek, restock tissue roll & hand soap dispenser',
+        personnelQuota: 2,
+        priority: 'intensif',
+      },
+      {
+        id: 'alloc-s2-2',
+        areaName: 'Sanitasi Area Publik, Lift & Lobby Gedung',
+        taskDescription: 'Maintenance kebersihan jam ramai siang, sweeping lobi & teras luar, pembersihan tombol lift & cermin lift',
+        personnelQuota: 1,
+        priority: 'rutin',
+      },
+      {
+        id: 'alloc-s2-3',
+        areaName: 'Pantry Siang, Area Istirahat & Ruang Kopi',
+        taskDescription: 'Pembersihan sink cuci piring pasca makan siang, refill galon air mineral, pengosongan sampah organik pantry',
+        personnelQuota: 1,
+        priority: 'rutin',
+      },
+    ],
   },
   {
     name: 'Shift 3 ( Siang )',
@@ -66,7 +138,38 @@ const SHIFT_PRESETS: Array<{
     startTime: '15:00',
     endTime: '23:00',
     color: '#d97706',
+    personnelCount: 5,
     description: 'Maintenance kebersihan siang, pembersihan pantry pasca makan siang, restock toilet sore.',
+    plottingAllocations: [
+      {
+        id: 'alloc-s3-1',
+        areaName: 'Toilet Seluruh Lantai Pasca Jam Kantor (Lt. 1-4)',
+        taskDescription: 'Pembersihan menyeluruh sore hari, sikat lantai toilet, kuras tempat sampah pembalut, semprot disinfektan',
+        personnelQuota: 2,
+        priority: 'intensif',
+      },
+      {
+        id: 'alloc-s3-2',
+        areaName: 'Pantry Sore, Ruang Rapat & Coworking Space',
+        taskDescription: 'Rapikan ruang rapat pasca meeting, dusting meja rapat panjang, steril area pantry sore, pengangkutan sampah',
+        personnelQuota: 1,
+        priority: 'rutin',
+      },
+      {
+        id: 'alloc-s3-3',
+        areaName: 'Lobby Utama, Pintu Masuk & Drop-off Depan',
+        taskDescription: 'Pembersihan kaca pintu putar, sweeping daun drop-off depan, mopping basah lobby malam',
+        personnelQuota: 1,
+        priority: 'rutin',
+      },
+      {
+        id: 'alloc-s3-4',
+        areaName: 'Koridor, Area Lift Penumpang & Tangga Service',
+        taskDescription: 'Polishing stainless steel lift, lap cermin lift, dry mopping lantai koridor malam hari',
+        personnelQuota: 1,
+        priority: 'rutin',
+      },
+    ],
   },
   {
     name: 'Shift 4 ( Malam )',
@@ -74,7 +177,31 @@ const SHIFT_PRESETS: Array<{
     startTime: '23:00',
     endTime: '07:00',
     color: '#7c3aed',
+    personnelCount: 3,
     description: 'Deep cleaning, floor polishing/scrubbing, pencucian kaca luar, carpet vacuuming malam.',
+    plottingAllocations: [
+      {
+        id: 'alloc-s4-1',
+        areaName: 'Deep Cleaning Lantai Granit Lobby & Scrubbing Mesin',
+        taskDescription: 'Scrubbing menggunakan mesin polisher, penarikan chemical kotor, bilas air bersih & buffing marmer',
+        personnelQuota: 1,
+        priority: 'periodic',
+      },
+      {
+        id: 'alloc-s4-2',
+        areaName: 'Heavy Duty Carpet Vacuuming & Spotting Noda',
+        taskDescription: 'Dry vacuum menyeluruh karpet open space & meeting room, perlakuan spot stain kopi/minyak dengan chemical khusus',
+        personnelQuota: 1,
+        priority: 'periodic',
+      },
+      {
+        id: 'alloc-s4-3',
+        areaName: 'Pencucian Kaca Facade Luar & Dinding Koridor',
+        taskDescription: 'Squeegee kaca luar gedung lantai dasar, pembersihan sarang laba-laba plafon, dusting grill AC & exhaust toilet',
+        personnelQuota: 1,
+        priority: 'periodic',
+      },
+    ],
   },
   {
     name: 'All Shift',
@@ -82,7 +209,24 @@ const SHIFT_PRESETS: Array<{
     startTime: '07:00',
     endTime: '19:00',
     color: '#4f46e5',
+    personnelCount: 2,
     description: 'Shift operasional penuh / standby multi-tugas & pengawasan rotasi gedung seharian.',
+    plottingAllocations: [
+      {
+        id: 'alloc-sa-1',
+        areaName: 'Pengawasan Rotasi, QC Inspeksi & Emergency Response',
+        taskDescription: 'Inspeksi berkala seluruh area, penanganan komplain tumpahan mendadak, kontrol kualitas ceklist pengawas',
+        personnelQuota: 1,
+        priority: 'intensif',
+      },
+      {
+        id: 'alloc-sa-2',
+        areaName: 'Mobile Roaming Multi-Floor & Restocking Logistik',
+        taskDescription: 'Monitoring rotasi toilet tiap jam, restocking chemical pembersih gudang, koordinasi serah terima antar shift',
+        personnelQuota: 1,
+        priority: 'rutin',
+      },
+    ],
   },
 ];
 
@@ -178,6 +322,7 @@ export const ShiftView: React.FC = () => {
     addCleaner,
     updateCleanerAttendance,
     activeProjectId,
+    checklistLocations,
   } = useCleaning();
 
   // Date and Monitoring Day
@@ -213,11 +358,13 @@ export const ShiftView: React.FC = () => {
   const [plottingCleaner, setPlottingCleaner] = useState<Cleaner | null>(null);
   const [manualPlottingText, setManualPlottingText] = useState('');
   const [plottingReason, setPlottingReason] = useState('');
+  const [selectedAllocationIds, setSelectedAllocationIds] = useState<string[]>([]);
+  const [plottingSelectedShiftId, setPlottingSelectedShiftId] = useState<string>('');
 
   // Quick Attendance Dropdown
   const [activeAttendanceCleanerId, setActiveAttendanceCleanerId] = useState<string | null>(null);
 
-  // Form State for Shift
+  // Form State for Shift (with manual plotting allocations)
   const [formData, setFormData] = useState<ShiftFormState>({
     name: '',
     code: '',
@@ -226,6 +373,7 @@ export const ShiftView: React.FC = () => {
     color: '#0284c7',
     personnelCount: 4,
     description: '',
+    plottingAllocations: [],
   });
 
   // Calculate live duration for the form
@@ -233,20 +381,30 @@ export const ShiftView: React.FC = () => {
 
   const handleOpenAddModal = () => {
     setEditingShiftId(null);
+    const defaultAllocations = SHIFT_PRESETS[0]?.plottingAllocations
+      ? JSON.parse(JSON.stringify(SHIFT_PRESETS[0].plottingAllocations))
+      : [];
     setFormData({
       name: 'Shift 1 ( satu )',
       code: 'S1',
       startTime: '07:00',
       endTime: '15:00',
       color: '#0284c7',
-      personnelCount: 4,
-      description: 'Pembersihan awal harian dan pemeliharaan area publik.',
+      personnelCount: 6,
+      description: 'Pembersihan awal harian, dusting meja kerja, sanitasi toilet pagi, lobby utama.',
+      plottingAllocations: defaultAllocations,
     });
     setShowModal(true);
   };
 
   const handleOpenEditModal = (shift: Shift) => {
     setEditingShiftId(shift.id);
+    const fallbackAllocs = INITIAL_SHIFTS.find((s) => s.id === shift.id)?.plottingAllocations || [];
+    const currentAllocs =
+      shift.plottingAllocations && shift.plottingAllocations.length > 0
+        ? JSON.parse(JSON.stringify(shift.plottingAllocations))
+        : JSON.parse(JSON.stringify(fallbackAllocs));
+
     setFormData({
       name: shift.name,
       code: shift.code,
@@ -255,6 +413,7 @@ export const ShiftView: React.FC = () => {
       color: shift.color,
       personnelCount: shift.personnelCount,
       description: shift.description,
+      plottingAllocations: currentAllocs,
     });
     setShowModal(true);
   };
@@ -267,8 +426,60 @@ export const ShiftView: React.FC = () => {
       startTime: preset.startTime,
       endTime: preset.endTime,
       color: preset.color,
+      personnelCount: preset.personnelCount || prev.personnelCount,
       description: preset.description,
+      plottingAllocations: preset.plottingAllocations
+        ? JSON.parse(JSON.stringify(preset.plottingAllocations))
+        : [],
     }));
+  };
+
+  // Plotting row management in Shift Edit Modal
+  const handleAddPlottingRow = () => {
+    const newRow: ShiftPlottingAllocation = {
+      id: `alloc-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      areaName: '',
+      taskDescription: '',
+      personnelQuota: 1,
+      priority: 'rutin',
+    };
+    setFormData((prev) => ({
+      ...prev,
+      plottingAllocations: [...prev.plottingAllocations, newRow],
+    }));
+  };
+
+  const handleUpdatePlottingRow = (
+    rowId: string,
+    field: keyof ShiftPlottingAllocation,
+    value: string | number | undefined
+  ) => {
+    setFormData((prev) => ({
+      ...prev,
+      plottingAllocations: prev.plottingAllocations.map((r) =>
+        r.id === rowId ? { ...r, [field]: value } : r
+      ),
+    }));
+  };
+
+  const handleDeletePlottingRow = (rowId: string) => {
+    setFormData((prev) => ({
+      ...prev,
+      plottingAllocations: prev.plottingAllocations.filter((r) => r.id !== rowId),
+    }));
+  };
+
+  const handleResetPlottingToPreset = () => {
+    const matchedPreset =
+      SHIFT_PRESETS.find((p) => p.name.toLowerCase() === formData.name.toLowerCase() || p.code === formData.code) ||
+      SHIFT_PRESETS[0];
+    if (matchedPreset?.plottingAllocations) {
+      setFormData((prev) => ({
+        ...prev,
+        plottingAllocations: JSON.parse(JSON.stringify(matchedPreset.plottingAllocations)),
+      }));
+      showToast(`Alokasi plotingan direset ke standar ${matchedPreset.name}.`);
+    }
   };
 
   const handleSubmitForm = (e: React.FormEvent) => {
@@ -284,8 +495,9 @@ export const ShiftView: React.FC = () => {
         color: formData.color,
         personnelCount: Number(formData.personnelCount) || 1,
         description: formData.description.trim(),
+        plottingAllocations: formData.plottingAllocations,
       });
-      showToast(`Pengaturan ${formData.name.trim()} berhasil diperbarui.`);
+      showToast(`Pengaturan & alokasi plotingan ${formData.name.trim()} berhasil disimpan.`);
     } else {
       addShift({
         name: formData.name.trim(),
@@ -295,8 +507,9 @@ export const ShiftView: React.FC = () => {
         color: formData.color,
         personnelCount: Number(formData.personnelCount) || 1,
         description: formData.description.trim(),
+        plottingAllocations: formData.plottingAllocations,
       });
-      showToast(`Shift baru "${formData.name.trim()}" berhasil ditambahkan.`);
+      showToast(`Shift baru "${formData.name.trim()}" & alokasi plotingan berhasil ditambahkan.`);
     }
 
     setShowModal(false);
@@ -341,6 +554,65 @@ export const ShiftView: React.FC = () => {
     setPlottingCleaner(cleaner);
     setManualPlottingText(cleaner.workPlotting || '');
     setPlottingReason('');
+
+    // Default to cleaner's assigned shift or first shift
+    const defaultShiftId = cleaner.shiftId || shifts[0]?.id || 'shift-1';
+    setPlottingSelectedShiftId(defaultShiftId);
+
+    // Preselect any allocations matching the cleaner's existing plotting
+    const targetShift = shifts.find((s) => s.id === defaultShiftId) || shifts[0];
+    const initialSelectedIds: string[] = [];
+    if (targetShift?.plottingAllocations && cleaner.workPlotting) {
+      targetShift.plottingAllocations.forEach((alloc) => {
+        if (cleaner.workPlotting?.toLowerCase().includes(alloc.areaName.toLowerCase())) {
+          initialSelectedIds.push(alloc.id);
+        }
+      });
+    }
+    setSelectedAllocationIds(initialSelectedIds);
+  };
+
+  // Toggle single allocation selection (supports multi-selection / banyak tugas)
+  const handleTogglePlottingAllocation = (alloc: ShiftPlottingAllocation) => {
+    let nextIds: string[];
+    if (selectedAllocationIds.includes(alloc.id)) {
+      nextIds = selectedAllocationIds.filter((id) => id !== alloc.id);
+    } else {
+      nextIds = [...selectedAllocationIds, alloc.id];
+    }
+    setSelectedAllocationIds(nextIds);
+
+    const targetShift = shifts.find((s) => s.id === plottingSelectedShiftId) || shifts[0];
+    const chosenAllocs = (targetShift?.plottingAllocations || []).filter((a) => nextIds.includes(a.id));
+
+    if (chosenAllocs.length === 0) {
+      setManualPlottingText('');
+      return;
+    }
+
+    const compiled = chosenAllocs
+      .map((a) => `${a.areaName}${a.taskDescription ? ` (${a.taskDescription})` : ''}`)
+      .join(' • ');
+
+    setManualPlottingText(compiled);
+  };
+
+  // Select all allocations for current shift in modal
+  const handleSelectAllPlottingAllocations = () => {
+    const targetShift = shifts.find((s) => s.id === plottingSelectedShiftId) || shifts[0];
+    const allIds = (targetShift?.plottingAllocations || []).map((a) => a.id);
+    setSelectedAllocationIds(allIds);
+
+    const compiled = (targetShift?.plottingAllocations || [])
+      .map((a) => `${a.areaName}${a.taskDescription ? ` (${a.taskDescription})` : ''}`)
+      .join(' • ');
+    setManualPlottingText(compiled);
+  };
+
+  // Clear all selections
+  const handleClearPlottingAllocations = () => {
+    setSelectedAllocationIds([]);
+    setManualPlottingText('');
   };
 
   // Action: Submit Mid-Shift Work Plotting
@@ -1113,123 +1385,305 @@ export const ShiftView: React.FC = () => {
       {/* ============================================================ */}
       {/* MODAL 1: UPDATE PLOTINGAN LOKASI KERJA (MID-SHIFT)           */}
       {/* ============================================================ */}
-      {plottingCleaner && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 overflow-y-auto">
-          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-100 animate-in fade-in zoom-in-95 duration-200">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-xl bg-sky-50 text-sky-600 flex items-center justify-center">
-                  <MapPin className="w-4 h-4" />
+      {plottingCleaner && (() => {
+        const activeShift =
+          shifts.find((s) => s.id === (plottingSelectedShiftId || plottingCleaner.shiftId)) ||
+          shifts[0];
+        const shiftAllocations = activeShift?.plottingAllocations || [];
+
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 overflow-y-auto">
+            <div className="bg-white rounded-3xl max-w-2xl w-full p-6 shadow-2xl border border-slate-100 animate-in fade-in zoom-in-95 duration-200 max-h-[92vh] overflow-y-auto">
+              <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-9 h-9 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center shadow-2xs">
+                    <MapPin className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-900">
+                      Ganti Alokasi Plotingan Lokasi & Tugas Petugas
+                    </h3>
+                    <p className="text-[11px] text-slate-500">
+                      Pilih satu atau lebih tugas dari Uraian Tugas & Deskripsi Shift, atau sesuaikan secara manual
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <h3 className="text-sm font-bold text-slate-900">
-                    Update Plotingan Lokasi Kerja
-                  </h3>
-                  <p className="text-[11px] text-slate-500">
-                    Bisa di-update di tengah-tengah shift kerja sesuai kondisi lapangan
-                  </p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setPlottingCleaner(null)}
-                className="w-7 h-7 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-500 cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <form onSubmit={handleSaveWorkPlotting} className="mt-4 space-y-4">
-              {/* Petugas Info */}
-              <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200/80 flex items-center gap-3">
-                <img
-                  src={plottingCleaner.photoUrl}
-                  alt={plottingCleaner.name}
-                  className="w-10 h-10 rounded-xl object-cover"
-                />
-                <div>
-                  <h4 className="font-bold text-slate-900 text-xs">{plottingCleaner.name}</h4>
-                  <span className="text-[10px] text-slate-500">{plottingCleaner.nik} • {plottingCleaner.shiftName}</span>
-                </div>
-              </div>
-
-              {/* Manual Input Plotingan */}
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">
-                  Plotingan Lokasi Kerja Baru: <span className="text-rose-500">*</span>
-                </label>
-                <textarea
-                  rows={2}
-                  required
-                  value={manualPlottingText}
-                  onChange={(e) => setManualPlottingText(e.target.value)}
-                  placeholder="Contoh: Toilet Lt. 2, Koridor Barat, & Siaga Ruang VIP 401..."
-                  className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-sky-500 focus:outline-none"
-                />
-                <span className="text-[10px] text-slate-400 mt-0.5 block">
-                  Isi manual sesuai penugasan riil yang sedang berjalan di lapangan
-                </span>
-              </div>
-
-              {/* Quick Area Suggestion Chips */}
-              <div>
-                <label className="block text-[11px] font-bold text-slate-600 mb-1.5">
-                  Rekomendasi Area Cepat (Klik untuk memilih):
-                </label>
-                <div className="flex flex-wrap gap-1.5">
-                  {QUICK_AREA_CHIPS.map((chip) => (
-                    <button
-                      key={chip}
-                      type="button"
-                      onClick={() => {
-                        if (!manualPlottingText) {
-                          setManualPlottingText(chip);
-                        } else {
-                          setManualPlottingText(`${manualPlottingText}, ${chip}`);
-                        }
-                      }}
-                      className="px-2 py-1 rounded-lg bg-slate-100 hover:bg-sky-50 hover:text-sky-700 text-slate-600 text-[10px] font-semibold transition-colors cursor-pointer"
-                    >
-                      + {chip}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Reason / Notes */}
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">
-                  Alasan Perubahan Tengah Shift (Opsional):
-                </label>
-                <input
-                  type="text"
-                  value={plottingReason}
-                  onChange={(e) => setPlottingReason(e.target.value)}
-                  placeholder="Contoh: Rotasi jam sibuk siang, permintaan mendesak klien..."
-                  className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-sky-500 focus:outline-none"
-                />
-              </div>
-
-              {/* Buttons */}
-              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
                 <button
                   type="button"
                   onClick={() => setPlottingCleaner(null)}
-                  className="px-4 py-2 border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-semibold rounded-xl cursor-pointer"
+                  className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-500 cursor-pointer transition-colors"
                 >
-                  Batal
-                </button>
-                <button
-                  type="submit"
-                  className="px-5 py-2 bg-sky-600 hover:bg-sky-700 text-white text-xs font-bold rounded-xl transition-colors shadow-xs cursor-pointer"
-                >
-                  Simpan Plotingan Baru
+                  <X className="w-4 h-4" />
                 </button>
               </div>
-            </form>
+
+              <form onSubmit={handleSaveWorkPlotting} className="mt-4 space-y-4">
+                {/* Petugas Info Card */}
+                <div className="p-3.5 rounded-2xl bg-slate-50/90 border border-slate-200/80 flex items-center justify-between flex-wrap gap-3">
+                  <div className="flex items-center gap-3">
+                    <img
+                      src={plottingCleaner.photoUrl}
+                      alt={plottingCleaner.name}
+                      className="w-11 h-11 rounded-2xl object-cover ring-2 ring-white shadow-2xs"
+                    />
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h4 className="font-bold text-slate-900 text-sm">{plottingCleaner.name}</h4>
+                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-200/80 text-slate-700 font-mono font-bold">
+                          {plottingCleaner.nik}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1.5 text-xs text-slate-500 mt-0.5">
+                        <span>Shift Terdaftar:</span>
+                        <strong className="text-slate-800">{plottingCleaner.shiftName || activeShift?.name}</strong>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="text-right">
+                    <span className="text-[10px] font-bold text-slate-400 block uppercase tracking-wider">
+                      Plotingan Saat Ini:
+                    </span>
+                    <span className="text-xs font-semibold text-slate-700 max-w-[200px] truncate block">
+                      {plottingCleaner.workPlotting || 'Belum diploting'}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Shift Selector Tabs for Sourcing Plotting Tasks */}
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="block text-xs font-bold text-slate-700">
+                      Pilih Sumber Pengaturan Shift:
+                    </label>
+                    <span className="text-[10px] text-slate-400">
+                      Uraian tugas diambil dari master shift
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
+                    {shifts.map((s) => {
+                      const isActive = (plottingSelectedShiftId || plottingCleaner.shiftId) === s.id;
+                      return (
+                        <button
+                          key={s.id}
+                          type="button"
+                          onClick={() => {
+                            setPlottingSelectedShiftId(s.id);
+                            // Preselect allocations if matching current text
+                            if (s.plottingAllocations) {
+                              const matchIds = s.plottingAllocations
+                                .filter((a) =>
+                                  manualPlottingText.toLowerCase().includes(a.areaName.toLowerCase())
+                                )
+                                .map((a) => a.id);
+                              setSelectedAllocationIds(matchIds);
+                            }
+                          }}
+                          className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all border cursor-pointer ${
+                            isActive
+                              ? 'border-indigo-500 bg-indigo-50/90 text-indigo-900 shadow-2xs'
+                              : 'border-slate-200 hover:bg-slate-50 text-slate-600'
+                          }`}
+                        >
+                          <span
+                            className="w-2 h-2 rounded-full inline-block mr-1.5 align-middle"
+                            style={{ backgroundColor: s.color }}
+                          />
+                          {s.name}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Section: Plotingan dari Uraian Tugas & Deskripsi Shift */}
+                <div className="p-3.5 rounded-2xl bg-indigo-50/40 border border-indigo-100 space-y-3">
+                  <div className="flex items-center justify-between flex-wrap gap-2">
+                    <div className="flex items-center gap-2">
+                      <Layers className="w-4 h-4 text-indigo-600" />
+                      <h4 className="text-xs font-bold text-indigo-950">
+                        Lokasi & Uraian Tugas pada {activeShift.name}:
+                      </h4>
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-800 font-extrabold">
+                        {selectedAllocationIds.length} Dipilih
+                      </span>
+                    </div>
+
+                    {shiftAllocations.length > 0 && (
+                      <div className="flex items-center gap-1.5 text-[11px]">
+                        <button
+                          type="button"
+                          onClick={handleSelectAllPlottingAllocations}
+                          className="px-2 py-0.5 rounded-lg bg-indigo-100 hover:bg-indigo-200 text-indigo-800 font-bold transition-colors cursor-pointer"
+                        >
+                          Pilih Semua
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleClearPlottingAllocations}
+                          className="px-2 py-0.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 font-semibold transition-colors cursor-pointer"
+                        >
+                          Reset Pilihan
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  {shiftAllocations.length === 0 ? (
+                    <div className="p-4 rounded-xl bg-white border border-dashed border-indigo-200 text-center space-y-1">
+                      <p className="text-xs text-slate-600 font-semibold">
+                        Shift ini belum memiliki alokasi plotting spesifik pada Uraian Tugas & Deskripsi Shift.
+                      </p>
+                      <p className="text-[11px] text-slate-400">
+                        Anda dapat menambahkannya di menu "Edit Pengaturan Shift" pada tombol kartu shift di atas, atau isi manual di bawah ini.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 gap-2 max-h-56 overflow-y-auto pr-1">
+                      {shiftAllocations.map((alloc) => {
+                        const isSelected = selectedAllocationIds.includes(alloc.id);
+
+                        return (
+                          <div
+                            key={alloc.id}
+                            onClick={() => handleTogglePlottingAllocation(alloc)}
+                            className={`p-3 rounded-xl border text-xs transition-all cursor-pointer flex items-start gap-2.5 ${
+                              isSelected
+                                ? 'bg-white border-indigo-500 shadow-xs ring-1 ring-indigo-400/40'
+                                : 'bg-white/80 border-slate-200 hover:border-indigo-300 hover:bg-white'
+                            }`}
+                          >
+                            <div className="pt-0.5 shrink-0">
+                              {isSelected ? (
+                                <CheckSquare className="w-4 h-4 text-indigo-600" />
+                              ) : (
+                                <Square className="w-4 h-4 text-slate-300 hover:text-indigo-400" />
+                              )}
+                            </div>
+
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center justify-between gap-2 flex-wrap">
+                                <span className={`font-bold ${isSelected ? 'text-indigo-950 font-extrabold' : 'text-slate-800'}`}>
+                                  {alloc.areaName}
+                                </span>
+
+                                <div className="flex items-center gap-1.5 shrink-0">
+                                  {alloc.personnelQuota && (
+                                    <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-slate-100 text-slate-600 font-medium">
+                                      Target: {alloc.personnelQuota} Staf
+                                    </span>
+                                  )}
+                                  {alloc.priority && (
+                                    <span
+                                      className={`text-[9px] px-1.5 py-0.5 rounded-md font-bold uppercase tracking-wider ${
+                                        alloc.priority === 'intensif'
+                                          ? 'bg-rose-50 text-rose-700 border border-rose-200'
+                                          : alloc.priority === 'periodic'
+                                          ? 'bg-purple-50 text-purple-700 border border-purple-200'
+                                          : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                      }`}
+                                    >
+                                      {alloc.priority}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+
+                              <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">
+                                {alloc.taskDescription || 'Pembersihan rutin sesuai SOP kebersihan.'}
+                              </p>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                {/* Manual Input Plotingan & Compilation Result */}
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-xs font-bold text-slate-800">
+                      Rincian Plotingan Akhir yang Disimpan: <span className="text-rose-500">*</span>
+                    </label>
+                    <span className="text-[10px] text-slate-400">
+                      Dapat diedit atau ditambahkan catatan khusus
+                    </span>
+                  </div>
+                  <textarea
+                    rows={3}
+                    required
+                    value={manualPlottingText}
+                    onChange={(e) => setManualPlottingText(e.target.value)}
+                    placeholder="Pilih lokasi di atas atau ketik manual..."
+                    className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-indigo-500 focus:outline-none font-medium leading-relaxed"
+                  />
+                  <span className="text-[10px] text-slate-400 mt-0.5 block">
+                    Format penugasan ini akan langsung tampil pada Roster Petugas & Presensi Interaktif.
+                  </span>
+                </div>
+
+                {/* Quick Area Suggestion Chips */}
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-600 mb-1.5">
+                    + Tambahkan Area Cepat Tambahan:
+                  </label>
+                  <div className="flex flex-wrap gap-1.5">
+                    {QUICK_AREA_CHIPS.map((chip) => (
+                      <button
+                        key={chip}
+                        type="button"
+                        onClick={() => {
+                          if (!manualPlottingText) {
+                            setManualPlottingText(chip);
+                          } else {
+                            setManualPlottingText(`${manualPlottingText} • ${chip}`);
+                          }
+                        }}
+                        className="px-2 py-1 rounded-lg bg-slate-100 hover:bg-indigo-50 hover:text-indigo-700 text-slate-600 text-[10px] font-semibold transition-colors cursor-pointer"
+                      >
+                        + {chip}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Reason / Notes */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Alasan Perubahan Tengah Shift (Opsional):
+                  </label>
+                  <input
+                    type="text"
+                    value={plottingReason}
+                    onChange={(e) => setPlottingReason(e.target.value)}
+                    placeholder="Contoh: Rotasi jam sibuk siang, penugasan darurat lantai 2, permintaan klien..."
+                    className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                  />
+                </div>
+
+                {/* Buttons */}
+                <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+                  <button
+                    type="button"
+                    onClick={() => setPlottingCleaner(null)}
+                    className="px-4 py-2 border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-semibold rounded-xl cursor-pointer transition-colors"
+                  >
+                    Batal
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl transition-colors shadow-xs cursor-pointer flex items-center gap-1.5"
+                  >
+                    <Check className="w-3.5 h-3.5" />
+                    Simpan Plotingan Baru
+                  </button>
+                </div>
+              </form>
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* ============================================================ */}
       {/* MODAL 2: ALOKASI / TAMBAH PETUGAS KE SHIFT                   */}
@@ -1403,14 +1857,14 @@ export const ShiftView: React.FC = () => {
       {/* ============================================================ */}
       {showModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 overflow-y-auto">
-          <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-slate-100 animate-in fade-in zoom-in-95 duration-200 max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-3xl max-w-3xl w-full p-6 shadow-2xl border border-slate-100 animate-in fade-in zoom-in-95 duration-200 max-h-[92vh] overflow-y-auto">
             <div className="flex items-center justify-between pb-4 border-b border-slate-100">
               <div>
                 <h3 className="text-base font-bold text-slate-900">
-                  {editingShiftId ? 'Edit Pengaturan Shift' : 'Pengaturan Tambah Shift Manual'}
+                  {editingShiftId ? 'Edit Pengaturan Shift & Alokasi Plotting' : 'Pengaturan Tambah Shift Manual'}
                 </h3>
                 <p className="text-xs text-slate-500 mt-0.5">
-                  Tentukan jam mulai, jam selesai, dan sistem otomatis menghitung durasi jam kerja
+                  Tentukan jam kerja shift dan atur alokasi plotting petugas pada uraian tugas yang terhubung dengan Roster, Presensi, & Plotingan
                 </p>
               </div>
               <button
@@ -1575,7 +2029,7 @@ export const ShiftView: React.FC = () => {
 
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1">
-                    Target Kuota Personel:
+                    Target Kuota Personel Keseluruhan:
                   </label>
                   <div className="flex items-center gap-2">
                     <input
@@ -1591,18 +2045,310 @@ export const ShiftView: React.FC = () => {
                 </div>
               </div>
 
-              {/* Description */}
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">
-                  Uraian Tugas & Deskripsi Shift:
-                </label>
-                <textarea
-                  rows={2}
-                  value={formData.description}
-                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                  placeholder="Contoh: Pembersihan awal harian, sanitasi toilet pagi, lobby utama..."
-                  className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-sky-500 focus:outline-none"
-                />
+              {/* Description & Dynamic Plotingan Section */}
+              <div className="space-y-3 pt-1 border-t border-slate-100">
+                <div>
+                  <label className="block text-xs font-bold text-slate-800 mb-1">
+                    Uraian Tugas & Deskripsi Umum Shift:
+                  </label>
+                  <textarea
+                    rows={2}
+                    value={formData.description}
+                    onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                    placeholder="Contoh: Pembersihan awal harian, sanitasi toilet pagi, lobby utama..."
+                    className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-sky-500 focus:outline-none leading-relaxed"
+                  />
+                </div>
+
+                {/* Bagian Alokasi Plotting Petugas (Kolom & Tambah Baris) */}
+                <div className="p-4 rounded-2xl bg-indigo-50/50 border border-indigo-100 space-y-3">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <MapPin className="w-4 h-4 text-indigo-600" />
+                        <h4 className="text-xs font-bold text-indigo-950">
+                          Alokasi Plotting Petugas pada Shift (Tabel Tugas & Area Kerja)
+                        </h4>
+                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-800 font-extrabold">
+                          {formData.plottingAllocations.length} Posisi
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-500 mt-0.5">
+                        Tambahkan baris alokasi plotting petugas secara manual. Data ini terhubung ke Roster Petugas, Presensi Interaktif, & Plotingan Kerja per Shift.
+                      </p>
+                    </div>
+
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <button
+                        type="button"
+                        onClick={handleResetPlottingToPreset}
+                        className="px-2.5 py-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer shadow-2xs"
+                        title="Muat alokasi standar untuk shift ini"
+                      >
+                        <RotateCcw className="w-3.5 h-3.5 text-slate-400" />
+                        <span>Reset Standar</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={handleAddPlottingRow}
+                        className="px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold flex items-center gap-1.5 transition-colors shadow-2xs cursor-pointer"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>Tambah Baris Plotting</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {formData.plottingAllocations.length === 0 ? (
+                    <div className="p-5 rounded-xl bg-white border border-dashed border-indigo-200 text-center space-y-2">
+                      <p className="text-xs font-semibold text-slate-700">
+                        Belum ada alokasi plotting petugas untuk shift ini.
+                      </p>
+                      <p className="text-[11px] text-slate-500 max-w-md mx-auto">
+                        Klik tombol di bawah untuk menambah baris penugasan area kerja yang dapat dipilih saat pergantian plotingan.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={handleAddPlottingRow}
+                        className="px-3.5 py-2 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-xs inline-flex items-center gap-1.5 border border-indigo-200 transition-colors cursor-pointer"
+                      >
+                        <Plus className="w-4 h-4" />
+                        Tambah Baris Alokasi Petugas
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {/* Desktop / Tablet Table */}
+                      <div className="hidden sm:block overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-2xs">
+                        <table className="w-full text-left text-xs border-collapse">
+                          <thead>
+                            <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold text-[11px]">
+                              <th className="py-2.5 px-3 w-10 text-center">No</th>
+                              <th className="py-2.5 px-3 min-w-[160px]">
+                                Lokasi / Area Plotingan <span className="text-rose-500">*</span>
+                              </th>
+                              <th className="py-2.5 px-3 min-w-[200px]">
+                                Uraian Tugas & Deskripsi Pekerjaan
+                              </th>
+                              <th className="py-2.5 px-2.5 w-24 text-center">
+                                Kuota Staf
+                              </th>
+                              <th className="py-2.5 px-2.5 w-28 text-center">
+                                Sifat Tugas
+                              </th>
+                              <th className="py-2.5 px-2 w-12 text-center">Aksi</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100">
+                            {formData.plottingAllocations.map((row, index) => (
+                              <tr key={row.id} className="hover:bg-slate-50/70 transition-colors group">
+                                <td className="py-2.5 px-3 text-center text-slate-400 font-bold font-mono">
+                                  {index + 1}
+                                </td>
+                                <td className="py-2 px-3">
+                                  <input
+                                    type="text"
+                                    required
+                                    value={row.areaName}
+                                    onChange={(e) =>
+                                      handleUpdatePlottingRow(row.id, 'areaName', e.target.value)
+                                    }
+                                    placeholder="Contoh: Toilet Pria & Wanita Lt. 1 & 2"
+                                    className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-xs font-semibold text-slate-800 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                                  />
+                                </td>
+                                <td className="py-2 px-3">
+                                  <input
+                                    type="text"
+                                    value={row.taskDescription}
+                                    onChange={(e) =>
+                                      handleUpdatePlottingRow(row.id, 'taskDescription', e.target.value)
+                                    }
+                                    placeholder="Contoh: Sanitasi kloset, wastafel & mopping..."
+                                    className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-xs text-slate-700 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                                  />
+                                </td>
+                                <td className="py-2 px-2.5 text-center">
+                                  <input
+                                    type="number"
+                                    min={1}
+                                    max={20}
+                                    value={row.personnelQuota || 1}
+                                    onChange={(e) =>
+                                      handleUpdatePlottingRow(
+                                        row.id,
+                                        'personnelQuota',
+                                        Math.max(1, parseInt(e.target.value, 10) || 1)
+                                      )
+                                    }
+                                    className="w-16 mx-auto px-2 py-1.5 border border-slate-200 rounded-lg text-xs text-center font-bold text-slate-800 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                                  />
+                                </td>
+                                <td className="py-2 px-2.5 text-center">
+                                  <select
+                                    value={row.priority || 'rutin'}
+                                    onChange={(e) =>
+                                      handleUpdatePlottingRow(
+                                        row.id,
+                                        'priority',
+                                        e.target.value as 'rutin' | 'intensif' | 'periodic'
+                                      )
+                                    }
+                                    className="w-full px-2 py-1.5 border border-slate-200 rounded-lg text-[11px] font-semibold text-slate-700 focus:ring-2 focus:ring-indigo-500 focus:outline-none bg-white cursor-pointer"
+                                  >
+                                    <option value="rutin">Rutin</option>
+                                    <option value="intensif">Intensif</option>
+                                    <option value="periodic">Periodik</option>
+                                  </select>
+                                </td>
+                                <td className="py-2 px-2 text-center">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeletePlottingRow(row.id)}
+                                    className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                                    title="Hapus baris alokasi"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+
+                      {/* Mobile Card Layout */}
+                      <div className="sm:hidden space-y-2.5">
+                        {formData.plottingAllocations.map((row, index) => (
+                          <div
+                            key={row.id}
+                            className="p-3 rounded-xl border border-slate-200 bg-white space-y-2 relative"
+                          >
+                            <div className="flex items-center justify-between pb-1 border-b border-slate-100">
+                              <span className="text-[11px] font-bold text-indigo-900">
+                                Baris #{index + 1}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => handleDeletePlottingRow(row.id)}
+                                className="text-rose-600 p-1 hover:bg-rose-50 rounded-lg text-xs font-bold"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+
+                            <div>
+                              <label className="text-[10px] font-bold text-slate-600 block mb-0.5">
+                                Lokasi / Area Plotingan: <span className="text-rose-500">*</span>
+                              </label>
+                              <input
+                                type="text"
+                                required
+                                value={row.areaName}
+                                onChange={(e) =>
+                                  handleUpdatePlottingRow(row.id, 'areaName', e.target.value)
+                                }
+                                placeholder="Contoh: Toilet Lt. 1 & 2"
+                                className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-xs font-semibold focus:outline-none"
+                              />
+                            </div>
+
+                            <div>
+                              <label className="text-[10px] font-bold text-slate-600 block mb-0.5">
+                                Uraian Tugas:
+                              </label>
+                              <input
+                                type="text"
+                                value={row.taskDescription}
+                                onChange={(e) =>
+                                  handleUpdatePlottingRow(row.id, 'taskDescription', e.target.value)
+                                }
+                                placeholder="Sanitasi kloset, wastafel..."
+                                className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-xs focus:outline-none"
+                              />
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-2">
+                              <div>
+                                <label className="text-[10px] font-bold text-slate-600 block mb-0.5">
+                                  Kuota Staf:
+                                </label>
+                                <input
+                                  type="number"
+                                  min={1}
+                                  max={20}
+                                  value={row.personnelQuota || 1}
+                                  onChange={(e) =>
+                                    handleUpdatePlottingRow(
+                                      row.id,
+                                      'personnelQuota',
+                                      Math.max(1, parseInt(e.target.value, 10) || 1)
+                                    )
+                                  }
+                                  className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-xs font-bold text-center"
+                                />
+                              </div>
+
+                              <div>
+                                <label className="text-[10px] font-bold text-slate-600 block mb-0.5">
+                                  Sifat Tugas:
+                                </label>
+                                <select
+                                  value={row.priority || 'rutin'}
+                                  onChange={(e) =>
+                                    handleUpdatePlottingRow(
+                                      row.id,
+                                      'priority',
+                                      e.target.value as 'rutin' | 'intensif' | 'periodic'
+                                    )
+                                  }
+                                  className="w-full px-2 py-1.5 border border-slate-200 rounded-lg text-xs bg-white"
+                                >
+                                  <option value="rutin">Rutin</option>
+                                  <option value="intensif">Intensif</option>
+                                  <option value="periodic">Periodik</option>
+                                </select>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Summary & Add Baris Footer */}
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-2 px-1">
+                        <div className="text-[11px] text-slate-600 flex items-center gap-3">
+                          <span>
+                            Total Kuota Baris:{' '}
+                            <strong className="text-indigo-900 font-bold">
+                              {formData.plottingAllocations.reduce(
+                                (sum, a) => sum + (Number(a.personnelQuota) || 1),
+                                0
+                              )}{' '}
+                              Staf
+                            </strong>
+                          </span>
+                          <span className="text-slate-300">•</span>
+                          <span>
+                            Target Kuota Shift:{' '}
+                            <strong className="text-slate-800 font-semibold">
+                              {formData.personnelCount} Orang
+                            </strong>
+                          </span>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={handleAddPlottingRow}
+                          className="px-3 py-1.5 rounded-xl bg-white border border-indigo-200 hover:bg-indigo-50 text-indigo-700 text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer shadow-2xs"
+                        >
+                          <Plus className="w-3.5 h-3.5 text-indigo-600" />
+                          <span>+ Tambah Baris Plotting</span>
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
 
               {/* Modal Buttons */}

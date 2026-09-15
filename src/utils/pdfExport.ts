@@ -49,6 +49,7 @@ interface ExportChecklistPDFOptions {
   shiftName?: string;
   shiftHoursText?: string;
   allowedHours?: number[];
+  slotDateMap?: Record<number, string>;
 }
 
 export const exportChecklistToPDF = (options: ExportChecklistPDFOptions): void => {
@@ -63,6 +64,7 @@ export const exportChecklistToPDF = (options: ExportChecklistPDFOptions): void =
     shiftName,
     shiftHoursText,
     allowedHours,
+    slotDateMap,
   } = options;
 
   // Create landscape A4 document for full parameter visibility
@@ -201,7 +203,7 @@ export const exportChecklistToPDF = (options: ExportChecklistPDFOptions): void =
   const tableRows = selectedSlots.map((slot) => {
     const rowCells: string[] = [];
     // Tanggal
-    rowCells.push(dailyChecklist.date);
+    rowCells.push(slotDateMap?.[slot.hour] || dailyChecklist.date);
     // Jam (format "07.00 - 08.00" or short "07.00")
     const hStr = slot.hour.toString().padStart(2, '0');
     const nextHStr = ((slot.hour + 1) % 25).toString().padStart(2, '0');

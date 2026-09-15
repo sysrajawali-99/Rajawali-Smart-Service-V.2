@@ -49,6 +49,14 @@ export interface Cleaner {
   workPlottingUpdatedAt?: string; // Waktu update terakhir plotingan (e.g. "14:30 WIB")
 }
 
+export interface ShiftPlottingAllocation {
+  id: string;
+  areaName: string; // Lokasi / Posisi Area Plotingan (e.g. "Toilet Pria & Wanita Lt. 1", "Lobby Utama & Receptionist")
+  taskDescription: string; // Uraian Tugas / Deskripsi Pekerjaan (e.g. "Sanitasi kloset, mopping lantai, restock sabun & tissue")
+  personnelQuota?: number; // Kuota / Target Jumlah Petugas (e.g. 1, 2)
+  priority?: 'rutin' | 'intensif' | 'periodic'; // Level prioritas
+}
+
 export interface Shift {
   id: string;
   name: string;
@@ -60,6 +68,7 @@ export interface Shift {
   description: string;
   workHoursDuration?: number; // e.g. 8
   durationText?: string;      // e.g. "8 Jam"
+  plottingAllocations?: ShiftPlottingAllocation[];
 }
 
 export interface CleaningSchedule {
@@ -284,6 +293,8 @@ export interface OfflineSyncEntry {
 
 export type ProgramDayStatus = 'none' | 'planned' | 'in_progress' | 'done' | 'rescheduled';
 
+export type ProgramFrequencyCode = 'D' | 'W' | 'M';
+
 export interface MasterCleaningProgramItem {
   id: string;
   projectId: string; // ID Proyek / Site (dipisahkan sesuai lokasi kerja user / klien)
@@ -291,7 +302,7 @@ export interface MasterCleaningProgramItem {
   workMethod: string; // Metode pekerjaan, SOP, alat & chemical
   location: string; // Lokasi kerja spesifik di dalam site
   category: 'daily' | 'periodic' | 'deep_clean' | 'special_treatment';
-  frequency: 'harian' | 'mingguan' | 'dua_mingguan' | 'bulanan' | 'berkala';
+  frequency: ProgramFrequencyCode | 'harian' | 'mingguan' | 'dua_mingguan' | 'bulanan' | 'berkala' | string;
   picName: string; // Petugas / PIC penanggung jawab
   month: number; // 1 - 12
   year: number; // e.g. 2026

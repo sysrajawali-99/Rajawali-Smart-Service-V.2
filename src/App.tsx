@@ -15,6 +15,9 @@ import { PengaturanView } from './components/web/PengaturanView';
 import { LokasiProyekView } from './components/web/LokasiProyekView';
 import { CeklistAreaView } from './components/web/CeklistAreaView';
 import { MasterCleaningProgramView } from './components/web/MasterCleaningProgramView';
+import { DailyActivityView } from './components/web/DailyActivityView';
+import { WeeklyActivityView } from './components/web/WeeklyActivityView';
+import { MonthlyActivityView } from './components/web/MonthlyActivityView';
 import { MobileAppView } from './components/mobile/MobileAppView';
 
 const MainLayout: React.FC = () => {
@@ -37,7 +40,14 @@ const MainLayout: React.FC = () => {
       case 'jadwal':
         return <JadwalCleaningView />;
       case 'master-program':
+      case 'mcp':
         return <MasterCleaningProgramView />;
+      case 'daily-activity':
+        return <DailyActivityView />;
+      case 'weekly-activity':
+        return <WeeklyActivityView />;
+      case 'monthly-activity':
+        return <MonthlyActivityView />;
       case 'activity':
         return <CleaningActivityView />;
       case 'inspeksi':

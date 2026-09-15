@@ -16,6 +16,11 @@ import {
   FileText,
   Sparkles,
   Info,
+  CheckSquare,
+  Square,
+  MapPin,
+  Check,
+  Layers,
 } from 'lucide-react';
 import { useCleaning } from '../../context/CleaningContext';
 import { Cleaner, AttendanceStatusCode } from '../../types';
@@ -108,6 +113,12 @@ export const PetugasView: React.FC = () => {
   const [cleanerFormName, setCleanerFormName] = useState('');
   const [cleanerFormShiftId, setCleanerFormShiftId] = useState('');
   const [cleanerFormPlotting, setCleanerFormPlotting] = useState('');
+
+  // Plotingan Modal State (Terhubung ke Uraian Tugas & Deskripsi Shift)
+  const [plottingCleaner, setPlottingCleaner] = useState<Cleaner | null>(null);
+  const [plottingSelectedShiftId, setPlottingSelectedShiftId] = useState<string>('');
+  const [selectedAllocationIds, setSelectedAllocationIds] = useState<string[]>([]);
+  const [manualPlottingText, setManualPlottingText] = useState('');
 
   // Delete confirm modal
   const [deleteCleanerId, setDeleteCleanerId] = useState<string | null>(null);
@@ -264,6 +275,80 @@ export const PetugasView: React.FC = () => {
     }
     batchSetCleanerAttendance(cleanerId, days, periodKey);
     showToast('Kehadiran hari kerja diatur ke Hadir (H).');
+  };
+
+  // Plotingan Handlers (Terhubung ke Uraian Tugas & Deskripsi Shift)
+  const handleOpenPlottingModal = (cleaner: Cleaner) => {
+    setPlottingCleaner(cleaner);
+    setManualPlottingText(cleaner.workPlotting || '');
+    const currentShiftId = cleaner.shiftId || shifts[0]?.id || '';
+    setPlottingSelectedShiftId(currentShiftId);
+
+    const targetShift = shifts.find((s) => s.id === currentShiftId) || shifts[0];
+    const initialSelectedIds: string[] = [];
+    if (targetShift?.plottingAllocations && cleaner.workPlotting) {
+      targetShift.plottingAllocations.forEach((alloc) => {
+        if (cleaner.workPlotting?.toLowerCase().includes(alloc.areaName.toLowerCase())) {
+          initialSelectedIds.push(alloc.id);
+        }
+      });
+    }
+    setSelectedAllocationIds(initialSelectedIds);
+  };
+
+  const handleTogglePlottingAllocation = (allocId: string) => {
+    let nextIds: string[];
+    if (selectedAllocationIds.includes(allocId)) {
+      nextIds = selectedAllocationIds.filter((id) => id !== allocId);
+    } else {
+      nextIds = [...selectedAllocationIds, allocId];
+    }
+    setSelectedAllocationIds(nextIds);
+
+    const targetShift = shifts.find((s) => s.id === plottingSelectedShiftId) || shifts[0];
+    const chosenAllocs = (targetShift?.plottingAllocations || []).filter((a) => nextIds.includes(a.id));
+
+    if (chosenAllocs.length === 0) {
+      setManualPlottingText('');
+      return;
+    }
+
+    const compiled = chosenAllocs
+      .map((a) => `${a.areaName}${a.taskDescription ? ` (${a.taskDescription})` : ''}`)
+      .join(' • ');
+    setManualPlottingText(compiled);
+  };
+
+  const handleSelectAllPlottingAllocations = () => {
+    const targetShift = shifts.find((s) => s.id === plottingSelectedShiftId) || shifts[0];
+    const allIds = (targetShift?.plottingAllocations || []).map((a) => a.id);
+    setSelectedAllocationIds(allIds);
+
+    const compiled = (targetShift?.plottingAllocations || [])
+      .map((a) => `${a.areaName}${a.taskDescription ? ` (${a.taskDescription})` : ''}`)
+      .join(' • ');
+    setManualPlottingText(compiled);
+  };
+
+  const handleClearPlottingAllocations = () => {
+    setSelectedAllocationIds([]);
+    setManualPlottingText('');
+  };
+
+  const handleSaveWorkPlotting = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!plottingCleaner) return;
+
+    const nowTime = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB';
+    const finalLocation = manualPlottingText.trim() || 'Lobby & Koridor Utama';
+
+    updateCleaner(plottingCleaner.id, {
+      workPlotting: finalLocation,
+      workPlottingUpdatedAt: nowTime,
+    });
+
+    showToast(`Plotingan lokasi ${plottingCleaner.name} berhasil diubah ke "${finalLocation}".`);
+    setPlottingCleaner(null);
   };
 
   // Export to PDF
@@ -684,12 +769,24 @@ export const PetugasView: React.FC = () => {
                           />
                           <div className="min-w-0">
                             <span className="truncate block text-xs font-bold text-slate-900">{cleaner.name}</span>
-                            {cleaner.workPlotting && (
-                              <span className="text-[10px] text-sky-700 font-medium flex items-center gap-1 truncate mt-0.5" title={`Plotingan: ${cleaner.workPlotting}`}>
-                                <span className="text-sky-500 font-bold">📍</span>
-                                <span className="truncate">{cleaner.workPlotting}</span>
-                              </span>
-                            )}
+                            <div className="flex items-center gap-1.5 mt-0.5">
+                              {cleaner.workPlotting ? (
+                                <span className="text-[10px] text-sky-700 font-medium flex items-center gap-1 truncate max-w-[150px]" title={`Plotingan: ${cleaner.workPlotting}`}>
+                                  <span className="text-sky-500 font-bold">📍</span>
+                                  <span className="truncate">{cleaner.workPlotting}</span>
+                                </span>
+                              ) : (
+                                <span className="text-[10px] text-slate-400 italic">Belum di-plot</span>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => handleOpenPlottingModal(cleaner)}
+                                className="px-1.5 py-0.5 rounded bg-sky-50 hover:bg-sky-100 text-sky-700 text-[9px] font-bold border border-sky-200 shrink-0 transition-colors cursor-pointer"
+                                title="Ganti alokasi plotingan tugas dari setting shift"
+                              >
+                                Ganti
+                              </button>
+                            </div>
                           </div>
                         </div>
                       </td>
@@ -913,12 +1010,62 @@ export const PetugasView: React.FC = () => {
                 </span>
               </div>
 
-              {/* Plotingan Lokasi Kerja Manual */}
+              {/* Plotingan Lokasi Kerja Manual & Alokasi dari Shift */}
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center gap-1">
-                  <span className="text-sky-600">📍</span>
-                  Plotingan Lokasi Kerja (Bisa Diisi Manual):
-                </label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-xs font-bold text-slate-700 flex items-center gap-1">
+                    <span className="text-sky-600">📍</span>
+                    Alokasi Plotingan Tugas & Area:
+                  </label>
+                  <span className="text-[10px] text-slate-400">
+                    Berdasarkan Uraian Tugas Shift terpilih
+                  </span>
+                </div>
+
+                {/* Chips from selected shift */}
+                {(() => {
+                  const selShift = shifts.find((s) => s.id === cleanerFormShiftId);
+                  const allocs = selShift?.plottingAllocations || [];
+                  if (allocs.length === 0) return null;
+
+                  return (
+                    <div className="mb-2 p-2.5 rounded-xl bg-sky-50/60 border border-sky-100 space-y-1.5">
+                      <span className="text-[10px] font-bold text-sky-900 block">
+                        Pilih Tugas dari {selShift?.name}:
+                      </span>
+                      <div className="flex flex-wrap gap-1.5">
+                        {allocs.map((a) => {
+                          const isAlreadyIn = cleanerFormPlotting.toLowerCase().includes(a.areaName.toLowerCase());
+                          return (
+                            <button
+                              key={a.id}
+                              type="button"
+                              onClick={() => {
+                                if (isAlreadyIn) {
+                                  // remove
+                                  const parts = cleanerFormPlotting.split(' • ').filter(p => !p.toLowerCase().includes(a.areaName.toLowerCase()));
+                                  setCleanerFormPlotting(parts.join(' • '));
+                                } else {
+                                  const addition = `${a.areaName}${a.taskDescription ? ` (${a.taskDescription})` : ''}`;
+                                  setCleanerFormPlotting(cleanerFormPlotting ? `${cleanerFormPlotting} • ${addition}` : addition);
+                                }
+                              }}
+                              className={`px-2 py-1 rounded-lg text-[10px] font-semibold border transition-all cursor-pointer flex items-center gap-1 ${
+                                isAlreadyIn
+                                  ? 'bg-sky-600 text-white border-sky-600'
+                                  : 'bg-white text-slate-700 border-slate-200 hover:border-sky-300 hover:bg-sky-50'
+                              }`}
+                            >
+                              <span>{isAlreadyIn ? '✓' : '+'}</span>
+                              <span>{a.areaName}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })()}
+
                 <input
                   type="text"
                   value={cleanerFormPlotting}
@@ -927,7 +1074,7 @@ export const PetugasView: React.FC = () => {
                   className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-sky-500 focus:outline-none"
                 />
                 <span className="text-[10px] text-slate-400 mt-0.5 block">
-                  Plotingan dapat diperbarui kapan saja di tengah shift oleh pengawas lapangan.
+                  Bisa memilih lebih dari satu tugas dari daftar di atas atau ketik manual.
                 </span>
               </div>
 
@@ -982,6 +1129,215 @@ export const PetugasView: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* ============================================================ */}
+      {/* MODAL GANTI PLOTINGAN PETUGAS                                */}
+      {/* ============================================================ */}
+      {plottingCleaner && (() => {
+        const activeShift = shifts.find((s) => s.id === plottingSelectedShiftId) || shifts[0];
+        const shiftAllocations = activeShift?.plottingAllocations || [];
+
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 overflow-y-auto">
+            <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-slate-100 animate-in fade-in zoom-in-95 duration-200 max-h-[92vh] overflow-y-auto">
+              <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-9 h-9 rounded-xl bg-sky-50 text-sky-600 flex items-center justify-center">
+                    <MapPin className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-900">
+                      Ganti Alokasi Plotingan Tugas
+                    </h3>
+                    <p className="text-xs text-slate-500">
+                      Petugas: <span className="font-bold text-slate-800">{plottingCleaner.name}</span>
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setPlottingCleaner(null)}
+                  className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-500 transition-colors cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <form onSubmit={handleSaveWorkPlotting} className="space-y-4 pt-4 text-xs">
+                {/* Shift Selector */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center gap-1">
+                    <Clock className="w-3.5 h-3.5 text-sky-600" />
+                    Shift Operasional Petugas:
+                  </label>
+                  <select
+                    value={plottingSelectedShiftId}
+                    onChange={(e) => {
+                      const newShiftId = e.target.value;
+                      setPlottingSelectedShiftId(newShiftId);
+                      setSelectedAllocationIds([]);
+                      setManualPlottingText('');
+                    }}
+                    className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:ring-2 focus:ring-sky-500 focus:outline-none bg-slate-50/50 cursor-pointer"
+                  >
+                    {shifts.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.name} ({s.startTime} - {s.endTime} WIB)
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Plotting Allocations from Uraian Tugas & Deskripsi Shift */}
+                <div className="p-3.5 rounded-2xl bg-sky-50/50 border border-sky-100 space-y-3">
+                  <div className="flex items-center justify-between flex-wrap gap-2">
+                    <div className="flex items-center gap-2">
+                      <Layers className="w-4 h-4 text-sky-600" />
+                      <h4 className="text-xs font-bold text-slate-900">
+                        Lokasi & Tugas pada {activeShift?.name}:
+                      </h4>
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-sky-100 text-sky-800 font-extrabold">
+                        {selectedAllocationIds.length} Dipilih
+                      </span>
+                    </div>
+
+                    {shiftAllocations.length > 0 && (
+                      <div className="flex items-center gap-1.5 text-[11px]">
+                        <button
+                          type="button"
+                          onClick={handleSelectAllPlottingAllocations}
+                          className="px-2 py-0.5 rounded-lg bg-sky-100 hover:bg-sky-200 text-sky-800 font-bold transition-colors cursor-pointer"
+                        >
+                          Pilih Semua
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleClearPlottingAllocations}
+                          className="px-2 py-0.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 font-semibold transition-colors cursor-pointer"
+                        >
+                          Reset
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  {shiftAllocations.length === 0 ? (
+                    <div className="p-4 rounded-xl bg-white border border-dashed border-sky-200 text-center space-y-1">
+                      <p className="text-xs text-slate-600 font-semibold">
+                        Shift ini belum memiliki alokasi plotting pada pengaturan shift.
+                      </p>
+                      <p className="text-[11px] text-slate-400">
+                        Anda dapat menambahkannya di menu "Shift" &gt; "Edit Pengaturan Shift", atau ketik manual di bawah.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 gap-2 max-h-52 overflow-y-auto pr-1">
+                      {shiftAllocations.map((alloc) => {
+                        const isSelected = selectedAllocationIds.includes(alloc.id);
+
+                        return (
+                          <div
+                            key={alloc.id}
+                            onClick={() => handleTogglePlottingAllocation(alloc.id)}
+                            className={`p-3 rounded-xl border text-xs transition-all cursor-pointer flex items-start gap-2.5 ${
+                              isSelected
+                                ? 'bg-white border-sky-500 shadow-xs ring-1 ring-sky-400/40'
+                                : 'bg-white/80 border-slate-200 hover:border-sky-300 hover:bg-white'
+                            }`}
+                          >
+                            <div className="pt-0.5 shrink-0">
+                              {isSelected ? (
+                                <CheckSquare className="w-4 h-4 text-sky-600" />
+                              ) : (
+                                <Square className="w-4 h-4 text-slate-300 hover:text-sky-400" />
+                              )}
+                            </div>
+
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center justify-between gap-2 flex-wrap">
+                                <span className={`font-bold ${isSelected ? 'text-sky-950 font-extrabold' : 'text-slate-800'}`}>
+                                  {alloc.areaName}
+                                </span>
+
+                                <div className="flex items-center gap-1.5 shrink-0">
+                                  {alloc.personnelQuota && (
+                                    <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-slate-100 text-slate-600 font-medium">
+                                      Target: {alloc.personnelQuota} Staf
+                                    </span>
+                                  )}
+                                  {alloc.priority && (
+                                    <span
+                                      className={`text-[9px] px-1.5 py-0.5 rounded-md font-bold uppercase tracking-wider ${
+                                        alloc.priority === 'intensif'
+                                          ? 'bg-rose-50 text-rose-700 border border-rose-200'
+                                          : alloc.priority === 'periodic'
+                                          ? 'bg-purple-50 text-purple-700 border border-purple-200'
+                                          : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                      }`}
+                                    >
+                                      {alloc.priority}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+
+                              <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">
+                                {alloc.taskDescription || 'Pembersihan rutin sesuai SOP kebersihan.'}
+                              </p>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                {/* Final Plotingan Textarea */}
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-xs font-bold text-slate-800">
+                      Rincian Plotingan Akhir yang Disimpan: <span className="text-rose-500">*</span>
+                    </label>
+                    <span className="text-[10px] text-slate-400">
+                      Dapat diedit atau memilih lebih dari satu tugas
+                    </span>
+                  </div>
+                  <textarea
+                    rows={3}
+                    required
+                    value={manualPlottingText}
+                    onChange={(e) => setManualPlottingText(e.target.value)}
+                    placeholder="Pilih lokasi di atas atau ketik manual..."
+                    className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-sky-500 focus:outline-none font-medium leading-relaxed"
+                  />
+                  <span className="text-[10px] text-slate-400 mt-0.5 block">
+                    Data ini langsung disinkronkan ke Presensi Interaktif, Roster Petugas & Shift.
+                  </span>
+                </div>
+
+                {/* Action Buttons */}
+                <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-100">
+                  <button
+                    type="button"
+                    onClick={() => setPlottingCleaner(null)}
+                    className="px-4 py-2 border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-semibold rounded-xl transition-colors cursor-pointer"
+                  >
+                    Batal
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-5 py-2 bg-sky-600 hover:bg-sky-700 text-white text-xs font-bold rounded-xl transition-colors shadow-xs flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <Check className="w-3.5 h-3.5" />
+                    Simpan Plotingan
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 };

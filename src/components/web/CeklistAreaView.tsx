@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   ClipboardList,
   Calendar,
@@ -23,12 +23,16 @@ import {
   RefreshCw,
   Wifi,
   WifiOff,
+  MapPin,
+  Layers,
+  Briefcase,
 } from 'lucide-react';
 import { useCleaning } from '../../context/CleaningContext';
 import {
   ChecklistLocationCategory,
   HourlyCheckItemStatus,
   ChecklistLocation,
+  Shift,
 } from '../../types';
 import {
   renderParameterIcon,
@@ -56,8 +60,19 @@ import {
   findMatchingSlotItem,
 } from '../../utils/checklistHelper';
 
+interface ShiftSlotDefinition {
+  hour: number;
+  dateStr: string;
+  isNextDay: boolean;
+  timeLabel: string;
+}
+
 export const CeklistAreaView: React.FC = () => {
   const {
+    projects,
+    allowedProjects,
+    activeProjectId,
+    setActiveProjectId,
     activeProject,
     checklistLocations,
     addChecklistLocation,
@@ -70,6 +85,7 @@ export const CeklistAreaView: React.FC = () => {
     fillDailyChecklistClean,
     addManualItemToDailyChecklist,
     getOrCreateDailyChecklist,
+    ensureDailyChecklist,
     userRole,
     currentUser,
     setActiveTab,
@@ -78,14 +94,15 @@ export const CeklistAreaView: React.FC = () => {
     offlineQueue,
     syncOfflineData,
     isSyncing,
+    shifts,
   } = useCleaning();
 
   const [selectedDate, setSelectedDate] = useState('2026-09-13');
   const [selectedLocationId, setSelectedLocationId] = useState<string>(
     checklistLocations[0]?.id || 'cloc-1'
   );
+  const [selectedShiftId, setSelectedShiftId] = useState<string>('shift-1');
   const [viewMode, setViewMode] = useState<'official_table' | 'slot_details'>('official_table');
-  const [hourRange, setHourRange] = useState<'work_hours' | 'full_24'>('work_hours'); // 06.00-24.00 vs 00.00-24.00
   const [expandedHour, setExpandedHour] = useState<number | null>(new Date().getHours());
   const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
 
@@ -104,10 +121,26 @@ export const CeklistAreaView: React.FC = () => {
   const [showAddManualItemModal, setShowAddManualItemModal] = useState(false);
   const [manualItemName, setManualItemName] = useState('');
 
+  // Synchronize selectedLocationId when active project changes or checklist locations update
+  useEffect(() => {
+    if (checklistLocations.length > 0) {
+      const exists = checklistLocations.some((loc) => loc.id === selectedLocationId);
+      if (!exists) {
+        setSelectedLocationId(checklistLocations[0].id);
+      }
+    }
+  }, [checklistLocations, selectedLocationId]);
+
   // Make sure we have a valid selected location
   const currentLocation =
     checklistLocations.find((l) => l.id === selectedLocationId) ||
     checklistLocations[0];
+
+  useEffect(() => {
+    if (activeProject?.id && currentLocation?.id && selectedDate) {
+      ensureDailyChecklist(activeProject.id, currentLocation.id, selectedDate);
+    }
+  }, [activeProject?.id, currentLocation?.id, selectedDate, ensureDailyChecklist]);
 
   const currentDailyChecklist = currentLocation
     ? getOrCreateDailyChecklist(activeProject.id, currentLocation.id, selectedDate)
@@ -115,6 +148,118 @@ export const CeklistAreaView: React.FC = () => {
 
   // Active Kop Surat object
   const activeKop = kopType === 'hospital' ? customKop : getProjectKop(activeProject);
+
+  // Helper date formatter (DD/MM/YYYY) with optional day offset
+  const computeDateFormatted = (dateInput: string, offsetDays = 0): string => {
+    const parts = dateInput.split('-');
+    if (parts.length === 3) {
+      const y = parseInt(parts[0], 10);
+      const m = parseInt(parts[1], 10) - 1;
+      const d = parseInt(parts[2], 10) + offsetDays;
+      const dateObj = new Date(y, m, d);
+      const dd = String(dateObj.getDate()).padStart(2, '0');
+      const mm = String(dateObj.getMonth() + 1).padStart(2, '0');
+      const yyyy = dateObj.getFullYear();
+      return `${dd}/${mm}/${yyyy}`;
+    }
+    return dateInput;
+  };
+
+  // Indonesian long date display
+  const formattedSelectedDate = useMemo(() => {
+    try {
+      const [y, m, d] = selectedDate.split('-').map(Number);
+      const dateObj = new Date(y, m - 1, d);
+      return dateObj.toLocaleDateString('id-ID', {
+        weekday: 'long',
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric',
+      });
+    } catch {
+      return selectedDate;
+    }
+  }, [selectedDate]);
+
+  // Active Shift definition from setup menu
+  const activeShift = shifts.find((s) => s.id === selectedShiftId);
+
+  // Dynamically compute the time slots and corresponding dates based on the selected shift
+  const shiftSlotDefs = useMemo<ShiftSlotDefinition[]>(() => {
+    const curDateStr = computeDateFormatted(selectedDate, 0);
+    const nextDateStr = computeDateFormatted(selectedDate, 1);
+
+    if (selectedShiftId === 'all_24' || !activeShift) {
+      // 24 Hour view: 00:00 to 24:00
+      return Array.from({ length: 24 }, (_, h) => {
+        const hStr = h.toString().padStart(2, '0');
+        const nextHStr = ((h + 1) === 24 ? 24 : (h + 1) % 24).toString().padStart(2, '0');
+        return {
+          hour: h,
+          dateStr: curDateStr,
+          isNextDay: false,
+          timeLabel: `${hStr}.00 - ${nextHStr}.00`,
+        };
+      });
+    }
+
+    const startH = parseInt((activeShift.startTime || '07:00').split(':')[0], 10) || 0;
+    const endH = parseInt((activeShift.endTime || '15:00').split(':')[0], 10) || 0;
+
+    const defs: ShiftSlotDefinition[] = [];
+
+    if (startH === endH) {
+      // 24-hour shift
+      for (let h = 0; h < 24; h++) {
+        const hStr = h.toString().padStart(2, '0');
+        const nextHStr = ((h + 1) === 24 ? 24 : (h + 1) % 24).toString().padStart(2, '0');
+        defs.push({
+          hour: h,
+          dateStr: curDateStr,
+          isNextDay: false,
+          timeLabel: `${hStr}.00 - ${nextHStr}.00`,
+        });
+      }
+    } else if (startH < endH) {
+      // Normal shift within same day (e.g. 07:00 - 15:00, 11:00 - 19:00, 15:00 - 23:00)
+      for (let h = startH; h < endH; h++) {
+        const hStr = h.toString().padStart(2, '0');
+        const nextHStr = (h + 1).toString().padStart(2, '0');
+        defs.push({
+          hour: h,
+          dateStr: curDateStr,
+          isNextDay: false,
+          timeLabel: `${hStr}.00 - ${nextHStr}.00`,
+        });
+      }
+    } else {
+      // Crosses midnight (e.g. Shift 4 Malam: 23:00 - 07:00)
+      for (let h = startH; h < 24; h++) {
+        const hStr = h.toString().padStart(2, '0');
+        const nextHStr = (h + 1 === 24 ? 24 : h + 1).toString().padStart(2, '0');
+        defs.push({
+          hour: h,
+          dateStr: curDateStr,
+          isNextDay: false,
+          timeLabel: `${hStr}.00 - ${nextHStr}.00`,
+        });
+      }
+      for (let h = 0; h < endH; h++) {
+        const hStr = h.toString().padStart(2, '0');
+        const nextHStr = (h + 1).toString().padStart(2, '0');
+        defs.push({
+          hour: h,
+          dateStr: nextDateStr,
+          isNextDay: true,
+          timeLabel: `${hStr}.00 - ${nextHStr}.00`,
+        });
+      }
+    }
+
+    return defs;
+  }, [selectedShiftId, activeShift, selectedDate]);
+
+  const shiftSlotHours = useMemo(() => shiftSlotDefs.map((d) => d.hour), [shiftSlotDefs]);
 
   // Standard 11 toilet parameters matching ceklist.webp
   const standardToiletHeaders = STANDARD_TOILET_PARAMETERS.map((param) => ({
@@ -137,23 +282,46 @@ export const CeklistAreaView: React.FC = () => {
         icon: renderParameterIcon(it.itemName, 18, 'text-sky-700'),
       }));
 
-  // Hourly slots filter
-  const startH = hourRange === 'work_hours' ? 6 : 0;
-  const endH = 24;
-  const displayedSlots =
-    currentDailyChecklist?.hourlySlots.filter((s) => s.hour >= startH && s.hour <= endH) || [];
+  // Hourly slots matching active shift with date and time metadata
+  const displayedSlotsWithMeta = useMemo(() => {
+    return shiftSlotDefs.map((def) => {
+      const rawSlot = currentDailyChecklist?.hourlySlots.find((s) => s.hour === def.hour);
+      if (rawSlot) {
+        return {
+          ...rawSlot,
+          timeLabel: def.timeLabel,
+          dateStr: def.dateStr,
+          isNextDay: def.isNextDay,
+        };
+      }
+      return {
+        hour: def.hour,
+        hourLabel: def.timeLabel,
+        timeLabel: def.timeLabel,
+        dateStr: def.dateStr,
+        isNextDay: def.isNextDay,
+        status: 'pending' as const,
+        items: [],
+      };
+    });
+  }, [shiftSlotDefs, currentDailyChecklist]);
 
   // Stats calculation
-  const totalSlots = displayedSlots.length;
-  const cleanSlots = displayedSlots.filter((s) => s.status === 'clean').length;
-  const issueSlots = displayedSlots.filter((s) => s.status === 'has_issue').length;
-  const pendingSlots = displayedSlots.filter((s) => s.status === 'pending').length;
+  const totalSlots = displayedSlotsWithMeta.length;
+  const cleanSlots = displayedSlotsWithMeta.filter((s) => s.status === 'clean').length;
+  const issueSlots = displayedSlotsWithMeta.filter((s) => s.status === 'has_issue').length;
+  const pendingSlots = displayedSlotsWithMeta.filter((s) => s.status === 'pending').length;
   const cleanlinessRate = totalSlots > 0 ? Math.round((cleanSlots / totalSlots) * 100) : 0;
 
-  // Handle PDF Export
+  // Handle PDF Export tailored to active shift and filtered project location
   const handleDownloadPDF = () => {
     if (!currentDailyChecklist || !currentLocation) return;
     setIsDownloadingPdf(true);
+
+    const slotDateMap: Record<number, string> = {};
+    shiftSlotDefs.forEach((def) => {
+      slotDateMap[def.hour] = def.dateStr;
+    });
 
     try {
       exportChecklistToPDF({
@@ -161,8 +329,12 @@ export const CeklistAreaView: React.FC = () => {
         location: currentLocation,
         project: activeProject,
         kopSurat: activeKop,
-        startHour: startH,
-        endHour: endH,
+        allowedHours: shiftSlotHours,
+        shiftName: activeShift ? activeShift.name : '24 Jam Penuh',
+        shiftHoursText: activeShift
+          ? `${activeShift.startTime} - ${activeShift.endTime} WIB (${activeShift.durationText || `${activeShift.workHoursDuration || 8} Jam`})`
+          : '00:00 - 24:00 WIB (24 Jam Penuh)',
+        slotDateMap,
       });
     } catch (err) {
       console.error('Error exporting checklist PDF:', err);
@@ -171,11 +343,11 @@ export const CeklistAreaView: React.FC = () => {
     }
   };
 
-  // Quick action: Fill work hours (06:00 to 22:00) as Clean 'B'
+  // Quick action: Fill hours of active shift as Clean 'B'
   const handleQuickFillClean = () => {
     if (!currentDailyChecklist) return;
     const inspectorName = currentUser?.name?.split(' ')[0] || 'Asep S.';
-    fillDailyChecklistClean(currentDailyChecklist.id, 6, 22, inspectorName);
+    fillDailyChecklistClean(currentDailyChecklist.id, shiftSlotHours, inspectorName);
   };
 
   // Toggle single cell value: '-' -> 'B' -> 'K' -> 'R' -> '-'
@@ -220,13 +392,17 @@ export const CeklistAreaView: React.FC = () => {
               <ClipboardList className="w-5 h-5" />
             </div>
             <div>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <h2 className="text-xl font-bold text-slate-900">
                   Ceklist Kebersihan Area (Formulir Resmi)
                 </h2>
+                <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-sky-100 text-sky-800 border border-sky-200 flex items-center gap-1">
+                  <Building2 className="w-3.5 h-3.5 text-sky-700" />
+                  {activeProject.name}
+                </span>
                 <span className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1">
                   <Clock className="w-3.5 h-3.5" />
-                  00.00 – 24.00
+                  {activeShift ? `${activeShift.name} (${activeShift.startTime} - ${activeShift.endTime})` : '24 Jam Penuh'}
                 </span>
                 {!isOnline ? (
                   <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-rose-50 text-rose-700 border border-rose-200 flex items-center gap-1">
@@ -245,8 +421,8 @@ export const CeklistAreaView: React.FC = () => {
                 ) : null}
               </div>
               <p className="text-xs text-slate-500 mt-0.5">
-                Model formulir kebersihan standar rumah sakit & gedung komersial untuk site{' '}
-                <span className="font-semibold text-slate-800">{activeProject.name}</span>.
+                Model formulir resmi kebersihan sesuai standar operasional untuk proyek{' '}
+                <span className="font-semibold text-slate-800">{activeProject.name}</span> ({activeProject.clientName}).
               </p>
             </div>
           </div>
@@ -258,10 +434,10 @@ export const CeklistAreaView: React.FC = () => {
           <button
             onClick={handleQuickFillClean}
             className="flex items-center gap-1.5 px-3.5 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-xl text-xs font-semibold transition-colors shadow-xs"
-            title="Tandai jam kerja (06.00 - 22.00) sebagai Bersih (B) dengan satu klik"
+            title={`Tandai semua jam pada ${activeShift ? activeShift.name : '24 Jam'} sebagai Bersih (B) dengan satu klik`}
           >
             <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
-            <span>Isi Jam Kerja = B (Bersih)</span>
+            <span>Isi Jam Shift = B (Bersih)</span>
           </button>
 
           {/* Kop Surat Setting */}
@@ -287,18 +463,63 @@ export const CeklistAreaView: React.FC = () => {
         </div>
       </div>
 
-      {/* Filter & Sub-Header Bar */}
-      <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
-        {/* Location & Date selector */}
-        <div className="flex flex-wrap items-center gap-3">
-          {/* Location Select */}
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-semibold text-slate-500">Pilih Area:</span>
+      {/* FILTER & SETUP BAR: PROYEK, AREA KERJA, TANGGAL, JAM KERJA / SHIFT */}
+      <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-xs space-y-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          {/* 1. PILIHAN PROYEK (DITENTUKAN SUPER ADMIN) */}
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between">
+              <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1">
+                <Building2 className="w-3.5 h-3.5 text-sky-700" />
+                <span>1. Proyek (Super Admin):</span>
+              </label>
+              <span className="text-[10px] font-bold text-sky-700 bg-sky-50 px-1.5 py-0.2 rounded border border-sky-200">
+                Site Aktif
+              </span>
+            </div>
+            <div className="relative">
+              <select
+                value={activeProject.id}
+                onChange={(e) => {
+                  const newProjId = e.target.value;
+                  setActiveProjectId(newProjId);
+                }}
+                className="w-full pl-3 pr-8 py-2 bg-sky-50/60 border border-sky-200 rounded-xl text-xs font-bold text-slate-900 focus:ring-2 focus:ring-sky-500 appearance-none cursor-pointer"
+              >
+                {(userRole === 'admin' ? projects : allowedProjects).map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name} ({p.clientName})
+                  </option>
+                ))}
+              </select>
+              <ChevronDown className="w-3.5 h-3.5 text-sky-700 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+            </div>
+            <p className="text-[10.5px] text-slate-500 truncate">
+              {activeProject.type === 'office'
+                ? 'Gedung Perkantoran'
+                : activeProject.type === 'airport'
+                ? 'Bandara Udara'
+                : 'Fasilitas Komersial'}{' '}
+              • {activeProject.totalFloors} Lantai • {activeProject.city}
+            </p>
+          </div>
+
+          {/* 2. PILIHAN AREA KERJA (HANYA AREA PROYEK INI, AREA LAIN DISEMBUNYIKAN) */}
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between">
+              <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1">
+                <MapPin className="w-3.5 h-3.5 text-emerald-700" />
+                <span>2. Area Kerja:</span>
+              </label>
+              <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-200">
+                {checklistLocations.length} Area
+              </span>
+            </div>
             <div className="relative">
               <select
                 value={selectedLocationId}
                 onChange={(e) => setSelectedLocationId(e.target.value)}
-                className="pl-3 pr-8 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:ring-2 focus:ring-sky-500 appearance-none cursor-pointer"
+                className="w-full pl-3 pr-8 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:ring-2 focus:ring-sky-500 appearance-none cursor-pointer"
               >
                 {checklistLocations.map((loc) => (
                   <option key={loc.id} value={loc.id}>
@@ -308,89 +529,189 @@ export const CeklistAreaView: React.FC = () => {
               </select>
               <ChevronDown className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
             </div>
+            <p className="text-[10.5px] text-slate-500 truncate">
+              Kategori: <strong className="capitalize">{currentLocation?.category || 'Toilet'}</strong> • Kode: {currentLocation?.code || '-'}
+            </p>
           </div>
 
-          {/* Date Picker */}
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-semibold text-slate-500">Tanggal:</span>
+          {/* 3. PILIHAN TANGGAL */}
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between">
+              <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1">
+                <Calendar className="w-3.5 h-3.5 text-sky-700" />
+                <span>3. Tanggal Ceklist:</span>
+              </label>
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => setSelectedDate('2026-09-13')}
+                  className="text-[10px] font-semibold text-slate-500 hover:text-sky-700 underline"
+                  title="Gunakan tanggal data awal"
+                >
+                  Default (13 Sep)
+                </button>
+              </div>
+            </div>
             <div className="relative flex items-center">
               <Calendar className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 pointer-events-none" />
               <input
                 type="date"
                 value={selectedDate}
                 onChange={(e) => setSelectedDate(e.target.value)}
-                className="pl-8 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:ring-2 focus:ring-sky-500"
+                className="w-full pl-8 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:ring-2 focus:ring-sky-500"
               />
             </div>
+            <p className="text-[10.5px] text-slate-500 truncate">
+              {formattedSelectedDate}
+            </p>
           </div>
 
-          {/* Range: Jam Kerja vs 24 Jam */}
-          <div className="flex items-center bg-slate-100 p-1 rounded-xl text-xs font-medium text-slate-600">
+          {/* 4. PILIHAN JAM KERJA / SHIFT (SETUP MENU SHIFT) */}
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between">
+              <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1">
+                <Clock className="w-3.5 h-3.5 text-amber-600" />
+                <span>4. Jam Kerja / Shift:</span>
+              </label>
+              <span className="text-[10px] font-bold text-amber-800 bg-amber-50 px-1.5 py-0.2 rounded border border-amber-200">
+                {shiftSlotHours.length} Jam Aktif
+              </span>
+            </div>
+            <div className="relative">
+              <select
+                value={selectedShiftId}
+                onChange={(e) => setSelectedShiftId(e.target.value)}
+                className="w-full pl-3 pr-8 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:ring-2 focus:ring-sky-500 appearance-none cursor-pointer"
+              >
+                {shifts.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name} ({s.startTime} - {s.endTime} WIB • {s.durationText || `${s.workHoursDuration || 8} Jam`})
+                  </option>
+                ))}
+                <option value="all_24">
+                  Semua Jam (24 Jam Penuh: 00:00 - 24:00 WIB)
+                </option>
+              </select>
+              <ChevronDown className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+            </div>
+            <p className="text-[10.5px] text-slate-500 truncate">
+              {activeShift
+                ? `${activeShift.description || 'Pembersihan operasional'}`
+                : 'Pemantauan checklist kebersihan 24 jam penuh'}
+            </p>
+          </div>
+        </div>
+
+        {/* Quick Pills for Fast Area & Shift Switching */}
+        <div className="pt-3 border-t border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs">
+          {/* Shift Pills */}
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="text-[11px] font-bold text-slate-400 mr-1">Shift Cepat:</span>
+            {shifts.map((s) => {
+              const isSelected = selectedShiftId === s.id;
+              return (
+                <button
+                  key={s.id}
+                  type="button"
+                  onClick={() => setSelectedShiftId(s.id)}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 ${
+                    isSelected
+                      ? 'bg-sky-700 text-white font-bold shadow-xs'
+                      : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                  }`}
+                >
+                  <span
+                    className="w-2 h-2 rounded-full"
+                    style={{ backgroundColor: s.color || '#0284c7' }}
+                  />
+                  <span>{s.name.split('(')[0].trim()}</span>
+                  <span className={`text-[10px] ${isSelected ? 'text-sky-100' : 'text-slate-500'}`}>
+                    ({s.startTime}-{s.endTime})
+                  </span>
+                </button>
+              );
+            })}
             <button
-              onClick={() => setHourRange('work_hours')}
-              className={`px-3 py-1 rounded-lg transition-all ${
-                hourRange === 'work_hours'
-                  ? 'bg-white text-slate-900 font-bold shadow-xs'
-                  : 'hover:text-slate-900'
+              type="button"
+              onClick={() => setSelectedShiftId('all_24')}
+              className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 ${
+                selectedShiftId === 'all_24'
+                  ? 'bg-slate-800 text-white font-bold shadow-xs'
+                  : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
               }`}
             >
-              Jam Kerja (06.00 - 24.00)
+              <Clock className="w-3 h-3" />
+              <span>24 Jam Penuh</span>
             </button>
+          </div>
+
+          {/* View mode toggle & master actions */}
+          <div className="flex items-center gap-2">
+            <div className="flex items-center bg-slate-100 p-1 rounded-xl text-xs">
+              <button
+                onClick={() => setViewMode('official_table')}
+                className={`px-3 py-1 rounded-lg font-bold transition-all ${
+                  viewMode === 'official_table'
+                    ? 'bg-sky-600 text-white shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                Model Formulir Resmi
+              </button>
+              <button
+                onClick={() => setViewMode('slot_details')}
+                className={`px-3 py-1 rounded-lg font-bold transition-all ${
+                  viewMode === 'slot_details'
+                    ? 'bg-sky-600 text-white shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                Detail Slot Per Jam
+              </button>
+            </div>
+
             <button
-              onClick={() => setHourRange('full_24')}
-              className={`px-3 py-1 rounded-lg transition-all ${
-                hourRange === 'full_24'
-                  ? 'bg-white text-slate-900 font-bold shadow-xs'
-                  : 'hover:text-slate-900'
-              }`}
+              onClick={() => setShowAddLocationModal(true)}
+              className="p-2 border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-xl text-xs font-semibold flex items-center gap-1"
+              title="Tambah Lokasi Baru ke Proyek Ini"
             >
-              24 Jam Penuh (00.00 - 24.00)
+              <Plus className="w-4 h-4" />
+              <span className="hidden sm:inline">Lokasi</span>
+            </button>
+
+            <button
+              onClick={() => setShowAddManualItemModal(true)}
+              className="px-2.5 py-2 border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-xl text-xs font-semibold flex items-center gap-1"
+              title="Tambah item pengecekan manual ke lembar hari ini"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Item</span>
             </button>
           </div>
         </div>
 
-        {/* View mode toggle & master actions */}
-        <div className="flex items-center gap-2">
-          <div className="flex items-center bg-slate-100 p-1 rounded-xl text-xs">
-            <button
-              onClick={() => setViewMode('official_table')}
-              className={`px-3 py-1 rounded-lg font-bold transition-all ${
-                viewMode === 'official_table'
-                  ? 'bg-sky-600 text-white shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              Model Formulir Resmi
-            </button>
-            <button
-              onClick={() => setViewMode('slot_details')}
-              className={`px-3 py-1 rounded-lg font-bold transition-all ${
-                viewMode === 'slot_details'
-                  ? 'bg-sky-600 text-white shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              Detail Slot Per Jam
-            </button>
+        {/* Location selector pills for fast 1-click area navigation */}
+        {checklistLocations.length > 1 && (
+          <div className="pt-2 flex items-center gap-1.5 overflow-x-auto pb-1 text-xs">
+            <span className="text-[11px] font-bold text-slate-400 mr-1 whitespace-nowrap">Area Proyek:</span>
+            {checklistLocations.map((loc) => {
+              const isSelected = selectedLocationId === loc.id;
+              return (
+                <button
+                  key={loc.id}
+                  onClick={() => setSelectedLocationId(loc.id)}
+                  className={`px-2.5 py-1 rounded-lg text-xs whitespace-nowrap font-medium transition-all ${
+                    isSelected
+                      ? 'bg-emerald-700 text-white font-bold shadow-xs'
+                      : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                  }`}
+                >
+                  {loc.name} <span className="text-[10px] opacity-80">({loc.floor})</span>
+                </button>
+              );
+            })}
           </div>
-
-          <button
-            onClick={() => setShowAddLocationModal(true)}
-            className="p-2 border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-xl text-xs font-semibold"
-            title="Tambah Lokasi Baru"
-          >
-            <Plus className="w-4 h-4" />
-          </button>
-
-          <button
-            onClick={() => setShowAddManualItemModal(true)}
-            className="px-3 py-1.5 border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-xl text-xs font-semibold flex items-center gap-1"
-            title="Tambah item pengecekan manual ke lembar hari ini"
-          >
-            <Plus className="w-3.5 h-3.5" />
-            <span>Tambah Item</span>
-          </button>
-        </div>
+        )}
       </div>
 
       {/* Quick KPI Stat Chips */}
@@ -398,7 +719,7 @@ export const CeklistAreaView: React.FC = () => {
         <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-xs flex items-center justify-between">
           <div>
             <span className="text-[11px] text-slate-400 font-semibold block">Total Slot Ditampilkan</span>
-            <span className="text-lg font-bold text-slate-800">{totalSlots} Jam</span>
+            <span className="text-lg font-bold text-slate-800">{totalSlots} Jam ({activeShift ? activeShift.name.split('(')[0].trim() : '24 Jam'})</span>
           </div>
           <Clock className="w-6 h-6 text-slate-300" />
         </div>
@@ -492,18 +813,33 @@ export const CeklistAreaView: React.FC = () => {
                 : `CHECKLIST KEBERSIHAN ${currentLocation?.name.toUpperCase()}`}
             </h2>
 
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between text-xs font-semibold text-slate-800 pt-1 px-1">
-              <div className="flex items-center gap-2">
+            <div className="flex flex-col md:flex-row md:items-center justify-between text-xs font-semibold text-slate-800 pt-2 px-1 gap-2 border-b border-slate-200 pb-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <span className="font-bold text-slate-900">
                   {isToiletCategory ? 'Toilet :' : 'Area / Ruangan :'}
                 </span>
-                <span className="px-2 py-0.5 bg-slate-100 rounded-md border border-slate-200">
-                  {currentLocation?.name} ({currentLocation?.floor}) - {activeProject.name}
+                <span className="px-2.5 py-1 bg-slate-100 rounded-lg border border-slate-200 font-bold text-slate-900">
+                  {currentLocation?.name} ({currentLocation?.floor})
+                </span>
+                <span className="px-2.5 py-1 bg-sky-50 text-sky-800 border border-sky-200 rounded-lg text-xs font-bold flex items-center gap-1">
+                  <Building2 className="w-3.5 h-3.5 text-sky-700" />
+                  {activeProject.name}
                 </span>
               </div>
-              <div className="text-slate-600 mt-1 sm:mt-0">
-                <span>Tanggal : </span>
-                <span className="font-bold text-slate-900">{selectedDate}</span>
+              <div className="flex flex-wrap items-center gap-3 text-slate-600">
+                <div>
+                  <span>Tanggal : </span>
+                  <span className="font-bold text-slate-900">{formattedSelectedDate}</span>
+                </div>
+                <div className="h-3 w-px bg-slate-300 hidden sm:block"></div>
+                <div className="flex items-center gap-1">
+                  <span>Shift : </span>
+                  <span className="font-bold text-sky-900 bg-sky-50 px-2 py-0.5 rounded-md border border-sky-200">
+                    {activeShift
+                      ? `${activeShift.name} (${activeShift.startTime} - ${activeShift.endTime} WIB)`
+                      : 'Semua Shift (24 Jam Penuh)'}
+                  </span>
+                </div>
               </div>
             </div>
           </div>
@@ -514,10 +850,10 @@ export const CeklistAreaView: React.FC = () => {
               {/* TABLE HEADER WITH ICONS */}
               <thead>
                 <tr className="bg-slate-100 border-b border-slate-400 divide-x divide-slate-300 text-slate-900">
-                  <th className="p-2 w-20 text-center font-bold text-[11px] align-middle bg-slate-200/70">
+                  <th className="p-2 w-24 text-center font-bold text-[11px] align-middle bg-slate-200/70">
                     Tanggal
                   </th>
-                  <th className="p-2 w-24 text-center font-bold text-[11px] align-middle bg-slate-200/70">
+                  <th className="p-2 w-28 text-center font-bold text-[11px] align-middle bg-slate-200/70">
                     Jam
                   </th>
 
@@ -550,28 +886,32 @@ export const CeklistAreaView: React.FC = () => {
 
               {/* TABLE BODY (Hourly Rows) */}
               <tbody className="divide-y divide-slate-300">
-                {displayedSlots.map((slot) => {
-                  const hStr = slot.hour.toString().padStart(2, '0');
-                  const nextHStr = ((slot.hour + 1) % 25).toString().padStart(2, '0');
-                  const timeLabel = `${hStr}.00 - ${nextHStr}.00`;
+                {displayedSlotsWithMeta.map((slot) => {
                   const isCurrentHour = new Date().getHours() === slot.hour;
 
                   return (
                     <tr
-                      key={slot.hour}
+                      key={`${slot.hour}-${slot.dateStr}`}
                       className={`divide-x divide-slate-300 hover:bg-sky-50/40 transition-colors group ${
                         isCurrentHour ? 'bg-amber-50/50' : 'bg-white'
                       }`}
                     >
                       {/* Tanggal */}
                       <td className="p-1.5 text-[10.5px] font-medium text-slate-700 whitespace-nowrap">
-                        {selectedDate}
+                        <div className="flex items-center justify-center gap-1">
+                          <span>{slot.dateStr}</span>
+                          {slot.isNextDay && (
+                            <span className="px-1 py-0.2 rounded text-[9px] font-bold bg-purple-100 text-purple-800 border border-purple-200">
+                              +1 Hari
+                            </span>
+                          )}
+                        </div>
                       </td>
 
                       {/* Jam */}
                       <td className="p-1.5 text-[10.5px] font-bold text-slate-900 whitespace-nowrap bg-slate-50/80">
                         <div className="flex items-center justify-center gap-1">
-                          <span>{timeLabel}</span>
+                          <span>{slot.timeLabel}</span>
                           {isCurrentHour && (
                             <span
                               className="w-2 h-2 rounded-full bg-amber-500 animate-pulse"
@@ -726,7 +1066,7 @@ export const CeklistAreaView: React.FC = () => {
         <div className="space-y-4">
           <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-xs flex items-center justify-between text-xs">
             <span className="font-semibold text-slate-700">
-              Menampilkan {displayedSlots.length} slot waktu. Klik tiap jam untuk mengubah status rincian per item atau menambahkan catatan temuan.
+              Menampilkan {displayedSlotsWithMeta.length} slot waktu ({activeShift ? activeShift.name : '24 Jam'}). Klik tiap jam untuk mengubah status rincian per item atau menambahkan catatan temuan.
             </span>
             <button
               onClick={() => setShowAddManualItemModal(true)}
@@ -738,13 +1078,13 @@ export const CeklistAreaView: React.FC = () => {
           </div>
 
           <div className="space-y-3">
-            {displayedSlots.map((slot) => {
+            {displayedSlotsWithMeta.map((slot) => {
               const isExpanded = expandedHour === slot.hour;
               const isCurrentHour = new Date().getHours() === slot.hour;
 
               return (
                 <div
-                  key={slot.hour}
+                  key={`${slot.hour}-${slot.dateStr}`}
                   className={`rounded-2xl border transition-all overflow-hidden ${
                     slot.status === 'clean'
                       ? 'border-emerald-200 bg-white'
@@ -758,13 +1098,18 @@ export const CeklistAreaView: React.FC = () => {
                     className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 cursor-pointer hover:bg-slate-50/60"
                   >
                     <div className="flex items-center gap-3">
-                      <div className="w-12 text-center">
-                        <span className="font-bold text-slate-900 text-sm font-mono block">
-                          {slot.hour.toString().padStart(2, '0')}.00
+                      <div className="w-20 text-center">
+                        <span className="font-bold text-slate-900 text-xs font-mono block">
+                          {slot.timeLabel}
                         </span>
                         <span className="text-[10px] text-slate-400">
-                          {((slot.hour + 1) % 25).toString().padStart(2, '0')}.00
+                          {slot.dateStr}
                         </span>
+                        {slot.isNextDay && (
+                          <span className="block mt-0.5 text-[9px] font-bold text-purple-700 bg-purple-50 px-1 py-0.2 rounded border border-purple-200">
+                            +1 Hari
+                          </span>
+                        )}
                       </div>
 
                       <div className="h-8 w-px bg-slate-200"></div>
@@ -772,8 +1117,16 @@ export const CeklistAreaView: React.FC = () => {
                       <div>
                         <div className="flex items-center gap-2">
                           <span className="font-bold text-slate-900 text-sm">
-                            Pengecekan Jam {slot.hour.toString().padStart(2, '0')}.00 WIB
+                            Pengecekan Jam {slot.timeLabel} WIB
                           </span>
+                          <span className="text-xs text-slate-500 font-medium hidden sm:inline">
+                            • {slot.dateStr}
+                          </span>
+                          {slot.isNextDay && (
+                            <span className="px-1.5 py-0.5 bg-purple-100 text-purple-800 rounded-full text-[10px] font-bold">
+                              Shift Lintas Hari (+1)
+                            </span>
+                          )}
                           {isCurrentHour && (
                             <span className="px-2 py-0.5 bg-amber-100 text-amber-800 rounded-full text-[10px] font-bold">
                               Jam Sekarang

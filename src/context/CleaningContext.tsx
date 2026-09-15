@@ -25,6 +25,7 @@ import {
   AttendanceStatusCode,
 } from '../types';
 import { calculateShiftDuration } from '../utils/shiftUtils';
+import { normalizeFrequencyCode } from '../utils/mcpUtils';
 import {
   INITIAL_AREAS,
   INITIAL_CLEANERS,
@@ -438,7 +439,17 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     const saved = localStorage.getItem('sco_shifts');
     if (saved) {
       try {
-        return JSON.parse(saved);
+        const parsed: Shift[] = JSON.parse(saved);
+        return parsed.map((s) => {
+          const init = INITIAL_SHIFTS.find((i) => i.id === s.id);
+          return {
+            ...s,
+            plottingAllocations:
+              s.plottingAllocations && s.plottingAllocations.length > 0
+                ? s.plottingAllocations
+                : init?.plottingAllocations || [],
+          };
+        });
       } catch (e) {
         console.error('Failed to parse saved shifts', e);
       }
@@ -473,7 +484,23 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const [masterPrograms, setMasterPrograms] = useState<MasterCleaningProgramItem[]>(() => {
     const saved = localStorage.getItem('sco_master_programs');
-    return saved ? JSON.parse(saved) : INITIAL_MASTER_PROGRAMS;
+    if (saved) {
+      try {
+        const parsed: MasterCleaningProgramItem[] = JSON.parse(saved);
+        const existingIds = new Set(parsed.map((p) => p.id));
+        const missingInitials = INITIAL_MASTER_PROGRAMS.filter((p) => !existingIds.has(p.id));
+        return [...parsed, ...missingInitials].map((p) => ({
+          ...p,
+          frequency: normalizeFrequencyCode(p.frequency),
+        }));
+      } catch (e) {
+        console.error('Failed to parse master programs', e);
+      }
+    }
+    return INITIAL_MASTER_PROGRAMS.map((p) => ({
+      ...p,
+      frequency: normalizeFrequencyCode(p.frequency),
+    }));
   });
 
   // Synchronize localStorage
@@ -914,6 +941,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       ...item,
       id: `mcp-${Date.now()}`,
       projectId: item.projectId || safeActiveProjectId,
+      frequency: normalizeFrequencyCode(item.frequency),
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
@@ -922,7 +950,16 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const updateMasterProgram = (id: string, updates: Partial<MasterCleaningProgramItem>) => {
     setMasterPrograms((prev) =>
-      prev.map((m) => (m.id === id ? { ...m, ...updates, updatedAt: new Date().toISOString() } : m))
+      prev.map((m) =>
+        m.id === id
+          ? {
+              ...m,
+              ...updates,
+              ...(updates.frequency ? { frequency: normalizeFrequencyCode(updates.frequency) } : {}),
+              updatedAt: new Date().toISOString(),
+            }
+          : m
+      )
     );
   };
 

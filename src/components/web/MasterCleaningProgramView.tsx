@@ -24,8 +24,9 @@ import {
   HelpCircle,
 } from 'lucide-react';
 import { useCleaning } from '../../context/CleaningContext';
-import { MasterCleaningProgramItem, ProgramDayStatus } from '../../types';
+import { MasterCleaningProgramItem, ProgramDayStatus, ProgramFrequencyCode } from '../../types';
 import { exportMasterCleaningProgramToPDF } from '../../utils/pdfExport';
+import { normalizeFrequencyCode, FREQUENCY_META } from '../../utils/mcpUtils';
 
 export const MasterCleaningProgramView: React.FC = () => {
   const {
@@ -58,7 +59,7 @@ export const MasterCleaningProgramView: React.FC = () => {
   const [formWorkDescription, setFormWorkDescription] = useState('');
   const [formWorkMethod, setFormWorkMethod] = useState('');
   const [formLocation, setFormLocation] = useState('');
-  const [formFrequency, setFormFrequency] = useState<'harian' | 'mingguan' | 'bulanan' | 'khusus'>('bulanan');
+  const [formFrequency, setFormFrequency] = useState<ProgramFrequencyCode>('M');
   const [formPicName, setFormPicName] = useState('');
   const [formDays, setFormDays] = useState<Record<number, ProgramDayStatus>>({});
 
@@ -89,7 +90,10 @@ export const MasterCleaningProgramView: React.FC = () => {
   const filteredPrograms = useMemo(() => {
     return masterPrograms.filter((item) => {
       if (item.month !== selectedMonth || item.year !== selectedYear) return false;
-      if (filterFrequency !== 'all' && item.frequency !== filterFrequency) return false;
+      if (filterFrequency !== 'all') {
+        const itemFreq = normalizeFrequencyCode(item.frequency);
+        if (itemFreq !== filterFrequency) return false;
+      }
       if (filterLocation !== 'all' && item.location !== filterLocation) return false;
 
       if (searchTerm.trim()) {
@@ -369,6 +373,20 @@ export const MasterCleaningProgramView: React.FC = () => {
     }
   };
 
+  // Frequency badge renderer: "D" (Daily), "W" (Weekly), "M" (Monthly)
+  const renderFrequencyBadge = (freq: string | undefined) => {
+    const code = normalizeFrequencyCode(freq);
+    const meta = FREQUENCY_META[code];
+    return (
+      <span
+        className={`inline-flex items-center justify-center w-6 h-6 rounded-md font-extrabold text-[11px] shadow-2xs border ${meta.badgeClass}`}
+        title={`${code} - ${meta.label} (${meta.description})`}
+      >
+        {code}
+      </span>
+    );
+  };
+
   return (
     <div className="p-4 sm:p-6 space-y-6 max-w-7xl mx-auto">
       {/* Toast Notification */}
@@ -536,10 +554,9 @@ export const MasterCleaningProgramView: React.FC = () => {
               className="bg-transparent font-semibold text-slate-800 text-xs focus:outline-hidden cursor-pointer"
             >
               <option value="all">Semua Frekuensi</option>
-              <option value="harian">Harian</option>
-              <option value="mingguan">Mingguan</option>
-              <option value="bulanan">Bulanan</option>
-              <option value="khusus">Khusus / Periodic</option>
+              <option value="D">D - Daily Activity (Harian)</option>
+              <option value="W">W - Weekly Activity (Mingguan)</option>
+              <option value="M">M - Monthly Activity (Bulanan)</option>
             </select>
           </div>
 
@@ -642,8 +659,11 @@ export const MasterCleaningProgramView: React.FC = () => {
                 <th className="py-3 px-3 min-w-[130px] border-r border-slate-700">
                   Lokasi / Area
                 </th>
+                <th className="py-3 px-2 text-center w-12 min-w-[48px] border-r border-slate-700 font-bold" title="Frekuensi Program: D (Daily), W (Weekly), M (Monthly)">
+                  Freq
+                </th>
                 <th className="py-3 px-3 min-w-[110px] border-r border-slate-700">
-                  PIC & Frek.
+                  PIC
                 </th>
 
                 {/* Date Columns 1 - 31 */}
@@ -674,7 +694,7 @@ export const MasterCleaningProgramView: React.FC = () => {
             <tbody className="divide-y divide-slate-200">
               {filteredPrograms.length === 0 ? (
                 <tr>
-                  <td colSpan={41} className="py-12 text-center text-slate-400">
+                  <td colSpan={42} className="py-12 text-center text-slate-400">
                     <div className="max-w-xs mx-auto space-y-2">
                       <Layers className="w-8 h-8 text-slate-300 mx-auto" />
                       <p className="font-semibold text-slate-700 text-sm">
@@ -700,6 +720,8 @@ export const MasterCleaningProgramView: React.FC = () => {
                     else if (st === 'rescheduled') planCount++;
                   }
                   const pct = planCount > 0 ? Math.round((doneCount / planCount) * 100) : 100;
+                  const freqCode = normalizeFrequencyCode(program.frequency);
+                  const freqMeta = FREQUENCY_META[freqCode];
 
                   return (
                     <tr
@@ -716,8 +738,11 @@ export const MasterCleaningProgramView: React.FC = () => {
                         <p className="font-bold text-slate-900 line-clamp-2">
                           {program.workDescription}
                         </p>
-                        <span className="inline-block mt-1 px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wider bg-slate-100 text-slate-600">
-                          {program.frequency}
+                        <span
+                          className={`inline-flex items-center gap-1 mt-1 px-1.5 py-0.5 rounded text-[10px] font-bold border ${freqMeta.badgeClass}`}
+                        >
+                          <span className="w-1.5 h-1.5 rounded-full bg-current"></span>
+                          {freqCode} · {freqMeta.label}
                         </span>
                       </td>
 
@@ -735,7 +760,12 @@ export const MasterCleaningProgramView: React.FC = () => {
                         </div>
                       </td>
 
-                      {/* PIC & Frekuensi */}
+                      {/* Freq Column */}
+                      <td className="py-2.5 px-2 text-center border-r border-slate-200">
+                        {renderFrequencyBadge(program.frequency)}
+                      </td>
+
+                      {/* PIC */}
                       <td className="py-2.5 px-3 border-r border-slate-200">
                         <p className="font-semibold text-slate-800 text-[11px]">
                           {program.picName}
@@ -897,17 +927,16 @@ export const MasterCleaningProgramView: React.FC = () => {
 
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1">
-                    Kategori Frekuensi
+                    Frekuensi Program <span className="text-rose-500">*</span>
                   </label>
                   <select
                     value={formFrequency}
-                    onChange={(e) => setFormFrequency(e.target.value as any)}
-                    className="w-full px-3 py-2 text-xs bg-white border border-slate-200 rounded-xl focus:outline-hidden focus:border-teal-500 cursor-pointer"
+                    onChange={(e) => setFormFrequency(e.target.value as ProgramFrequencyCode)}
+                    className="w-full px-3 py-2 text-xs bg-white border border-slate-200 rounded-xl focus:outline-hidden focus:border-teal-500 cursor-pointer font-medium"
                   >
-                    <option value="harian">Harian (Daily)</option>
-                    <option value="mingguan">Mingguan (Weekly)</option>
-                    <option value="bulanan">Bulanan (Monthly)</option>
-                    <option value="khusus">Khusus / Deep Cleaning</option>
+                    <option value="D">D - Daily Activity (Harian)</option>
+                    <option value="W">W - Weekly Activity (Mingguan)</option>
+                    <option value="M">M - Monthly Activity (Bulanan)</option>
                   </select>
                 </div>
 
