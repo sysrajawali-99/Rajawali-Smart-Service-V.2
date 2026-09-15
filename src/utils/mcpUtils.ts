@@ -58,36 +58,36 @@ export const PROGRAM_STATUS_META: Record<ProgramDayStatus, StatusMeta> = {
     code: '-',
     label: 'Tidak Terjadwal',
     fullLabel: '- : Tidak Terjadwal',
-    pillClass: 'text-slate-300 hover:text-slate-500 hover:bg-slate-100 font-medium',
+    pillClass: 'text-slate-400 hover:text-slate-600 hover:bg-slate-100 font-medium',
     badgeClass: 'text-slate-400 bg-slate-100 border border-slate-200',
   },
   planned: {
     code: 'R',
-    label: 'Rencana (Planned)',
+    label: 'Rencana',
     fullLabel: 'R : Rencana (Planned)',
-    pillClass: 'bg-sky-100 text-sky-700 border border-sky-300 font-bold shadow-2xs hover:bg-sky-200',
-    badgeClass: 'bg-sky-100 text-sky-700 border border-sky-300',
+    pillClass: 'bg-sky-100 text-sky-800 border border-sky-300 font-bold shadow-2xs hover:bg-sky-200',
+    badgeClass: 'bg-sky-100 text-sky-800 border border-sky-300',
   },
   in_progress: {
     code: 'P',
-    label: 'Sedang Pengerjaan (Progress)',
-    fullLabel: 'P : Sedang Pengerjaan (Progress)',
-    pillClass: 'bg-amber-100 text-amber-700 border border-amber-300 font-bold shadow-2xs hover:bg-amber-200',
-    badgeClass: 'bg-amber-100 text-amber-700 border border-amber-300',
-  },
-  done: {
-    code: 'S',
-    label: 'Selesai / Valid (Done)',
-    fullLabel: 'S : Selesai / Valid (Done)',
-    pillClass: 'bg-emerald-100 text-emerald-700 border border-emerald-300 font-bold shadow-2xs hover:bg-emerald-200',
-    badgeClass: 'bg-emerald-100 text-emerald-700 border border-emerald-300',
+    label: 'Progres',
+    fullLabel: 'P : Progres (In Progress)',
+    pillClass: 'bg-amber-100 text-amber-800 border border-amber-300 font-bold shadow-2xs hover:bg-amber-200',
+    badgeClass: 'bg-amber-100 text-amber-800 border border-amber-300',
   },
   rescheduled: {
     code: 'T',
-    label: 'Tertunda / Reschedule',
-    fullLabel: 'T : Tertunda / Reschedule',
-    pillClass: 'bg-rose-100 text-rose-700 border border-rose-300 font-bold shadow-2xs hover:bg-rose-200',
-    badgeClass: 'bg-rose-100 text-rose-700 border border-rose-300',
+    label: 'Tunda',
+    fullLabel: 'T : Tunda (Pending)',
+    pillClass: 'bg-rose-100 text-rose-800 border border-rose-300 font-bold shadow-2xs hover:bg-rose-200',
+    badgeClass: 'bg-rose-100 text-rose-800 border border-rose-300',
+  },
+  done: {
+    code: 'S',
+    label: 'Selesai',
+    fullLabel: 'S : Selesai (Done)',
+    pillClass: 'bg-emerald-100 text-emerald-800 border border-emerald-300 font-bold shadow-2xs hover:bg-emerald-200',
+    badgeClass: 'bg-emerald-100 text-emerald-800 border border-emerald-300',
   },
 };
 
@@ -99,14 +99,18 @@ export const getNextProgramDayStatus = (current: ProgramDayStatus | undefined): 
     case 'planned':
       return 'in_progress';
     case 'in_progress':
-      return 'done';
-    case 'done':
       return 'rescheduled';
     case 'rescheduled':
+      return 'done';
+    case 'done':
       return 'none';
     default:
       return 'planned';
   }
+};
+
+export const getNextMcpDayStatus = (current: ProgramDayStatus | undefined): ProgramDayStatus => {
+  return current === 'planned' ? 'none' : 'planned';
 };
 
 export const MONTH_OPTIONS = [

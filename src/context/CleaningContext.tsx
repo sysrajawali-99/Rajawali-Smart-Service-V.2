@@ -25,7 +25,7 @@ import {
   AttendanceStatusCode,
 } from '../types';
 import { calculateShiftDuration } from '../utils/shiftUtils';
-import { normalizeFrequencyCode } from '../utils/mcpUtils';
+import { normalizeFrequencyCode, getNextProgramDayStatus } from '../utils/mcpUtils';
 import {
   INITIAL_AREAS,
   INITIAL_CLEANERS,
@@ -214,6 +214,7 @@ interface CleaningContextType {
   ) => void;
   addArea: (newArea: Omit<Area, 'id'>) => void;
   updateArea: (id: string, updates: Partial<Area>) => void;
+  deleteArea: (id: string) => void;
   addCleaner: (newCleaner: Omit<Cleaner, 'id'>) => void;
   updateCleaner: (id: string, updates: Partial<Cleaner>) => void;
   deleteCleaner: (id: string) => void;
@@ -417,7 +418,19 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   // 5. Core Operational Data
   const [areas, setAreas] = useState<Area[]>(() => {
     const saved = localStorage.getItem('sco_areas');
-    return saved ? JSON.parse(saved) : INITIAL_AREAS;
+    if (!saved) return INITIAL_AREAS;
+    try {
+      const parsed: Area[] = JSON.parse(saved);
+      // Ensure GF items from INITIAL_AREAS exist if user had older saved items without GF
+      const hasGF = parsed.some((a) => a.floor === 'Lantai GF');
+      if (!hasGF) {
+        const gfItems = INITIAL_AREAS.filter((a) => a.floor === 'Lantai GF');
+        return [...gfItems, ...parsed];
+      }
+      return parsed;
+    } catch {
+      return INITIAL_AREAS;
+    }
   });
 
   const [cleaners, setCleaners] = useState<Cleaner[]>(() => {
@@ -972,14 +985,10 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       prev.map((m) => {
         if (m.id !== programId) return m;
         const currentStatus = m.days[day] || 'none';
-        let nextStatus: ProgramDayStatus = forcedStatus || 'planned';
-        if (!forcedStatus) {
-          if (currentStatus === 'none') nextStatus = 'planned';
-          else if (currentStatus === 'planned') nextStatus = 'in_progress';
-          else if (currentStatus === 'in_progress') nextStatus = 'done';
-          else if (currentStatus === 'done') nextStatus = 'rescheduled';
-          else nextStatus = 'none';
-        }
+        const nextStatus: ProgramDayStatus =
+          forcedStatus !== undefined
+            ? forcedStatus
+            : getNextProgramDayStatus(currentStatus);
         return {
           ...m,
           days: {
@@ -1399,6 +1408,10 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setAreas((prev) => prev.map((a) => (a.id === id ? { ...a, ...updates } : a)));
   };
 
+  const deleteArea = (id: string) => {
+    setAreas((prev) => prev.filter((a) => a.id !== id));
+  };
+
   const addCleaner = (newCleaner: Omit<Cleaner, 'id'>) => {
     const id = `cln-${Date.now()}`;
     setCleaners((prev) => [...prev, { ...newCleaner, id, projectId: newCleaner.projectId || safeActiveProjectId }]);
@@ -1661,6 +1674,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         resolveComplaint,
         addArea,
         updateArea,
+        deleteArea,
         addCleaner,
         updateCleaner,
         deleteCleaner,

@@ -8,6 +8,13 @@ export type AreaCleanlinessStatus = 'clean' | 'in_progress' | 'needs_cleaning' |
 
 export type PriorityLevel = 'low' | 'medium' | 'high' | 'urgent';
 
+export interface AreaMaterialItem {
+  id: string;
+  name: string;
+  category?: 'lantai' | 'dinding' | 'kaca' | 'sanitair' | 'metal' | 'furniture' | 'lainnya';
+  notes?: string;
+}
+
 export interface Area {
   id: string;
   projectId?: string;
@@ -16,13 +23,16 @@ export interface Area {
   building: string;
   floor: string;
   zone: string;
-  type: 'toilet' | 'lobby' | 'office' | 'pantry' | 'corridor' | 'outdoor' | 'parking';
+  type: 'toilet' | 'lobby' | 'office' | 'pantry' | 'corridor' | 'outdoor' | 'parking' | 'escalator' | 'lift' | 'atrium' | 'other';
   status: AreaCleanlinessStatus;
   cleanerId: string;
   cleanerName: string;
   lastCleaned?: string;
   nextScheduled?: string;
   targetDurationMinutes: number;
+  materials?: string[]; // e.g. ['Trap Besi', 'Bordes Stainless', 'Karet Railing', 'Kaca']
+  materialNotes?: string; // Catatan spesifikasi/instruksi perawatan material
+  description?: string;
 }
 
 export type AttendanceStatusCode = 'H' | 'I' | 'S' | 'A' | 'L' | '-';

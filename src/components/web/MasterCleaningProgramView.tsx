@@ -121,32 +121,30 @@ export const MasterCleaningProgramView: React.FC = () => {
   // Statistics
   const statistics = useMemo(() => {
     let totalPlan = 0;
-    let totalDone = 0;
-    let totalProgress = 0;
+    let dailyCount = 0;
+    let weeklyCount = 0;
+    let monthlyCount = 0;
 
     filteredPrograms.forEach((prog) => {
+      const code = normalizeFrequencyCode(prog.frequency);
+      if (code === 'D') dailyCount++;
+      else if (code === 'W') weeklyCount++;
+      else if (code === 'M') monthlyCount++;
+
       for (let day = 1; day <= 31; day++) {
         const st = prog.days[day];
-        if (st === 'planned') totalPlan++;
-        else if (st === 'done') {
-          totalPlan++;
-          totalDone++;
-        } else if (st === 'in_progress') {
-          totalPlan++;
-          totalProgress++;
-        } else if (st === 'rescheduled') {
+        if (st === 'planned' || st === 'done' || st === 'in_progress' || st === 'rescheduled') {
           totalPlan++;
         }
       }
     });
 
-    const completionRate = totalPlan > 0 ? Math.round((totalDone / totalPlan) * 100) : 100;
     return {
       totalPrograms: filteredPrograms.length,
       totalPlan,
-      totalDone,
-      totalProgress,
-      completionRate,
+      dailyCount,
+      weeklyCount,
+      monthlyCount,
     };
   }, [filteredPrograms]);
 
@@ -239,35 +237,20 @@ export const MasterCleaningProgramView: React.FC = () => {
       'Frekuensi',
       'PIC',
       ...dayHeaders,
-      'Total_Rencana',
-      'Total_Selesai',
-      'Persentase',
+      'Total_Rencana_R',
     ];
 
     const csvRows = filteredPrograms.map((prog, idx) => {
       let plan = 0;
-      let done = 0;
       const dayValues = Array.from({ length: 31 }, (_, i) => {
         const d = i + 1;
         const st = prog.days[d] || 'none';
-        if (st === 'planned') {
+        if (st === 'planned' || st === 'done' || st === 'in_progress' || st === 'rescheduled') {
           plan++;
           return 'R';
-        } else if (st === 'done') {
-          plan++;
-          done++;
-          return 'S';
-        } else if (st === 'in_progress') {
-          plan++;
-          return 'P';
-        } else if (st === 'rescheduled') {
-          plan++;
-          return 'T';
         }
         return '-';
       });
-
-      const pct = plan > 0 ? Math.round((done / plan) * 100) : 100;
 
       return [
         (idx + 1).toString(),
@@ -279,8 +262,6 @@ export const MasterCleaningProgramView: React.FC = () => {
         `"${prog.picName}"`,
         ...dayValues,
         plan,
-        done,
-        `${pct}%`,
       ];
     });
 
@@ -322,55 +303,26 @@ export const MasterCleaningProgramView: React.FC = () => {
     setFormDays(updated);
   };
 
-  // Status visual styles for Day Cell in calendar table
+  // Status visual styles for Day Cell in calendar table - only R or -
   const renderStatusCell = (status: ProgramDayStatus | undefined) => {
-    switch (status) {
-      case 'planned':
-        return (
-          <span
-            className="w-5 h-5 rounded-md bg-sky-100 text-sky-700 border border-sky-300 font-bold text-[10px] flex items-center justify-center shadow-2xs select-none"
-            title="Rencana (Planned)"
-          >
-            R
-          </span>
-        );
-      case 'in_progress':
-        return (
-          <span
-            className="w-5 h-5 rounded-md bg-amber-100 text-amber-700 border border-amber-300 font-bold text-[10px] flex items-center justify-center shadow-2xs select-none"
-            title="Sedang Dikerjakan (Progress)"
-          >
-            P
-          </span>
-        );
-      case 'done':
-        return (
-          <span
-            className="w-5 h-5 rounded-md bg-emerald-100 text-emerald-700 border border-emerald-300 font-bold text-[10px] flex items-center justify-center shadow-2xs select-none"
-            title="Selesai & Valid (Done)"
-          >
-            S
-          </span>
-        );
-      case 'rescheduled':
-        return (
-          <span
-            className="w-5 h-5 rounded-md bg-rose-100 text-rose-700 border border-rose-300 font-bold text-[10px] flex items-center justify-center shadow-2xs select-none"
-            title="Jadwal Tertunda / Dipindah (Rescheduled)"
-          >
-            T
-          </span>
-        );
-      default:
-        return (
-          <span
-            className="w-5 h-5 rounded-md text-slate-300 hover:text-slate-500 hover:bg-slate-100 font-medium text-[11px] flex items-center justify-center transition-colors select-none"
-            title="Tidak Terjadwal (Klik untuk set rencana)"
-          >
-            -
-          </span>
-        );
+    if (status === 'planned' || status === 'done' || status === 'in_progress' || status === 'rescheduled') {
+      return (
+        <span
+          className="w-5 h-5 rounded-md bg-sky-100 text-sky-700 border border-sky-300 font-bold text-[10px] flex items-center justify-center shadow-2xs select-none"
+          title="R : Rencana (Planned)"
+        >
+          R
+        </span>
+      );
     }
+    return (
+      <span
+        className="w-5 h-5 rounded-md text-slate-300 hover:text-slate-500 hover:bg-slate-100 font-medium text-[11px] flex items-center justify-center transition-colors select-none"
+        title="Tidak Terjadwal (Klik untuk set rencana)"
+      >
+        -
+      </span>
+    );
   };
 
   // Frequency badge renderer: "D" (Daily), "W" (Weekly), "M" (Monthly)
@@ -480,33 +432,33 @@ export const MasterCleaningProgramView: React.FC = () => {
           </div>
           <div className="mt-2 flex items-baseline gap-2">
             <span className="text-2xl font-black text-sky-700">{statistics.totalPlan}</span>
-            <span className="text-[11px] text-slate-500">Titik [R]</span>
+            <span className="text-[11px] text-slate-500">Titik Rencana [R]</span>
           </div>
         </div>
 
         <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-500">Realisasi Selesai</span>
-            <span className="p-1.5 rounded-lg bg-emerald-50 text-emerald-600">
+            <span className="text-xs font-semibold text-slate-500">Program Harian</span>
+            <span className="p-1.5 rounded-lg bg-blue-50 text-blue-600">
               <CheckCircle2 className="w-4 h-4" />
             </span>
           </div>
           <div className="mt-2 flex items-baseline gap-2">
-            <span className="text-2xl font-black text-emerald-700">{statistics.totalDone}</span>
-            <span className="text-[11px] text-slate-500">Titik [S]</span>
+            <span className="text-2xl font-black text-blue-700">{statistics.dailyCount}</span>
+            <span className="text-[11px] text-slate-500">Item [D]</span>
           </div>
         </div>
 
         <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-500">Tingkat Capaian Kinerja</span>
-            <span className="p-1.5 rounded-lg bg-indigo-50 text-indigo-600">
+            <span className="text-xs font-semibold text-slate-500">Program Berkala (W & M)</span>
+            <span className="p-1.5 rounded-lg bg-purple-50 text-purple-600">
               <Sparkles className="w-4 h-4" />
             </span>
           </div>
           <div className="mt-2 flex items-baseline gap-2">
-            <span className="text-2xl font-black text-indigo-700">{statistics.completionRate}%</span>
-            <span className="text-[11px] text-emerald-600 font-bold">Target SOP Gedung</span>
+            <span className="text-2xl font-black text-purple-700">{statistics.weeklyCount + statistics.monthlyCount}</span>
+            <span className="text-[11px] text-purple-600 font-bold">Mingguan / Bulanan</span>
           </div>
         </div>
       </div>
@@ -605,35 +557,17 @@ export const MasterCleaningProgramView: React.FC = () => {
       <div className="bg-slate-50/80 border border-slate-200/80 p-3 rounded-xl flex flex-wrap items-center justify-between gap-3 text-xs">
         <div className="flex items-center gap-2 text-slate-600 font-medium">
           <Info className="w-4 h-4 text-teal-600 shrink-0" />
-          <span>Petunjuk Status Tanggal (Klik sel tanggal untuk mengubah status siklus):</span>
+          <span>Petunjuk Status Tanggal (Klik sel tanggal untuk mengatur status):</span>
         </div>
-        <div className="flex flex-wrap items-center gap-3 font-semibold text-[11px]">
+        <div className="flex flex-wrap items-center gap-4 font-semibold text-[11px]">
           <div className="flex items-center gap-1.5">
-            <span className="w-4 h-4 rounded bg-sky-100 text-sky-700 border border-sky-300 text-[10px] font-bold flex items-center justify-center">
+            <span className="w-5 h-5 rounded-md bg-sky-100 text-sky-700 border border-sky-300 text-[10px] font-bold flex items-center justify-center shadow-2xs">
               R
             </span>
-            <span className="text-slate-600">Rencana (Planned)</span>
+            <span className="text-slate-800 font-bold">R : Rencana (Planned)</span>
           </div>
           <div className="flex items-center gap-1.5">
-            <span className="w-4 h-4 rounded bg-amber-100 text-amber-700 border border-amber-300 text-[10px] font-bold flex items-center justify-center">
-              P
-            </span>
-            <span className="text-slate-600">Sedang Pengerjaan (Progress)</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <span className="w-4 h-4 rounded bg-emerald-100 text-emerald-700 border border-emerald-300 text-[10px] font-bold flex items-center justify-center">
-              S
-            </span>
-            <span className="text-slate-600">Selesai / Valid (Done)</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <span className="w-4 h-4 rounded bg-rose-100 text-rose-700 border border-rose-300 text-[10px] font-bold flex items-center justify-center">
-              T
-            </span>
-            <span className="text-slate-600">Tertunda / Reschedule</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <span className="w-4 h-4 rounded text-slate-400 font-bold flex items-center justify-center">
+            <span className="w-5 h-5 rounded-md text-slate-400 font-bold flex items-center justify-center bg-white border border-slate-200">
               -
             </span>
             <span className="text-slate-500">Tidak Terjadwal</span>
@@ -676,14 +610,8 @@ export const MasterCleaningProgramView: React.FC = () => {
                   </th>
                 ))}
 
-                <th className="py-3 px-2 text-center w-14 border-r border-slate-700">
-                  Plan
-                </th>
-                <th className="py-3 px-2 text-center w-14 border-r border-slate-700">
-                  Done
-                </th>
-                <th className="py-3 px-2 text-center w-14 border-r border-slate-700">
-                  %
+                <th className="py-3 px-2 text-center w-20 border-r border-slate-700 font-bold text-sky-300">
+                  Plan (R)
                 </th>
                 <th className="py-3 px-3 text-center w-24">
                   Aksi
@@ -694,7 +622,7 @@ export const MasterCleaningProgramView: React.FC = () => {
             <tbody className="divide-y divide-slate-200">
               {filteredPrograms.length === 0 ? (
                 <tr>
-                  <td colSpan={42} className="py-12 text-center text-slate-400">
+                  <td colSpan={40} className="py-12 text-center text-slate-400">
                     <div className="max-w-xs mx-auto space-y-2">
                       <Layers className="w-8 h-8 text-slate-300 mx-auto" />
                       <p className="font-semibold text-slate-700 text-sm">
@@ -779,7 +707,11 @@ export const MasterCleaningProgramView: React.FC = () => {
                         return (
                           <td
                             key={dayNumber}
-                            onClick={() => toggleMasterProgramDay(program.id, dayNumber)}
+                            onClick={() => {
+                              const currentSt = program.days[dayNumber];
+                              const nextSt = currentSt === 'planned' ? 'none' : 'planned';
+                              toggleMasterProgramDay(program.id, dayNumber, nextSt);
+                            }}
                             className="py-1 px-0.5 text-center border-r border-slate-100 cursor-pointer hover:bg-teal-100/60 transition-colors"
                           >
                             <div className="flex items-center justify-center">
@@ -789,25 +721,9 @@ export const MasterCleaningProgramView: React.FC = () => {
                         );
                       })}
 
-                      {/* Plan, Done, % */}
-                      <td className="py-2.5 px-2 text-center font-bold text-sky-700 border-r border-slate-200">
+                      {/* Plan (R) */}
+                      <td className="py-2.5 px-2 text-center font-bold text-sky-700 border-r border-slate-200 bg-sky-50/20">
                         {planCount}
-                      </td>
-                      <td className="py-2.5 px-2 text-center font-bold text-emerald-700 border-r border-slate-200">
-                        {doneCount}
-                      </td>
-                      <td className="py-2.5 px-2 text-center font-bold text-slate-800 border-r border-slate-200">
-                        <span
-                          className={`px-1.5 py-0.5 rounded text-[10px] ${
-                            pct >= 80
-                              ? 'bg-emerald-100 text-emerald-800'
-                              : pct >= 50
-                              ? 'bg-amber-100 text-amber-800'
-                              : 'bg-rose-100 text-rose-800'
-                          }`}
-                        >
-                          {pct}%
-                        </span>
                       </td>
 
                       {/* Action buttons */}
@@ -968,7 +884,7 @@ export const MasterCleaningProgramView: React.FC = () => {
                       Jadwal Tanggal (1 - 31)
                     </label>
                     <p className="text-[11px] text-slate-500">
-                      Klik tanggal untuk mengatur status (R = Rencana, S = Selesai, P = Proses, T = Tertunda)
+                      Klik tanggal untuk mengatur status (R = Rencana, - = Tidak Terjadwal)
                     </p>
                   </div>
 
@@ -977,28 +893,28 @@ export const MasterCleaningProgramView: React.FC = () => {
                     <button
                       type="button"
                       onClick={() => applyPresetDays('all')}
-                      className="px-2 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold"
+                      className="px-2 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold cursor-pointer"
                     >
                       Semua Hari (1-31)
                     </button>
                     <button
                       type="button"
                       onClick={() => applyPresetDays('workdays')}
-                      className="px-2 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold"
+                      className="px-2 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold cursor-pointer"
                     >
                       Hari Kerja
                     </button>
                     <button
                       type="button"
                       onClick={() => applyPresetDays('alternate')}
-                      className="px-2 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold"
+                      className="px-2 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold cursor-pointer"
                     >
                       Selang-Seling
                     </button>
                     <button
                       type="button"
                       onClick={() => applyPresetDays('clear')}
-                      className="px-2 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 font-semibold"
+                      className="px-2 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 font-semibold cursor-pointer"
                     >
                       Kosongkan
                     </button>
@@ -1010,39 +926,21 @@ export const MasterCleaningProgramView: React.FC = () => {
                   {Array.from({ length: 31 }, (_, idx) => {
                     const day = idx + 1;
                     const st = formDays[day] || 'none';
-
-                    let badgeColor = 'bg-white border-slate-200 text-slate-600 hover:bg-teal-50';
-                    let label = '-';
-
-                    if (st === 'planned') {
-                      badgeColor = 'bg-sky-500 text-white border-sky-600 font-bold';
-                      label = 'R';
-                    } else if (st === 'done') {
-                      badgeColor = 'bg-emerald-600 text-white border-emerald-700 font-bold';
-                      label = 'S';
-                    } else if (st === 'in_progress') {
-                      badgeColor = 'bg-amber-500 text-white border-amber-600 font-bold';
-                      label = 'P';
-                    } else if (st === 'rescheduled') {
-                      badgeColor = 'bg-rose-500 text-white border-rose-600 font-bold';
-                      label = 'T';
-                    }
+                    const isPlanned = st === 'planned' || st === 'done' || st === 'in_progress' || st === 'rescheduled';
+                    const badgeColor = isPlanned
+                      ? 'bg-sky-500 text-white border-sky-600 font-bold shadow-xs'
+                      : 'bg-white border-slate-200 text-slate-600 hover:bg-sky-50';
+                    const label = isPlanned ? 'R' : '-';
 
                     return (
                       <button
                         key={day}
                         type="button"
                         onClick={() => {
-                          let nextStatus: ProgramDayStatus = 'planned';
-                          if (st === 'none') nextStatus = 'planned';
-                          else if (st === 'planned') nextStatus = 'done';
-                          else if (st === 'done') nextStatus = 'in_progress';
-                          else if (st === 'in_progress') nextStatus = 'rescheduled';
-                          else nextStatus = 'none';
-
+                          const nextStatus: ProgramDayStatus = isPlanned ? 'none' : 'planned';
                           setFormDays((prev) => ({ ...prev, [day]: nextStatus }));
                         }}
-                        className={`p-1.5 rounded-lg border text-center transition-all flex flex-col items-center justify-center ${badgeColor}`}
+                        className={`p-1.5 rounded-lg border text-center transition-all flex flex-col items-center justify-center cursor-pointer ${badgeColor}`}
                       >
                         <span className="text-[10px] leading-none opacity-80">{day}</span>
                         <span className="text-[11px] font-bold leading-tight">{label}</span>

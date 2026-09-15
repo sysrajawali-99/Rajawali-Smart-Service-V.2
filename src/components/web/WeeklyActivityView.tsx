@@ -17,6 +17,7 @@ import {
   User,
   MapPin,
   Calendar,
+  FileText,
 } from 'lucide-react';
 import { useCleaning } from '../../context/CleaningContext';
 import { MasterCleaningProgramItem, ProgramDayStatus } from '../../types';
@@ -27,6 +28,7 @@ import {
   FREQUENCY_META,
   MONTH_OPTIONS,
 } from '../../utils/mcpUtils';
+import { exportWeeklyActivityToPDF } from '../../utils/pdfExport';
 
 export const WeeklyActivityView: React.FC = () => {
   const {
@@ -191,47 +193,40 @@ export const WeeklyActivityView: React.FC = () => {
         p.year === selectedYear
     );
 
-    let plannedDay = 0;
-    let progressDay = 0;
-    let doneDay = 0;
-    let rescheduledDay = 0;
-
+    let countR = 0;
+    let countP = 0;
+    let countT = 0;
+    let countS = 0;
+    let countNone = 0;
     let weekPlanTotal = 0;
-    let weekDoneTotal = 0;
 
     const currentWeekDef = weeks.find((w) => w.id === `w${currentWeekNumber}`) || weeks[0];
 
     allWeeklies.forEach((p) => {
       const st = p.days[safeSelectedDay] || 'none';
-      if (st === 'planned') plannedDay++;
-      else if (st === 'in_progress') progressDay++;
-      else if (st === 'done') doneDay++;
-      else if (st === 'rescheduled') rescheduledDay++;
+      if (st === 'planned') countR++;
+      else if (st === 'in_progress') countP++;
+      else if (st === 'rescheduled') countT++;
+      else if (st === 'done') countS++;
+      else countNone++;
 
       // Week stats
       for (let d = currentWeekDef.start; d <= Math.min(currentWeekDef.end, daysInMonth); d++) {
         const wst = p.days[d];
-        if (wst === 'planned' || wst === 'in_progress' || wst === 'rescheduled') weekPlanTotal++;
-        else if (wst === 'done') {
+        if (wst === 'planned' || wst === 'in_progress' || wst === 'rescheduled' || wst === 'done') {
           weekPlanTotal++;
-          weekDoneTotal++;
         }
       }
     });
 
-    const activeTasksCount = plannedDay + progressDay + doneDay + rescheduledDay;
-    const weekProgressRate = weekPlanTotal > 0 ? Math.round((weekDoneTotal / weekPlanTotal) * 100) : 100;
-
     return {
       total: allWeeklies.length,
-      plannedDay,
-      progressDay,
-      doneDay,
-      rescheduledDay,
-      activeTasksCount,
+      countR,
+      countP,
+      countT,
+      countS,
+      countNone,
       weekPlanTotal,
-      weekDoneTotal,
-      weekProgressRate,
     };
   }, [masterPrograms, selectedMonth, selectedYear, safeSelectedDay, currentWeekNumber, weeks, daysInMonth]);
 
@@ -393,6 +388,30 @@ export const WeeklyActivityView: React.FC = () => {
     showToast('Data Weekly Activity berhasil diekspor ke CSV.');
   };
 
+  // Export PDF (Standard Company Form)
+  const handleExportPDF = () => {
+    try {
+      const currentWeekDef = weeks.find((w) => w.id === selectedWeekFilter) || weeks[0];
+      const start = currentWeekDef ? currentWeekDef.start : 1;
+      const end = currentWeekDef ? Math.min(currentWeekDef.end, daysInMonth) : daysInMonth;
+      const weekNum = currentWeekDef ? parseInt(currentWeekDef.id.replace('w', '')) || 1 : 1;
+
+      exportWeeklyActivityToPDF({
+        programs: weeklyPrograms,
+        project: activeProject,
+        selectedWeek: weekNum,
+        startDay: start,
+        endDay: end,
+        month: selectedMonth,
+        year: selectedYear,
+      });
+      showToast('Formulir Laporan Weekly Activity standar perusahaan berhasil disimpan ke PDF!');
+    } catch (err) {
+      console.error(err);
+      showToast('Gagal mengekspor PDF Weekly Activity.');
+    }
+  };
+
   return (
     <div className="p-4 sm:p-6 space-y-6 max-w-7xl mx-auto">
       {/* Toast */}
@@ -440,6 +459,16 @@ export const WeeklyActivityView: React.FC = () => {
 
         {/* Action Buttons */}
         <div className="flex flex-wrap items-center gap-2.5">
+          <button
+            type="button"
+            onClick={handleExportPDF}
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-800 text-xs font-bold shadow-xs transition-colors"
+            title="Simpan Formulir Laporan Weekly Activity standar form perusahaan ke PDF"
+          >
+            <FileText className="w-3.5 h-3.5 text-rose-600" />
+            <span>Simpan ke PDF</span>
+          </button>
+
           <button
             type="button"
             onClick={handleExportCSV}
@@ -634,126 +663,132 @@ export const WeeklyActivityView: React.FC = () => {
       </div>
 
       {/* KPI Stats Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-        <div className="bg-white p-3.5 rounded-2xl border border-slate-200/80 shadow-xs">
-          <p className="text-[11px] font-semibold text-slate-500">Total Program (W)</p>
-          <p className="text-xl font-extrabold text-slate-900 mt-1">{stats.total}</p>
-          <p className="text-[10px] text-slate-400 mt-0.5">Item Mingguan Terdaftar</p>
+      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2.5">
+        <div className="bg-white p-3 rounded-2xl border border-slate-200/80 shadow-xs">
+          <p className="text-[10px] font-semibold text-slate-500">Total Program (W)</p>
+          <p className="text-xl font-extrabold text-slate-900 mt-0.5">{stats.total}</p>
+          <p className="text-[10px] text-slate-400">Item Mingguan</p>
         </div>
 
-        <div className="bg-sky-50/70 p-3.5 rounded-2xl border border-sky-200/80 shadow-xs">
+        <div className="bg-sky-50/70 p-3 rounded-2xl border border-sky-200/80 shadow-xs">
           <div className="flex items-center justify-between">
-            <p className="text-[11px] font-bold text-sky-800">R : Rencana Hari Ini</p>
+            <p className="text-[10px] font-bold text-sky-800">R : Rencana</p>
             <span className="w-5 h-5 rounded-md bg-sky-200 text-sky-800 font-extrabold text-[10px] flex items-center justify-center">
               R
             </span>
           </div>
-          <p className="text-xl font-extrabold text-sky-900 mt-1">{stats.plannedDay}</p>
-          <p className="text-[10px] text-sky-700 mt-0.5">Tgl {safeSelectedDay}</p>
+          <p className="text-xl font-extrabold text-sky-900 mt-0.5">{stats.countR}</p>
+          <p className="text-[10px] text-sky-700">Tgl {safeSelectedDay}</p>
         </div>
 
-        <div className="bg-amber-50/70 p-3.5 rounded-2xl border border-amber-200/80 shadow-xs">
+        <div className="bg-amber-50/70 p-3 rounded-2xl border border-amber-200/80 shadow-xs">
           <div className="flex items-center justify-between">
-            <p className="text-[11px] font-bold text-amber-800">P : Sedang Kerja</p>
+            <p className="text-[10px] font-bold text-amber-800">P : Progres</p>
             <span className="w-5 h-5 rounded-md bg-amber-200 text-amber-800 font-extrabold text-[10px] flex items-center justify-center">
               P
             </span>
           </div>
-          <p className="text-xl font-extrabold text-amber-900 mt-1">{stats.progressDay}</p>
-          <p className="text-[10px] text-amber-700 mt-0.5">Dalam Proses</p>
+          <p className="text-xl font-extrabold text-amber-900 mt-0.5">{stats.countP}</p>
+          <p className="text-[10px] text-amber-700">Tgl {safeSelectedDay}</p>
         </div>
 
-        <div className="bg-emerald-50/70 p-3.5 rounded-2xl border border-emerald-200/80 shadow-xs">
+        <div className="bg-rose-50/70 p-3 rounded-2xl border border-rose-200/80 shadow-xs">
           <div className="flex items-center justify-between">
-            <p className="text-[11px] font-bold text-emerald-800">S : Selesai / Valid</p>
-            <span className="w-5 h-5 rounded-md bg-emerald-200 text-emerald-800 font-extrabold text-[10px] flex items-center justify-center">
-              S
-            </span>
-          </div>
-          <p className="text-xl font-extrabold text-emerald-900 mt-1">{stats.doneDay}</p>
-          <p className="text-[10px] text-emerald-700 mt-0.5">Tervalidasi Hari Ini</p>
-        </div>
-
-        <div className="bg-rose-50/70 p-3.5 rounded-2xl border border-rose-200/80 shadow-xs">
-          <div className="flex items-center justify-between">
-            <p className="text-[11px] font-bold text-rose-800">T : Tertunda</p>
+            <p className="text-[10px] font-bold text-rose-800">T : Tunda</p>
             <span className="w-5 h-5 rounded-md bg-rose-200 text-rose-800 font-extrabold text-[10px] flex items-center justify-center">
               T
             </span>
           </div>
-          <p className="text-xl font-extrabold text-rose-900 mt-1">{stats.rescheduledDay}</p>
-          <p className="text-[10px] text-rose-700 mt-0.5">Reschedule</p>
+          <p className="text-xl font-extrabold text-rose-900 mt-0.5">{stats.countT}</p>
+          <p className="text-[10px] text-rose-700">Tgl {safeSelectedDay}</p>
         </div>
 
-        <div className="bg-purple-50/70 p-3.5 rounded-2xl border border-purple-200/80 shadow-xs">
-          <p className="text-[11px] font-bold text-purple-800">Progres Minggu ke-{currentWeekNumber}</p>
-          <p className="text-xl font-extrabold text-purple-900 mt-1">{stats.weekProgressRate}%</p>
-          <div className="w-full bg-purple-200 h-1.5 rounded-full mt-1.5 overflow-hidden">
-            <div
-              className="bg-purple-700 h-full rounded-full transition-all duration-300"
-              style={{ width: `${stats.weekProgressRate}%` }}
-            />
+        <div className="bg-emerald-50/70 p-3 rounded-2xl border border-emerald-200/80 shadow-xs">
+          <div className="flex items-center justify-between">
+            <p className="text-[10px] font-bold text-emerald-800">S : Selesai</p>
+            <span className="w-5 h-5 rounded-md bg-emerald-200 text-emerald-800 font-extrabold text-[10px] flex items-center justify-center">
+              S
+            </span>
           </div>
+          <p className="text-xl font-extrabold text-emerald-900 mt-0.5">{stats.countS}</p>
+          <p className="text-[10px] text-emerald-700">Tgl {safeSelectedDay}</p>
+        </div>
+
+        <div className="bg-slate-50/70 p-3 rounded-2xl border border-slate-200/80 shadow-xs">
+          <div className="flex items-center justify-between">
+            <p className="text-[10px] font-bold text-slate-700">- : Off</p>
+            <span className="w-5 h-5 rounded-md bg-slate-200 text-slate-600 font-extrabold text-[10px] flex items-center justify-center">
+              -
+            </span>
+          </div>
+          <p className="text-xl font-extrabold text-slate-800 mt-0.5">{stats.countNone}</p>
+          <p className="text-[10px] text-slate-500">Tgl {safeSelectedDay}</p>
+        </div>
+
+        <div className="bg-purple-50/70 p-3 rounded-2xl border border-purple-200/80 shadow-xs">
+          <p className="text-[10px] font-bold text-purple-800">Minggu {currentWeekNumber}</p>
+          <p className="text-xl font-extrabold text-purple-900 mt-0.5">{stats.weekPlanTotal}</p>
+          <p className="text-[10px] text-purple-700">Total Tugas W{currentWeekNumber}</p>
         </div>
       </div>
 
-      {/* Petunjuk Status Tanggal (Interactive Legend Box) */}
+      {/* Petunjuk Status Tanggal */}
       <div className="bg-slate-900 text-white p-4 rounded-2xl shadow-sm border border-slate-800">
         <div className="flex items-center gap-2 mb-2.5">
           <HelpCircle className="w-4 h-4 text-purple-400" />
           <h3 className="text-xs font-bold uppercase tracking-wider text-slate-200">
-            Petunjuk Status Tanggal (Klik sel tanggal untuk mengubah status siklus)
+            Status Pekerjaan Weekly Activity (Klik sel tanggal untuk beralih siklus status)
           </h3>
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5 text-xs">
-          <div className="flex items-center gap-2 bg-slate-800/90 border border-slate-700/60 p-2 rounded-xl">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5 text-xs">
+          <div className="flex items-center gap-2 bg-slate-800/90 border border-slate-700/60 p-2.5 rounded-xl">
             <span className="w-6 h-6 rounded-md bg-sky-100 text-sky-800 border border-sky-300 font-extrabold text-xs flex items-center justify-center shadow-2xs">
               R
             </span>
             <div>
-              <p className="font-bold text-slate-100">Rencana</p>
-              <p className="text-[10px] text-slate-400">Planned (Terjadwal)</p>
+              <p className="font-bold text-slate-100">R : Rencana</p>
+              <p className="text-[10px] text-slate-400">Pekerjaan Terjadwal</p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2 bg-slate-800/90 border border-slate-700/60 p-2 rounded-xl">
+          <div className="flex items-center gap-2 bg-slate-800/90 border border-slate-700/60 p-2.5 rounded-xl">
             <span className="w-6 h-6 rounded-md bg-amber-100 text-amber-800 border border-amber-300 font-extrabold text-xs flex items-center justify-center shadow-2xs">
               P
             </span>
             <div>
-              <p className="font-bold text-slate-100">Sedang Pengerjaan</p>
-              <p className="text-[10px] text-slate-400">Progress (Dikerjakan)</p>
+              <p className="font-bold text-slate-100">P : Progres</p>
+              <p className="text-[10px] text-slate-400">Sedang Dikerjakan</p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2 bg-slate-800/90 border border-slate-700/60 p-2 rounded-xl">
-            <span className="w-6 h-6 rounded-md bg-emerald-100 text-emerald-800 border border-emerald-300 font-extrabold text-xs flex items-center justify-center shadow-2xs">
-              S
-            </span>
-            <div>
-              <p className="font-bold text-slate-100">Selesai / Valid</p>
-              <p className="text-[10px] text-slate-400">Done (Telah tuntas)</p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2 bg-slate-800/90 border border-slate-700/60 p-2 rounded-xl">
+          <div className="flex items-center gap-2 bg-slate-800/90 border border-slate-700/60 p-2.5 rounded-xl">
             <span className="w-6 h-6 rounded-md bg-rose-100 text-rose-800 border border-rose-300 font-extrabold text-xs flex items-center justify-center shadow-2xs">
               T
             </span>
             <div>
-              <p className="font-bold text-slate-100">Tertunda</p>
-              <p className="text-[10px] text-slate-400">Reschedule (Pending)</p>
+              <p className="font-bold text-slate-100">T : Tunda</p>
+              <p className="text-[10px] text-slate-400">Tertunda / Pending</p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2 bg-slate-800/90 border border-slate-700/60 p-2 rounded-xl">
+          <div className="flex items-center gap-2 bg-slate-800/90 border border-slate-700/60 p-2.5 rounded-xl">
+            <span className="w-6 h-6 rounded-md bg-emerald-100 text-emerald-800 border border-emerald-300 font-extrabold text-xs flex items-center justify-center shadow-2xs">
+              S
+            </span>
+            <div>
+              <p className="font-bold text-slate-100">S : Selesai</p>
+              <p className="text-[10px] text-slate-400">Telah Selesai</p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 bg-slate-800/90 border border-slate-700/60 p-2.5 rounded-xl">
             <span className="w-6 h-6 rounded-md bg-slate-700 text-slate-300 border border-slate-600 font-extrabold text-xs flex items-center justify-center">
               -
             </span>
             <div>
-              <p className="font-bold text-slate-100">Tidak Terjadwal</p>
-              <p className="text-[10px] text-slate-400">Off / Tidak ada tugas</p>
+              <p className="font-bold text-slate-100">- : Off</p>
+              <p className="text-[10px] text-slate-400">Tidak Terjadwal</p>
             </div>
           </div>
         </div>
@@ -761,7 +796,7 @@ export const WeeklyActivityView: React.FC = () => {
         <p className="text-[11px] text-slate-400 mt-2.5 flex items-center gap-1.5">
           <Sparkles className="w-3.5 h-3.5 text-purple-400" />
           <span>
-            Urutan Siklus Klik Status: <strong>- (Tidak Terjadwal)</strong> &rarr; <strong>R (Rencana)</strong> &rarr; <strong>P (Sedang Pengerjaan)</strong> &rarr; <strong>S (Selesai/Valid)</strong> &rarr; <strong>T (Tertunda)</strong> &rarr; <strong>- (Reset)</strong>
+            Urutan siklus klik tanggal: <strong>- (Off)</strong> ➔ <strong>R (Rencana)</strong> ➔ <strong>P (Progres)</strong> ➔ <strong>T (Tunda)</strong> ➔ <strong>S (Selesai)</strong> ➔ <strong>-</strong>
           </span>
         </p>
       </div>
@@ -779,11 +814,10 @@ export const WeeklyActivityView: React.FC = () => {
               className="bg-transparent font-semibold text-slate-800 text-xs focus:outline-hidden cursor-pointer"
             >
               <option value="all">Semua Status</option>
-              <option value="active_only">Hanya Terjadwal (R, P, S, T)</option>
               <option value="planned">R : Rencana</option>
-              <option value="in_progress">P : Sedang Pengerjaan</option>
-              <option value="done">S : Selesai / Valid</option>
-              <option value="rescheduled">T : Tertunda</option>
+              <option value="in_progress">P : Progres</option>
+              <option value="rescheduled">T : Tunda</option>
+              <option value="done">S : Selesai</option>
               <option value="none">- : Tidak Terjadwal</option>
             </select>
           </div>
@@ -833,24 +867,17 @@ export const WeeklyActivityView: React.FC = () => {
                 <th className="py-3 px-2 text-center w-12 min-w-[48px] border-r border-slate-700 font-bold">
                   Freq
                 </th>
-                <th className="py-3 px-3 min-w-[220px] max-w-[280px] border-r border-slate-700 sticky left-10 z-20 bg-slate-800 shadow-sm">
+                <th className="py-3 px-3 min-w-[240px] border-r border-slate-700 sticky left-10 z-20 bg-slate-800 shadow-sm">
                   Uraian Pekerjaan Mingguan
                 </th>
-                <th className="py-3 px-3 min-w-[180px] border-r border-slate-700">
-                  Metode Pekerjaan (SOP)
-                </th>
-                <th className="py-3 px-3 min-w-[130px] border-r border-slate-700">
+                <th className="py-3 px-3 min-w-[140px] border-r border-slate-700">
                   Lokasi / Area
                 </th>
-                <th className="py-3 px-3 min-w-[120px] border-r border-slate-700">
+                <th className="py-3 px-3 min-w-[130px] border-r border-slate-700">
                   PIC Petugas
                 </th>
-                {/* Selected Day Status Column */}
-                <th className="py-3 px-3 text-center min-w-[160px] border-r border-slate-700 bg-purple-900/90 text-purple-100 font-bold">
-                  Status Tanggal {safeSelectedDay} (Klik Ubah)
-                </th>
                 {/* Calendar strip for active week range */}
-                <th className="py-3 px-3 min-w-[260px] border-r border-slate-700">
+                <th className="py-3 px-3 min-w-[280px] border-r border-slate-700">
                   Kalender Siklus ({activeDayRange.length} Hari)
                 </th>
                 <th className="py-3 px-3 text-center w-24">
@@ -862,7 +889,7 @@ export const WeeklyActivityView: React.FC = () => {
             <tbody className="divide-y divide-slate-200">
               {weeklyPrograms.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="py-12 text-center text-slate-400">
+                  <td colSpan={7} className="py-12 text-center text-slate-400">
                     <div className="max-w-sm mx-auto space-y-2">
                       <Layers className="w-9 h-9 text-slate-300 mx-auto" />
                       <p className="font-semibold text-slate-700 text-sm">
@@ -909,13 +936,6 @@ export const WeeklyActivityView: React.FC = () => {
                         </span>
                       </td>
 
-                      {/* Metode SOP */}
-                      <td className="py-3 px-3 border-r border-slate-200 text-slate-700">
-                        <p className="text-[11px] leading-relaxed line-clamp-2">
-                          {program.workMethod}
-                        </p>
-                      </td>
-
                       {/* Lokasi */}
                       <td className="py-3 px-3 border-r border-slate-200 font-semibold text-slate-800 text-[11px]">
                         <div className="flex items-center gap-1">
@@ -930,27 +950,6 @@ export const WeeklyActivityView: React.FC = () => {
                           <User className="w-3 h-3 text-slate-400 shrink-0" />
                           <span>{program.picName}</span>
                         </div>
-                      </td>
-
-                      {/* Interactive Status for Selected Day */}
-                      <td className="py-3 px-3 border-r border-slate-200 bg-purple-50/20 text-center">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            toggleMasterProgramDay(program.id, safeSelectedDay);
-                            const next = getNextProgramDayStatus(currentDayStatus);
-                            showToast(
-                              `Status Tgl ${safeSelectedDay}: ${PROGRAM_STATUS_META[next].label}`
-                            );
-                          }}
-                          className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs font-bold transition-all shadow-2xs hover:scale-105 cursor-pointer ${currentMeta.pillClass}`}
-                          title={`Klik untuk ubah siklus status (saat ini: ${currentMeta.label})`}
-                        >
-                          <span className={`w-5 h-5 rounded-md flex items-center justify-center font-extrabold text-xs shadow-2xs ${currentMeta.badgeClass}`}>
-                            {currentMeta.code}
-                          </span>
-                          <span className="whitespace-nowrap">{currentMeta.label}</span>
-                        </button>
                       </td>
 
                       {/* Calendar strip */}

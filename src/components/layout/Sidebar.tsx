@@ -22,8 +22,6 @@ interface MenuItem {
   id: string;
   label: string;
   icon: React.ComponentType<{ className?: string }>;
-  badge?: string | number;
-  badgeColor?: string;
   rolesAllowed?: string[];
 }
 
@@ -31,21 +29,10 @@ export const Sidebar: React.FC = () => {
   const {
     activeTab,
     setActiveTab,
-    tasks,
-    complaints,
     userRole,
     activeProject,
-    dailyChecklists,
     currentUser,
   } = useCleaning();
-
-  // Badges calculation
-  const pendingQC = tasks.filter((t) => t.status === 'pending_qc').length;
-  const openComplaints = complaints.filter((c) => c.status !== 'resolved').length;
-  const inProgressTasks = tasks.filter((t) => t.status === 'in_progress').length;
-
-  // Count active checklists for today
-  const activeChecklistCount = dailyChecklists.length;
 
   const menuItems: MenuItem[] = [
     {
@@ -57,8 +44,6 @@ export const Sidebar: React.FC = () => {
       id: 'ceklist',
       label: 'Ceklist Kebersihan Area',
       icon: ClipboardList,
-      badge: `${activeChecklistCount} Area`,
-      badgeColor: 'bg-emerald-500 text-white',
     },
     {
       id: 'area',
@@ -84,57 +69,41 @@ export const Sidebar: React.FC = () => {
       id: 'master-program',
       label: 'Master Cleaning Program',
       icon: CalendarRange,
-      badge: 'MCP',
-      badgeColor: 'bg-teal-600 text-white',
     },
     {
       id: 'daily-activity',
       label: 'Daily Activity',
       icon: Calendar,
-      badge: 'D',
-      badgeColor: 'bg-blue-600 text-white',
     },
     {
       id: 'weekly-activity',
       label: 'Weekly Activity',
       icon: CalendarRange,
-      badge: 'W',
-      badgeColor: 'bg-purple-600 text-white',
     },
     {
       id: 'monthly-activity',
       label: 'Monthly Activity',
       icon: CalendarClock,
-      badge: 'M',
-      badgeColor: 'bg-amber-600 text-white',
     },
     {
       id: 'activity',
       label: 'Cleaning Activity',
       icon: Activity,
-      badge: inProgressTasks > 0 ? inProgressTasks : undefined,
-      badgeColor: 'bg-sky-500 text-white',
     },
     {
       id: 'inspeksi',
       label: 'Inspeksi & Control',
       icon: CheckCheck,
-      badge: pendingQC > 0 ? `${pendingQC} QC` : undefined,
-      badgeColor: 'bg-amber-500 text-white',
     },
     {
       id: 'complaint',
       label: 'Complaint',
       icon: AlertCircle,
-      badge: openComplaints > 0 ? openComplaints : undefined,
-      badgeColor: 'bg-rose-500 text-white',
     },
     {
       id: 'proyek',
       label: 'Lokasi Proyek',
       icon: Building2,
-      badge: userRole === 'admin' ? 'Super' : undefined,
-      badgeColor: 'bg-indigo-600 text-white',
     },
     {
       id: 'report',
@@ -194,15 +163,6 @@ export const Sidebar: React.FC = () => {
                 />
                 <span className="truncate">{item.label}</span>
               </div>
-              {item.badge !== undefined && (
-                <span
-                  className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full shrink-0 ${
-                    item.badgeColor || 'bg-slate-200 text-slate-700'
-                  }`}
-                >
-                  {item.badge}
-                </span>
-              )}
             </button>
           );
         })}

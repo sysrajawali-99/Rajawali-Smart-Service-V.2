@@ -20,11 +20,11 @@ export const DEFAULT_HOSPITAL_KOP: KopSuratConfig = {
 
 export const getProjectKop = (project: ProjectLocation): KopSuratConfig => {
   return {
-    institutionLine1: 'MANAJEMEN OPERASIONAL KEBERSIHAN & FASILITAS GEDUNG',
-    institutionLine2: `PENGELOLA: ${project.clientName.toUpperCase()}`,
+    institutionLine1: 'PT RAJAWALI TALENTA INDONESIA',
+    institutionLine2: `MANAJEMEN OPERASIONAL KEBERSIHAN & FASILITAS GEDUNG • KLIEN: ${project.clientName.toUpperCase()}`,
     facilityName: project.name.toUpperCase(),
     addressLine1: `${project.address}, ${project.city}`,
-    contactLine: `Facility Management: ${project.managerName} | Gedung ${project.totalFloors} Lantai`,
+    contactLine: `Facility Management: ${project.managerName} | Gedung ${project.totalFloors} Lantai | Email: rajawalitalentaindonesia@gmail.com`,
   };
 };
 
@@ -922,7 +922,7 @@ export const exportMasterCleaningProgramToPDF = (
   doc.setFontSize(6.5);
   doc.setTextColor(80, 90, 105);
   doc.text(
-    `Keterangan Status Tanggal: [R] = Rencana Jadwal (Planned)   |   [S] = Selesai Dikerjakan (Done)   |   [P] = Sedang Dikerjakan (Progress)   |   [-] = Tidak Terjadwal`,
+    `Keterangan Status Tanggal: [R] = Rencana Jadwal (Planned)   |   [-] = Tidak Terjadwal`,
     marginX,
     40
   );
@@ -941,36 +941,21 @@ export const exportMasterCleaningProgramToPDF = (
     'Lokasi Area',
     'PIC',
     ...Array.from({ length: 31 }, (_, i) => (i + 1).toString()),
-    'Plan',
-    'Done',
-    '%',
+    'Total R',
   ];
 
   const tableRows = programs.map((prog, idx) => {
     let planCount = 0;
-    let doneCount = 0;
 
     const dayCells = Array.from({ length: 31 }, (_, i) => {
       const d = i + 1;
       const status = prog.days[d] || 'none';
-      if (status === 'planned') {
+      if (status === 'planned' || status === 'done' || status === 'in_progress' || status === 'rescheduled') {
         planCount++;
         return 'R';
-      } else if (status === 'done') {
-        planCount++;
-        doneCount++;
-        return 'S';
-      } else if (status === 'in_progress') {
-        planCount++;
-        return 'P';
-      } else if (status === 'rescheduled') {
-        planCount++;
-        return 'T';
       }
       return '-';
     });
-
-    const percent = planCount > 0 ? Math.round((doneCount / planCount) * 100) : 100;
 
     return [
       (idx + 1).toString(),
@@ -980,27 +965,23 @@ export const exportMasterCleaningProgramToPDF = (
       prog.picName,
       ...dayCells,
       planCount.toString(),
-      doneCount.toString(),
-      `${percent}%`,
     ];
   });
 
   const columnStyles: Record<number, any> = {
     0: { cellWidth: 7, halign: 'center', fontStyle: 'bold' }, // No
-    1: { cellWidth: 42 }, // Uraian
-    2: { cellWidth: 42 }, // Metode
-    3: { cellWidth: 26 }, // Lokasi
-    4: { cellWidth: 16 }, // PIC
+    1: { cellWidth: 46 }, // Uraian
+    2: { cellWidth: 46 }, // Metode
+    3: { cellWidth: 28 }, // Lokasi
+    4: { cellWidth: 18 }, // PIC
   };
 
   // Assign width for each of the 31 day columns (approx 3.7mm each)
   for (let i = 5; i <= 35; i++) {
     columnStyles[i] = { cellWidth: 3.7, halign: 'center', fontSize: 5.5 };
   }
-  // Total summary columns
-  columnStyles[36] = { cellWidth: 8, halign: 'center', fontSize: 6 }; // Plan
-  columnStyles[37] = { cellWidth: 8, halign: 'center', fontSize: 6, fontStyle: 'bold' }; // Done
-  columnStyles[38] = { cellWidth: 9, halign: 'center', fontSize: 6, fontStyle: 'bold' }; // %
+  // Total summary column
+  columnStyles[36] = { cellWidth: 12, halign: 'center', fontSize: 6, fontStyle: 'bold' }; // Total R
 
   autoTable(doc, {
     startY: 43,
@@ -1028,28 +1009,12 @@ export const exportMasterCleaningProgramToPDF = (
       // Colorize day status cells
       if (data.section === 'body' && data.column.index >= 5 && data.column.index <= 35) {
         const text = data.cell.text[0];
-        if (text === 'S') {
-          doc.setFillColor(220, 252, 231); // light green
-          doc.rect(data.cell.x, data.cell.y, data.cell.width, data.cell.height, 'F');
-          doc.setTextColor(21, 128, 61);
-          doc.setFont('helvetica', 'bold');
-          doc.text('S', data.cell.x + data.cell.width / 2, data.cell.y + data.cell.height / 2 + 1, {
-            align: 'center',
-          });
-        } else if (text === 'R') {
+        if (text === 'R') {
           doc.setFillColor(224, 242, 254); // light sky
           doc.rect(data.cell.x, data.cell.y, data.cell.width, data.cell.height, 'F');
           doc.setTextColor(3, 105, 161);
           doc.setFont('helvetica', 'bold');
           doc.text('R', data.cell.x + data.cell.width / 2, data.cell.y + data.cell.height / 2 + 1, {
-            align: 'center',
-          });
-        } else if (text === 'P') {
-          doc.setFillColor(254, 243, 199); // light amber
-          doc.rect(data.cell.x, data.cell.y, data.cell.width, data.cell.height, 'F');
-          doc.setTextColor(180, 83, 9);
-          doc.setFont('helvetica', 'bold');
-          doc.text('P', data.cell.x + data.cell.width / 2, data.cell.y + data.cell.height / 2 + 1, {
             align: 'center',
           });
         }
@@ -1121,5 +1086,901 @@ export const exportMasterCleaningProgramToPDF = (
 
   const cleanProject = project.name.replace(/[^a-zA-Z0-9]/g, '_');
   doc.save(`Master_Cleaning_Program_${cleanProject}_${year}_${month}.pdf`);
+};
+
+// ==========================================
+// 4. EXPORT DAILY ACTIVITY TO PDF
+// ==========================================
+
+export interface ExportDailyActivityPDFOptions {
+  programs: MasterCleaningProgramItem[];
+  project: ProjectLocation;
+  day: number;
+  month: number;
+  year: number;
+  kopSurat?: KopSuratConfig;
+}
+
+export const exportDailyActivityToPDF = (
+  options: ExportDailyActivityPDFOptions
+): void => {
+  const {
+    programs,
+    project,
+    day,
+    month,
+    year,
+    kopSurat = getProjectKop(project),
+  } = options;
+
+  const monthNames = [
+    'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
+    'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember',
+  ];
+  const monthName = monthNames[month - 1] || 'Bulan';
+
+  const doc = new jsPDF({
+    orientation: 'landscape',
+    unit: 'mm',
+    format: 'a4',
+  });
+
+  const pageWidth = doc.internal.pageSize.getWidth(); // 297mm
+  const pageHeight = doc.internal.pageSize.getHeight(); // 210mm
+  const marginX = 14;
+  const usableWidth = pageWidth - marginX * 2;
+
+  // 1. KOP SURAT
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(11);
+  doc.setTextColor(15, 45, 95);
+  doc.text(kopSurat.institutionLine1, pageWidth / 2, 12, { align: 'center' });
+
+  doc.setFontSize(8.5);
+  doc.setTextColor(30, 41, 59);
+  doc.text(kopSurat.institutionLine2, pageWidth / 2, 16.5, { align: 'center' });
+
+  doc.setFontSize(12);
+  doc.setTextColor(10, 30, 75);
+  doc.text(kopSurat.facilityName, pageWidth / 2, 21.5, { align: 'center' });
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(7);
+  doc.setTextColor(71, 85, 105);
+  doc.text(
+    `${kopSurat.addressLine1}  |  ${kopSurat.contactLine}`,
+    pageWidth / 2,
+    25.5,
+    { align: 'center' }
+  );
+
+  // Double horizontal rule under Kop
+  doc.setDrawColor(15, 45, 95);
+  doc.setLineWidth(0.75);
+  doc.line(marginX, 28, pageWidth - marginX, 28);
+  doc.setLineWidth(0.25);
+  doc.line(marginX, 29, pageWidth - marginX, 29);
+
+  // 2. DOCUMENT TITLE
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(12.5);
+  doc.setTextColor(15, 35, 80);
+  doc.text('FORMULIR LAPORAN DAILY ACTIVITY (HARIAN)', pageWidth / 2, 36, {
+    align: 'center',
+  });
+
+  doc.setFontSize(9);
+  doc.setTextColor(51, 65, 85);
+  doc.text(
+    `TANGGAL : ${day} ${monthName.toUpperCase()} ${year}   •   SITE : ${project.name.toUpperCase()} (${project.city.toUpperCase()})`,
+    pageWidth / 2,
+    41,
+    { align: 'center' }
+  );
+
+  // Count statuses for this day
+  let countR = 0;
+  let countP = 0;
+  let countT = 0;
+  let countS = 0;
+  let countNone = 0;
+
+  programs.forEach((p) => {
+    const st = p.days[day] || 'none';
+    if (st === 'planned') countR++;
+    else if (st === 'in_progress') countP++;
+    else if (st === 'rescheduled') countT++;
+    else if (st === 'done') countS++;
+    else countNone++;
+  });
+
+  // 3. SUMMARY & LEGEND INFO BAR
+  doc.setFillColor(248, 250, 252);
+  doc.setDrawColor(226, 232, 240);
+  doc.roundedRect(marginX, 45, usableWidth, 9, 1.5, 1.5, 'FD');
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(7.5);
+  doc.setTextColor(30, 41, 59);
+  doc.text(
+    `Total Kegiatan: ${programs.length}   |   [R] Rencana: ${countR}   |   [P] Progres: ${countP}   |   [T] Tunda: ${countT}   |   [S] Selesai: ${countS}   |   [-] Off: ${countNone}`,
+    marginX + 4,
+    50.5
+  );
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(7);
+  doc.setTextColor(100, 116, 139);
+  doc.text(
+    `Klien: ${project.clientName}   •   Dicetak: ${new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}`,
+    pageWidth - marginX - 4,
+    50.5,
+    { align: 'right' }
+  );
+
+  // 4. TABLE
+  const headers = [
+    'No',
+    'Freq',
+    'Uraian Pekerjaan Harian',
+    'Lokasi / Area',
+    'Petugas PIC',
+    `Status Tgl ${day}`,
+    'Keterangan Pelaksanaan',
+  ];
+
+  const statusLabelMap: Record<string, string> = {
+    planned: 'R : Rencana (Planned)',
+    in_progress: 'P : Sedang Pengerjaan',
+    rescheduled: 'T : Tertunda / Dijadwal Ulang',
+    done: 'S : Selesai Dikerjakan',
+    none: '- : Tidak Terjadwal (Off)',
+  };
+
+  const statusCodeMap: Record<string, string> = {
+    planned: 'R',
+    in_progress: 'P',
+    rescheduled: 'T',
+    done: 'S',
+    none: '-',
+  };
+
+  const rows = programs.map((p, idx) => {
+    const st = p.days[day] || 'none';
+    return [
+      (idx + 1).toString(),
+      'D',
+      p.workDescription,
+      p.location,
+      p.picName,
+      statusCodeMap[st] || '-',
+      statusLabelMap[st] || '-',
+    ];
+  });
+
+  autoTable(doc, {
+    startY: 57,
+    margin: { left: marginX, right: marginX },
+    head: [headers],
+    body: rows,
+    theme: 'grid',
+    styles: {
+      fontSize: 7.5,
+      cellPadding: 2,
+      valign: 'middle',
+      textColor: [30, 41, 59],
+      lineColor: [203, 213, 225],
+      lineWidth: 0.2,
+    },
+    headStyles: {
+      fillColor: [29, 78, 216], // Blue 700
+      textColor: [255, 255, 255],
+      fontStyle: 'bold',
+      fontSize: 8,
+      halign: 'center',
+    },
+    columnStyles: {
+      0: { cellWidth: 10, halign: 'center', fontStyle: 'bold' },
+      1: { cellWidth: 14, halign: 'center', fontStyle: 'bold' },
+      2: { cellWidth: 105 },
+      3: { cellWidth: 45 },
+      4: { cellWidth: 35 },
+      5: { cellWidth: 22, halign: 'center', fontStyle: 'bold' },
+      6: { cellWidth: 38 },
+    },
+    didDrawCell: (data) => {
+      if (data.section === 'body' && data.column.index === 5) {
+        const text = data.cell.text[0];
+        if (text === 'S') {
+          doc.setFillColor(220, 252, 231); // emerald
+          doc.rect(data.cell.x + 3, data.cell.y + 1.5, data.cell.width - 6, data.cell.height - 3, 'F');
+          doc.setTextColor(21, 128, 61);
+          doc.setFont('helvetica', 'bold');
+          doc.text('S', data.cell.x + data.cell.width / 2, data.cell.y + data.cell.height / 2 + 1.2, {
+            align: 'center',
+          });
+        } else if (text === 'R') {
+          doc.setFillColor(224, 242, 254); // sky
+          doc.rect(data.cell.x + 3, data.cell.y + 1.5, data.cell.width - 6, data.cell.height - 3, 'F');
+          doc.setTextColor(3, 105, 161);
+          doc.setFont('helvetica', 'bold');
+          doc.text('R', data.cell.x + data.cell.width / 2, data.cell.y + data.cell.height / 2 + 1.2, {
+            align: 'center',
+          });
+        } else if (text === 'P') {
+          doc.setFillColor(254, 243, 199); // amber
+          doc.rect(data.cell.x + 3, data.cell.y + 1.5, data.cell.width - 6, data.cell.height - 3, 'F');
+          doc.setTextColor(180, 83, 9);
+          doc.setFont('helvetica', 'bold');
+          doc.text('P', data.cell.x + data.cell.width / 2, data.cell.y + data.cell.height / 2 + 1.2, {
+            align: 'center',
+          });
+        } else if (text === 'T') {
+          doc.setFillColor(255, 228, 230); // rose
+          doc.rect(data.cell.x + 3, data.cell.y + 1.5, data.cell.width - 6, data.cell.height - 3, 'F');
+          doc.setTextColor(190, 18, 60);
+          doc.setFont('helvetica', 'bold');
+          doc.text('T', data.cell.x + data.cell.width / 2, data.cell.y + data.cell.height / 2 + 1.2, {
+            align: 'center',
+          });
+        }
+      }
+    },
+  });
+
+  // 5. SIGNATURES
+  // @ts-ignore
+  let finalY = (doc as any).lastAutoTable?.finalY || 130;
+  if (finalY > pageHeight - 38) {
+    doc.addPage();
+    finalY = 22;
+  } else {
+    finalY += 8;
+  }
+
+  const colW = usableWidth / 3;
+  const sigY = finalY;
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(7.5);
+  doc.setTextColor(51, 65, 85);
+
+  doc.text('Dibuat Oleh,', marginX + colW * 0.5, sigY, { align: 'center' });
+  doc.text('Supervisor Cleaning Service', marginX + colW * 0.5, sigY + 4, { align: 'center' });
+  doc.setFont('helvetica', 'bold');
+  doc.text('( Hendra Wijaya )', marginX + colW * 0.5, sigY + 19, { align: 'center' });
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(6.5);
+  doc.text('Operational Team', marginX + colW * 0.5, sigY + 22.5, { align: 'center' });
+
+  doc.setFontSize(7.5);
+  doc.text('Diverifikasi Oleh,', marginX + colW * 1.5, sigY, { align: 'center' });
+  doc.text('Quality Control (QC)', marginX + colW * 1.5, sigY + 4, { align: 'center' });
+  doc.setFont('helvetica', 'bold');
+  doc.text('( Agus Prasetyo )', marginX + colW * 1.5, sigY + 19, { align: 'center' });
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(6.5);
+  doc.text('Facility QC Inspector', marginX + colW * 1.5, sigY + 22.5, { align: 'center' });
+
+  doc.setFontSize(7.5);
+  doc.text('Disetujui Oleh,', marginX + colW * 2.5, sigY, { align: 'center' });
+  doc.text('Building Management / Klien', marginX + colW * 2.5, sigY + 4, { align: 'center' });
+  doc.setFont('helvetica', 'bold');
+  doc.text(`( ${project.managerName} )`, marginX + colW * 2.5, sigY + 19, { align: 'center' });
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(6.5);
+  doc.text(`Pengelola ${project.name}`, marginX + colW * 2.5, sigY + 22.5, { align: 'center' });
+
+  // Running Footer
+  const totalPages = doc.getNumberOfPages();
+  for (let p = 1; p <= totalPages; p++) {
+    doc.setPage(p);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(6);
+    doc.setTextColor(148, 163, 184);
+    doc.text(
+      `Dokumen Resmi Daily Activity  •  PT Rajawali Talenta Indonesia  •  ${project.name}  •  Tgl ${day} ${monthName} ${year}  •  Halaman ${p} dari ${totalPages}`,
+      pageWidth / 2,
+      pageHeight - 6,
+      { align: 'center' }
+    );
+  }
+
+  const cleanProject = project.name.replace(/[^a-zA-Z0-9]/g, '_');
+  doc.save(`Daily_Activity_${cleanProject}_${year}_${month}_${day}.pdf`);
+};
+
+// ==========================================
+// 5. EXPORT WEEKLY ACTIVITY TO PDF
+// ==========================================
+
+export interface ExportWeeklyActivityPDFOptions {
+  programs: MasterCleaningProgramItem[];
+  project: ProjectLocation;
+  selectedWeek: number;
+  startDay: number;
+  endDay: number;
+  month: number;
+  year: number;
+  kopSurat?: KopSuratConfig;
+}
+
+export const exportWeeklyActivityToPDF = (
+  options: ExportWeeklyActivityPDFOptions
+): void => {
+  const {
+    programs,
+    project,
+    selectedWeek,
+    startDay,
+    endDay,
+    month,
+    year,
+    kopSurat = getProjectKop(project),
+  } = options;
+
+  const monthNames = [
+    'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
+    'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember',
+  ];
+  const monthName = monthNames[month - 1] || 'Bulan';
+
+  const doc = new jsPDF({
+    orientation: 'landscape',
+    unit: 'mm',
+    format: 'a4',
+  });
+
+  const pageWidth = doc.internal.pageSize.getWidth(); // 297mm
+  const pageHeight = doc.internal.pageSize.getHeight(); // 210mm
+  const marginX = 12;
+  const usableWidth = pageWidth - marginX * 2;
+
+  // 1. KOP SURAT
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(11);
+  doc.setTextColor(88, 28, 135); // Purple 900
+  doc.text(kopSurat.institutionLine1, pageWidth / 2, 12, { align: 'center' });
+
+  doc.setFontSize(8.5);
+  doc.setTextColor(30, 41, 59);
+  doc.text(kopSurat.institutionLine2, pageWidth / 2, 16.5, { align: 'center' });
+
+  doc.setFontSize(12);
+  doc.setTextColor(59, 7, 100);
+  doc.text(kopSurat.facilityName, pageWidth / 2, 21.5, { align: 'center' });
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(7);
+  doc.setTextColor(71, 85, 105);
+  doc.text(
+    `${kopSurat.addressLine1}  |  ${kopSurat.contactLine}`,
+    pageWidth / 2,
+    25.5,
+    { align: 'center' }
+  );
+
+  // Line under kop
+  doc.setDrawColor(88, 28, 135);
+  doc.setLineWidth(0.75);
+  doc.line(marginX, 28, pageWidth - marginX, 28);
+  doc.setLineWidth(0.25);
+  doc.line(marginX, 29, pageWidth - marginX, 29);
+
+  // 2. DOCUMENT TITLE
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(12.5);
+  doc.setTextColor(76, 29, 149);
+  doc.text('FORMULIR LAPORAN WEEKLY ACTIVITY (MINGGUAN)', pageWidth / 2, 36, {
+    align: 'center',
+  });
+
+  doc.setFontSize(8.5);
+  doc.setTextColor(51, 65, 85);
+  doc.text(
+    `PERIODE: MINGGU KE-${selectedWeek} (TANGGAL ${startDay} - ${endDay} ${monthName.toUpperCase()} ${year})   •   SITE: ${project.name.toUpperCase()}`,
+    pageWidth / 2,
+    41,
+    { align: 'center' }
+  );
+
+  // 3. SUMMARY & LEGEND INFO
+  doc.setFillColor(250, 245, 255); // light purple
+  doc.setDrawColor(233, 213, 255);
+  doc.roundedRect(marginX, 45, usableWidth, 9, 1.5, 1.5, 'FD');
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(7.5);
+  doc.setTextColor(76, 29, 149);
+  doc.text(
+    `Keterangan Status: [R] = Rencana  |  [P] = Progres  |  [T] = Tunda  |  [S] = Selesai  |  [-] = Tidak Terjadwal`,
+    marginX + 4,
+    50.5
+  );
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(7);
+  doc.setTextColor(100, 116, 139);
+  doc.text(
+    `Total Kegiatan: ${programs.length}   •   Klien: ${project.clientName}`,
+    pageWidth - marginX - 4,
+    50.5,
+    { align: 'right' }
+  );
+
+  // Day columns in this week
+  const dayNumbers: number[] = [];
+  for (let d = startDay; d <= endDay; d++) {
+    dayNumbers.push(d);
+  }
+
+  const tableHeaders = [
+    'No',
+    'Uraian Pekerjaan Mingguan',
+    'Lokasi Area',
+    'PIC',
+    ...dayNumbers.map((d) => `Tgl ${d}`),
+    'R',
+    'P',
+    'T',
+    'S',
+  ];
+
+  const statusCodeMap: Record<string, string> = {
+    planned: 'R',
+    in_progress: 'P',
+    rescheduled: 'T',
+    done: 'S',
+    none: '-',
+  };
+
+  const tableRows = programs.map((p, idx) => {
+    let countR = 0;
+    let countP = 0;
+    let countT = 0;
+    let countS = 0;
+
+    const dayCells = dayNumbers.map((d) => {
+      const st = p.days[d] || 'none';
+      if (st === 'planned') countR++;
+      else if (st === 'in_progress') countP++;
+      else if (st === 'rescheduled') countT++;
+      else if (st === 'done') countS++;
+      return statusCodeMap[st] || '-';
+    });
+
+    return [
+      (idx + 1).toString(),
+      p.workDescription,
+      p.location,
+      p.picName,
+      ...dayCells,
+      countR.toString(),
+      countP.toString(),
+      countT.toString(),
+      countS.toString(),
+    ];
+  });
+
+  const dayColWidth = Math.max(9, Math.min(14, 80 / dayNumbers.length));
+
+  const colStyles: Record<number, any> = {
+    0: { cellWidth: 9, halign: 'center', fontStyle: 'bold' },
+    1: { cellWidth: 95 },
+    2: { cellWidth: 45 },
+    3: { cellWidth: 32 },
+  };
+
+  const dayStartIndex = 4;
+  const dayEndIndex = dayStartIndex + dayNumbers.length - 1;
+
+  for (let i = dayStartIndex; i <= dayEndIndex; i++) {
+    colStyles[i] = { cellWidth: dayColWidth, halign: 'center', fontStyle: 'bold' };
+  }
+
+  colStyles[dayEndIndex + 1] = { cellWidth: 9, halign: 'center', fontStyle: 'bold' }; // R
+  colStyles[dayEndIndex + 2] = { cellWidth: 9, halign: 'center', fontStyle: 'bold' }; // P
+  colStyles[dayEndIndex + 3] = { cellWidth: 9, halign: 'center', fontStyle: 'bold' }; // T
+  colStyles[dayEndIndex + 4] = { cellWidth: 9, halign: 'center', fontStyle: 'bold' }; // S
+
+  autoTable(doc, {
+    startY: 57,
+    margin: { left: marginX, right: marginX },
+    head: [tableHeaders],
+    body: tableRows,
+    theme: 'grid',
+    styles: {
+      fontSize: 7.2,
+      cellPadding: 1.8,
+      valign: 'middle',
+      textColor: [30, 41, 59],
+      lineColor: [216, 180, 254],
+      lineWidth: 0.18,
+    },
+    headStyles: {
+      fillColor: [126, 34, 206], // Purple 700
+      textColor: [255, 255, 255],
+      fontStyle: 'bold',
+      fontSize: 7.5,
+      halign: 'center',
+    },
+    columnStyles: colStyles,
+    didDrawCell: (data) => {
+      if (data.section === 'body' && data.column.index >= dayStartIndex && data.column.index <= dayEndIndex) {
+        const text = data.cell.text[0];
+        if (text === 'S') {
+          doc.setFillColor(220, 252, 231);
+          doc.rect(data.cell.x, data.cell.y, data.cell.width, data.cell.height, 'F');
+          doc.setTextColor(21, 128, 61);
+          doc.setFont('helvetica', 'bold');
+          doc.text('S', data.cell.x + data.cell.width / 2, data.cell.y + data.cell.height / 2 + 1, { align: 'center' });
+        } else if (text === 'R') {
+          doc.setFillColor(224, 242, 254);
+          doc.rect(data.cell.x, data.cell.y, data.cell.width, data.cell.height, 'F');
+          doc.setTextColor(3, 105, 161);
+          doc.setFont('helvetica', 'bold');
+          doc.text('R', data.cell.x + data.cell.width / 2, data.cell.y + data.cell.height / 2 + 1, { align: 'center' });
+        } else if (text === 'P') {
+          doc.setFillColor(254, 243, 199);
+          doc.rect(data.cell.x, data.cell.y, data.cell.width, data.cell.height, 'F');
+          doc.setTextColor(180, 83, 9);
+          doc.setFont('helvetica', 'bold');
+          doc.text('P', data.cell.x + data.cell.width / 2, data.cell.y + data.cell.height / 2 + 1, { align: 'center' });
+        } else if (text === 'T') {
+          doc.setFillColor(255, 228, 230);
+          doc.rect(data.cell.x, data.cell.y, data.cell.width, data.cell.height, 'F');
+          doc.setTextColor(190, 18, 60);
+          doc.setFont('helvetica', 'bold');
+          doc.text('T', data.cell.x + data.cell.width / 2, data.cell.y + data.cell.height / 2 + 1, { align: 'center' });
+        }
+      }
+    },
+  });
+
+  // 5. SIGNATURES
+  // @ts-ignore
+  let finalY = (doc as any).lastAutoTable?.finalY || 130;
+  if (finalY > pageHeight - 38) {
+    doc.addPage();
+    finalY = 22;
+  } else {
+    finalY += 8;
+  }
+
+  const colW = usableWidth / 3;
+  const sigY = finalY;
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(7.5);
+  doc.setTextColor(51, 65, 85);
+
+  doc.text('Dibuat Oleh,', marginX + colW * 0.5, sigY, { align: 'center' });
+  doc.text('Supervisor Cleaning Service', marginX + colW * 0.5, sigY + 4, { align: 'center' });
+  doc.setFont('helvetica', 'bold');
+  doc.text('( Hendra Wijaya )', marginX + colW * 0.5, sigY + 19, { align: 'center' });
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(6.5);
+  doc.text('Operational Team', marginX + colW * 0.5, sigY + 22.5, { align: 'center' });
+
+  doc.setFontSize(7.5);
+  doc.text('Diverifikasi Oleh,', marginX + colW * 1.5, sigY, { align: 'center' });
+  doc.text('Quality Control (QC)', marginX + colW * 1.5, sigY + 4, { align: 'center' });
+  doc.setFont('helvetica', 'bold');
+  doc.text('( Agus Prasetyo )', marginX + colW * 1.5, sigY + 19, { align: 'center' });
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(6.5);
+  doc.text('Facility QC Inspector', marginX + colW * 1.5, sigY + 22.5, { align: 'center' });
+
+  doc.setFontSize(7.5);
+  doc.text('Disetujui Oleh,', marginX + colW * 2.5, sigY, { align: 'center' });
+  doc.text('Building Management / Klien', marginX + colW * 2.5, sigY + 4, { align: 'center' });
+  doc.setFont('helvetica', 'bold');
+  doc.text(`( ${project.managerName} )`, marginX + colW * 2.5, sigY + 19, { align: 'center' });
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(6.5);
+  doc.text(`Pengelola ${project.name}`, marginX + colW * 2.5, sigY + 22.5, { align: 'center' });
+
+  // Running Footer
+  const totalPages = doc.getNumberOfPages();
+  for (let p = 1; p <= totalPages; p++) {
+    doc.setPage(p);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(6);
+    doc.setTextColor(148, 163, 184);
+    doc.text(
+      `Dokumen Resmi Weekly Activity  •  PT Rajawali Talenta Indonesia  •  ${project.name}  •  Minggu ${selectedWeek} (${monthName} ${year})  •  Halaman ${p} dari ${totalPages}`,
+      pageWidth / 2,
+      pageHeight - 6,
+      { align: 'center' }
+    );
+  }
+
+  const cleanProject = project.name.replace(/[^a-zA-Z0-9]/g, '_');
+  doc.save(`Weekly_Activity_${cleanProject}_${year}_${month}_W${selectedWeek}.pdf`);
+};
+
+// ==========================================
+// 6. EXPORT MONTHLY ACTIVITY TO PDF
+// ==========================================
+
+export interface ExportMonthlyActivityPDFOptions {
+  programs: MasterCleaningProgramItem[];
+  project: ProjectLocation;
+  month: number;
+  year: number;
+  kopSurat?: KopSuratConfig;
+}
+
+export const exportMonthlyActivityToPDF = (
+  options: ExportMonthlyActivityPDFOptions
+): void => {
+  const {
+    programs,
+    project,
+    month,
+    year,
+    kopSurat = getProjectKop(project),
+  } = options;
+
+  const monthNames = [
+    'JANUARI', 'FEBRUARI', 'MARET', 'APRIL', 'MEI', 'JUNI',
+    'JULI', 'AGUSTUS', 'SEPTEMBER', 'OKTOBER', 'NOVEMBER', 'DESEMBER',
+  ];
+  const monthName = monthNames[month - 1] || 'BULANAN';
+  const daysInMonth = new Date(year, month, 0).getDate();
+
+  const doc = new jsPDF({
+    orientation: 'landscape',
+    unit: 'mm',
+    format: 'a4',
+  });
+
+  const pageWidth = doc.internal.pageSize.getWidth(); // 297mm
+  const pageHeight = doc.internal.pageSize.getHeight(); // 210mm
+  const marginX = 10;
+  const usableWidth = pageWidth - marginX * 2;
+
+  // 1. KOP SURAT
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(10);
+  doc.setTextColor(180, 83, 9); // Amber 700
+  doc.text(kopSurat.institutionLine1, pageWidth / 2, 10, { align: 'center' });
+
+  doc.setFontSize(8.5);
+  doc.setTextColor(30, 41, 59);
+  doc.text(kopSurat.institutionLine2, pageWidth / 2, 14, { align: 'center' });
+
+  doc.setFontSize(11);
+  doc.setTextColor(120, 53, 15);
+  doc.text(kopSurat.facilityName, pageWidth / 2, 18.5, { align: 'center' });
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(7);
+  doc.setTextColor(71, 85, 105);
+  doc.text(
+    `${kopSurat.addressLine1}  |  ${kopSurat.contactLine}`,
+    pageWidth / 2,
+    22.5,
+    { align: 'center' }
+  );
+
+  // Line under kop
+  doc.setDrawColor(180, 83, 9);
+  doc.setLineWidth(0.65);
+  doc.line(marginX, 25, pageWidth - marginX, 25);
+
+  // 2. DOCUMENT TITLE
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(11.5);
+  doc.setTextColor(146, 64, 14);
+  doc.text('FORMULIR LAPORAN MONTHLY ACTIVITY (BULANAN)', pageWidth / 2, 31, {
+    align: 'center',
+  });
+
+  doc.setFontSize(8);
+  doc.setTextColor(51, 65, 85);
+  doc.text(
+    `PERIODE: ${monthName} ${year}   •   LOKASI SITE: ${project.name.toUpperCase()} (${project.city.toUpperCase()})`,
+    pageWidth / 2,
+    35.5,
+    { align: 'center' }
+  );
+
+  // 3. SUBTITLE / LEGEND INFO
+  doc.setFontSize(6.5);
+  doc.setTextColor(71, 85, 105);
+  doc.text(
+    `Keterangan Status: [R] = Rencana  |  [P] = Progres  |  [T] = Tunda  |  [S] = Selesai  |  [-] = Tidak Terjadwal`,
+    marginX,
+    40
+  );
+  doc.text(
+    `Total Kegiatan: ${programs.length}  •  Klien: ${project.clientName}  •  Manager: ${project.managerName}`,
+    pageWidth - marginX,
+    40,
+    { align: 'right' }
+  );
+
+  // 4. TABLE
+  const tableHeaders = [
+    'No',
+    'Uraian Pekerjaan Bulanan',
+    'Lokasi Area',
+    'PIC',
+    ...Array.from({ length: 31 }, (_, i) => (i + 1).toString()),
+    'R',
+    'P',
+    'T',
+    'S',
+  ];
+
+  const statusCodeMap: Record<string, string> = {
+    planned: 'R',
+    in_progress: 'P',
+    rescheduled: 'T',
+    done: 'S',
+    none: '-',
+  };
+
+  const tableRows = programs.map((p, idx) => {
+    let countR = 0;
+    let countP = 0;
+    let countT = 0;
+    let countS = 0;
+
+    const dayCells = Array.from({ length: 31 }, (_, i) => {
+      const d = i + 1;
+      if (d > daysInMonth) return '-';
+      const st = p.days[d] || 'none';
+      if (st === 'planned') countR++;
+      else if (st === 'in_progress') countP++;
+      else if (st === 'rescheduled') countT++;
+      else if (st === 'done') countS++;
+      return statusCodeMap[st] || '-';
+    });
+
+    return [
+      (idx + 1).toString(),
+      p.workDescription,
+      p.location,
+      p.picName,
+      ...dayCells,
+      countR.toString(),
+      countP.toString(),
+      countT.toString(),
+      countS.toString(),
+    ];
+  });
+
+  const columnStyles: Record<number, any> = {
+    0: { cellWidth: 7, halign: 'center', fontStyle: 'bold' },
+    1: { cellWidth: 60 },
+    2: { cellWidth: 32 },
+    3: { cellWidth: 20 },
+  };
+
+  for (let i = 4; i <= 34; i++) {
+    columnStyles[i] = { cellWidth: 3.8, halign: 'center', fontSize: 5.5, fontStyle: 'bold' };
+  }
+
+  columnStyles[35] = { cellWidth: 7, halign: 'center', fontSize: 5.5, fontStyle: 'bold' }; // R
+  columnStyles[36] = { cellWidth: 7, halign: 'center', fontSize: 5.5, fontStyle: 'bold' }; // P
+  columnStyles[37] = { cellWidth: 7, halign: 'center', fontSize: 5.5, fontStyle: 'bold' }; // T
+  columnStyles[38] = { cellWidth: 7, halign: 'center', fontSize: 5.5, fontStyle: 'bold' }; // S
+
+  autoTable(doc, {
+    startY: 43,
+    margin: { left: marginX, right: marginX },
+    head: [tableHeaders],
+    body: tableRows,
+    theme: 'grid',
+    styles: {
+      fontSize: 5.8,
+      cellPadding: 1.1,
+      valign: 'middle',
+      textColor: [30, 41, 59],
+      lineColor: [253, 230, 138],
+      lineWidth: 0.15,
+    },
+    headStyles: {
+      fillColor: [180, 83, 9], // Amber 700
+      textColor: [255, 255, 255],
+      fontStyle: 'bold',
+      fontSize: 5.8,
+      halign: 'center',
+    },
+    columnStyles,
+    didDrawCell: (data) => {
+      if (data.section === 'body' && data.column.index >= 4 && data.column.index <= 34) {
+        const text = data.cell.text[0];
+        if (text === 'S') {
+          doc.setFillColor(220, 252, 231);
+          doc.rect(data.cell.x, data.cell.y, data.cell.width, data.cell.height, 'F');
+          doc.setTextColor(21, 128, 61);
+          doc.setFont('helvetica', 'bold');
+          doc.text('S', data.cell.x + data.cell.width / 2, data.cell.y + data.cell.height / 2 + 1, { align: 'center' });
+        } else if (text === 'R') {
+          doc.setFillColor(224, 242, 254);
+          doc.rect(data.cell.x, data.cell.y, data.cell.width, data.cell.height, 'F');
+          doc.setTextColor(3, 105, 161);
+          doc.setFont('helvetica', 'bold');
+          doc.text('R', data.cell.x + data.cell.width / 2, data.cell.y + data.cell.height / 2 + 1, { align: 'center' });
+        } else if (text === 'P') {
+          doc.setFillColor(254, 243, 199);
+          doc.rect(data.cell.x, data.cell.y, data.cell.width, data.cell.height, 'F');
+          doc.setTextColor(180, 83, 9);
+          doc.setFont('helvetica', 'bold');
+          doc.text('P', data.cell.x + data.cell.width / 2, data.cell.y + data.cell.height / 2 + 1, { align: 'center' });
+        } else if (text === 'T') {
+          doc.setFillColor(255, 228, 230);
+          doc.rect(data.cell.x, data.cell.y, data.cell.width, data.cell.height, 'F');
+          doc.setTextColor(190, 18, 60);
+          doc.setFont('helvetica', 'bold');
+          doc.text('T', data.cell.x + data.cell.width / 2, data.cell.y + data.cell.height / 2 + 1, { align: 'center' });
+        }
+      }
+    },
+  });
+
+  // 5. SIGNATURES
+  // @ts-ignore
+  let finalY = (doc as any).lastAutoTable?.finalY || 135;
+  if (finalY > pageHeight - 35) {
+    doc.addPage();
+    finalY = 20;
+  } else {
+    finalY += 6;
+  }
+
+  const colW = usableWidth / 3;
+  const sigY = finalY;
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(7);
+  doc.setTextColor(40, 45, 55);
+
+  doc.text('Dibuat Oleh,', marginX + colW * 0.5, sigY, { align: 'center' });
+  doc.text('Supervisor Cleaning Service', marginX + colW * 0.5, sigY + 3.5, { align: 'center' });
+  doc.setFont('helvetica', 'bold');
+  doc.text('( Hendra Wijaya )', marginX + colW * 0.5, sigY + 18, { align: 'center' });
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(6);
+  doc.text('Operational Team', marginX + colW * 0.5, sigY + 21, { align: 'center' });
+
+  doc.setFontSize(7);
+  doc.text('Diverifikasi Oleh,', marginX + colW * 1.5, sigY, { align: 'center' });
+  doc.text('Quality Control (QC)', marginX + colW * 1.5, sigY + 3.5, { align: 'center' });
+  doc.setFont('helvetica', 'bold');
+  doc.text('( Agus Prasetyo )', marginX + colW * 1.5, sigY + 18, { align: 'center' });
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(6);
+  doc.text('Facility QC Inspector', marginX + colW * 1.5, sigY + 21, { align: 'center' });
+
+  doc.setFontSize(7);
+  doc.text('Disetujui Oleh,', marginX + colW * 2.5, sigY, { align: 'center' });
+  doc.text('Building Management / Klien', marginX + colW * 2.5, sigY + 3.5, { align: 'center' });
+  doc.setFont('helvetica', 'bold');
+  doc.text(`( ${project.managerName} )`, marginX + colW * 2.5, sigY + 18, { align: 'center' });
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(6);
+  doc.text(`Pengelola ${project.name}`, marginX + colW * 2.5, sigY + 21, { align: 'center' });
+
+  // Running footer
+  const totalPages = doc.getNumberOfPages();
+  for (let p = 1; p <= totalPages; p++) {
+    doc.setPage(p);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(6);
+    doc.setTextColor(140, 150, 160);
+    doc.text(
+      `Dokumen Resmi Monthly Activity  •  PT Rajawali Talenta Indonesia  •  ${project.name}  •  Periode ${monthName} ${year}  •  Halaman ${p} dari ${totalPages}`,
+      pageWidth / 2,
+      pageHeight - 6,
+      { align: 'center' }
+    );
+  }
+
+  const cleanProject = project.name.replace(/[^a-zA-Z0-9]/g, '_');
+  doc.save(`Monthly_Activity_${cleanProject}_${year}_${month}.pdf`);
 };
 
