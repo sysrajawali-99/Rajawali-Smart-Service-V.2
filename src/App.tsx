@@ -18,6 +18,7 @@ import { MasterCleaningProgramView } from './components/web/MasterCleaningProgra
 import { DailyActivityView } from './components/web/DailyActivityView';
 import { WeeklyActivityView } from './components/web/WeeklyActivityView';
 import { MonthlyActivityView } from './components/web/MonthlyActivityView';
+import { DamageReportView } from './components/web/DamageReportView';
 import { MobileAppView } from './components/mobile/MobileAppView';
 
 const MainLayout: React.FC = () => {
@@ -54,6 +55,9 @@ const MainLayout: React.FC = () => {
         return <InspeksiControlView />;
       case 'complaint':
         return <ComplaintView />;
+      case 'kerusakan':
+      case 'damage-report':
+        return <DamageReportView />;
       case 'report':
         return <LaporanReportView />;
       case 'pengaturan':

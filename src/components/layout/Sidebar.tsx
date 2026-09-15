@@ -15,6 +15,7 @@ import {
   Settings,
   Building2,
   ClipboardList,
+  Wrench,
 } from 'lucide-react';
 import { useCleaning } from '../../context/CleaningContext';
 
@@ -22,6 +23,8 @@ interface MenuItem {
   id: string;
   label: string;
   icon: React.ComponentType<{ className?: string }>;
+  badge?: number;
+  badgeColor?: string;
   rolesAllowed?: string[];
 }
 
@@ -32,7 +35,13 @@ export const Sidebar: React.FC = () => {
     userRole,
     activeProject,
     currentUser,
+    complaints,
+    damageReports,
   } = useCleaning();
+
+  const pendingDamageCount = damageReports.filter(
+    (r) => r.status === 'dilaporkan' || r.status === 'dalam_penanganan'
+  ).length;
 
   const menuItems: MenuItem[] = [
     {
@@ -101,6 +110,13 @@ export const Sidebar: React.FC = () => {
       icon: AlertCircle,
     },
     {
+      id: 'kerusakan',
+      label: 'Laporan Kerusakan Fasilitas',
+      icon: Wrench,
+      badge: pendingDamageCount > 0 ? pendingDamageCount : undefined,
+      badgeColor: 'bg-rose-600 text-white',
+    },
+    {
       id: 'proyek',
       label: 'Lokasi Proyek',
       icon: Building2,
@@ -163,6 +179,15 @@ export const Sidebar: React.FC = () => {
                 />
                 <span className="truncate">{item.label}</span>
               </div>
+              {item.badge !== undefined && item.badge > 0 && (
+                <span
+                  className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full shrink-0 ${
+                    item.badgeColor || 'bg-rose-500 text-white'
+                  }`}
+                >
+                  {item.badge}
+                </span>
+              )}
             </button>
           );
         })}

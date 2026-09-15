@@ -323,3 +323,55 @@ export interface MasterCleaningProgramItem {
   updatedAt?: string;
 }
 
+export type DamageCategory =
+  | 'sanitair'
+  | 'elektrikal'
+  | 'mekanikal'
+  | 'sipil_arsitektur'
+  | 'furniture_interior'
+  | 'eskalator_lift'
+  | 'alat_kerja'
+  | 'lainnya';
+
+export type DamageSeverity = 'ringan' | 'sedang' | 'berat' | 'kritis';
+
+export type DamageReportStatus =
+  | 'dilaporkan'
+  | 'dalam_penanganan'
+  | 'menunggu_sparepart'
+  | 'selesai'
+  | 'ditolak';
+
+export interface FacilityDamageReport {
+  id: string;
+  projectId?: string;
+  ticketNo: string; // e.g. "DMG-2026-001"
+  itemName: string; // Nama Barang / Fasilitas Rusak
+  category: DamageCategory;
+  areaId?: string;
+  locationName: string; // Lokasi / Ruangan (e.g. "Toilet Zona A Pria", "Eskalator A", "Lobby Utama")
+  floor: string; // e.g. "Lantai GF", "Lantai 1", "Lantai 2"
+  zone?: string; // e.g. "Zona A Sanitair", "Sirkulasi Vertikal"
+  damageLevel: DamageSeverity; // ringan | sedang | berat | kritis
+  chronology: string; // Kronologi kejadian & rincian kerusakan
+  impact: string; // Dampak kerusakan terhadap kenyamanan/keamanan operasional
+  actionTaken: string; // Tindakan awal / darurat yang sudah diambil petugas
+  status: DamageReportStatus; // dilaporkan | dalam_penanganan | menunggu_sparepart | selesai | ditolak
+  reportDate: string; // e.g. "2026-09-15"
+  reportTime?: string; // e.g. "08:30 WIB"
+  reporterName: string; // Nama Pelapor (Petugas / Pengawas)
+  reporterRole?: string; // e.g. "Petugas Kebersihan", "Supervisor Operasional"
+  reporterPhone?: string; // e.g. "0812-3456-7890"
+  targetDepartment: string; // e.g. "Building Management & Engineering (MEP)", "General Affair / Pengadaan", "Vendor Eskalator"
+  photoBefore?: string; // URL / Base64 foto kerusakan
+  photoAfter?: string; // URL / Base64 foto perbaikan selesai
+  repairedDate?: string; // Tanggal perbaikan selesai
+  repairedTime?: string; // Waktu perbaikan selesai
+  technicianName?: string; // Nama teknisi / pic penanganan
+  technicianNotes?: string; // Catatan teknisi / tindakan perbaikan permanen
+  costEstimate?: number; // Estimasi biaya perbaikan / penggantian sparepart (Rp)
+  priority: 'low' | 'medium' | 'high' | 'urgent';
+  createdAt?: string;
+  updatedAt?: string;
+}
+

@@ -23,6 +23,8 @@ import {
   MasterCleaningProgramItem,
   ProgramDayStatus,
   AttendanceStatusCode,
+  FacilityDamageReport,
+  DamageReportStatus,
 } from '../types';
 import { calculateShiftDuration } from '../utils/shiftUtils';
 import { normalizeFrequencyCode, getNextProgramDayStatus } from '../utils/mcpUtils';
@@ -41,6 +43,7 @@ import {
   INITIAL_CHECKLIST_LOCATIONS,
   INITIAL_DAILY_CHECKLISTS,
   INITIAL_MASTER_PROGRAMS,
+  INITIAL_DAMAGE_REPORTS,
   generate24HourSlots,
 } from '../data/initialData';
 import {
@@ -144,6 +147,22 @@ interface CleaningContextType {
   toggleMasterProgramDay: (programId: string, day: number, forcedStatus?: ProgramDayStatus) => void;
   batchSetMasterProgramDays: (programId: string, days: number[], status: ProgramDayStatus) => void;
   duplicateMasterProgram: (id: string) => void;
+
+  // Facility Damage Reports (Laporan Kerusakan Barang / Fasilitas)
+  damageReports: FacilityDamageReport[];
+  allDamageReports: FacilityDamageReport[];
+  addDamageReport: (report: Omit<FacilityDamageReport, 'id' | 'ticketNo' | 'createdAt'>) => void;
+  updateDamageReport: (id: string, updates: Partial<FacilityDamageReport>) => void;
+  deleteDamageReport: (id: string) => void;
+  resolveDamageReport: (
+    id: string,
+    resolutionPayload: {
+      technicianNotes?: string;
+      photoAfter?: string;
+      technicianName?: string;
+      costEstimate?: number;
+    }
+  ) => void;
 
   // Data (Filtered by active project location)
   areas: Area[];
@@ -516,7 +535,26 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }));
   });
 
+  const [damageReports, setDamageReports] = useState<FacilityDamageReport[]>(() => {
+    const saved = localStorage.getItem('sco_damage_reports');
+    if (saved) {
+      try {
+        const parsed: FacilityDamageReport[] = JSON.parse(saved);
+        const existingIds = new Set(parsed.map((r) => r.id));
+        const missingInitials = INITIAL_DAMAGE_REPORTS.filter((r) => !existingIds.has(r.id));
+        return [...parsed, ...missingInitials];
+      } catch (e) {
+        console.error('Failed to parse damage reports', e);
+      }
+    }
+    return INITIAL_DAMAGE_REPORTS;
+  });
+
   // Synchronize localStorage
+  useEffect(() => {
+    localStorage.setItem('sco_damage_reports', JSON.stringify(damageReports));
+  }, [damageReports]);
+
   useEffect(() => {
     localStorage.setItem('sco_master_programs', JSON.stringify(masterPrograms));
   }, [masterPrograms]);
@@ -947,6 +985,9 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   );
   const filteredMasterPrograms = masterPrograms.filter(
     (m) => !m.projectId || m.projectId === safeActiveProjectId
+  );
+  const filteredDamageReports = damageReports.filter(
+    (r) => !r.projectId || r.projectId === safeActiveProjectId
   );
 
   const addMasterProgram = (item: Omit<MasterCleaningProgramItem, 'id' | 'createdAt' | 'updatedAt'>) => {
@@ -1399,6 +1440,104 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     );
   };
 
+  // Facility Damage Reports (Laporan Kerusakan Barang / Fasilitas)
+  const addDamageReport = (report: Omit<FacilityDamageReport, 'id' | 'ticketNo' | 'createdAt'>) => {
+    const now = new Date();
+    const nowStr = now.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB';
+    const dateStr = report.reportDate || now.toISOString().split('T')[0];
+    const ticketNo = `DMG-${now.getFullYear()}-${String(damageReports.length + 1).padStart(3, '0')}`;
+    const id = `dmg-${Date.now()}`;
+
+    const newReport: FacilityDamageReport = {
+      ...report,
+      id,
+      ticketNo,
+      projectId: report.projectId || safeActiveProjectId,
+      reportDate: dateStr,
+      reportTime: report.reportTime || nowStr,
+      createdAt: now.toISOString(),
+      status: report.status || 'dilaporkan',
+    };
+
+    setDamageReports((prev) => [newReport, ...prev]);
+
+    // Push notification for team
+    const notif: AppNotification = {
+      id: `notif-${Date.now()}`,
+      title: `⚠️ Laporan Kerusakan Baru: ${ticketNo}`,
+      message: `${report.reporterName} melaporkan kerusakan: "${report.itemName}" di ${report.locationName} (${report.floor}). Prioritas: ${report.priority?.toUpperCase()}.`,
+      timestamp: nowStr,
+      type: report.priority === 'urgent' || report.damageLevel === 'kritis' ? 'urgent' : 'warning',
+      targetRole: ['admin', 'supervisor'],
+      read: false,
+      projectId: report.projectId || safeActiveProjectId,
+    };
+    setNotifications((prev) => [notif, ...prev]);
+  };
+
+  const updateDamageReport = (id: string, updates: Partial<FacilityDamageReport>) => {
+    setDamageReports((prev) =>
+      prev.map((r) =>
+        r.id === id
+          ? {
+              ...r,
+              ...updates,
+              updatedAt: new Date().toISOString(),
+            }
+          : r
+      )
+    );
+  };
+
+  const deleteDamageReport = (id: string) => {
+    setDamageReports((prev) => prev.filter((r) => r.id !== id));
+  };
+
+  const resolveDamageReport = (
+    id: string,
+    resolutionPayload: {
+      technicianNotes?: string;
+      photoAfter?: string;
+      technicianName?: string;
+      costEstimate?: number;
+    }
+  ) => {
+    const now = new Date();
+    const nowStr = now.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB';
+    const dateStr = now.toISOString().split('T')[0];
+
+    setDamageReports((prev) =>
+      prev.map((r) =>
+        r.id === id
+          ? {
+              ...r,
+              status: 'selesai',
+              repairedDate: dateStr,
+              repairedTime: nowStr,
+              technicianNotes: resolutionPayload.technicianNotes || r.technicianNotes,
+              photoAfter: resolutionPayload.photoAfter || r.photoAfter,
+              technicianName: resolutionPayload.technicianName || r.technicianName,
+              costEstimate: resolutionPayload.costEstimate !== undefined ? resolutionPayload.costEstimate : r.costEstimate,
+              updatedAt: now.toISOString(),
+            }
+          : r
+      )
+    );
+
+    const target = damageReports.find((r) => r.id === id);
+    const notif: AppNotification = {
+      id: `notif-res-${Date.now()}`,
+      title: `✅ Kerusakan Selesai Diperbaiki: ${target?.ticketNo || ''}`,
+      message: `Fasilitas "${target?.itemName || 'Barang'}" di ${target?.locationName || 'Area'} telah berhasil diperbaiki oleh ${resolutionPayload.technicianName || 'Tim Teknisi'}.`,
+      timestamp: nowStr,
+      type: 'success',
+      targetRole: ['admin', 'supervisor', 'petugas'],
+      read: false,
+      projectId: target?.projectId || safeActiveProjectId,
+    };
+    setNotifications((prev) => [notif, ...prev]);
+  };
+
   const addArea = (newArea: Omit<Area, 'id'>) => {
     const id = `area-${Date.now()}`;
     setAreas((prev) => [...prev, { ...newArea, id, projectId: newArea.projectId || safeActiveProjectId }]);
@@ -1569,6 +1708,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setComplaints(INITIAL_COMPLAINTS);
     setNotifications(INITIAL_NOTIFICATIONS);
     setMasterPrograms(INITIAL_MASTER_PROGRAMS);
+    setDamageReports(INITIAL_DAMAGE_REPORTS);
     setUserRole('admin');
     setViewMode('split');
   };
@@ -1597,6 +1737,14 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         toggleMasterProgramDay,
         batchSetMasterProgramDays,
         duplicateMasterProgram,
+
+        // Facility Damage Reports
+        damageReports: filteredDamageReports,
+        allDamageReports: damageReports,
+        addDamageReport,
+        updateDamageReport,
+        deleteDamageReport,
+        resolveDamageReport,
 
         // Projects
         projects,
