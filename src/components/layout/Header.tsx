@@ -1,0 +1,419 @@
+import React, { useState } from 'react';
+import {
+  Sparkles,
+  Smartphone,
+  Monitor,
+  Columns,
+  Bell,
+  CheckCircle2,
+  AlertTriangle,
+  Clock,
+  RotateCcw,
+  ShieldCheck,
+  Building2,
+  ChevronDown,
+  X,
+  Lock,
+} from 'lucide-react';
+import { useCleaning } from '../../context/CleaningContext';
+import { UserRole, ViewMode } from '../../types';
+
+export const Header: React.FC = () => {
+  const {
+    userRole,
+    setUserRole,
+    viewMode,
+    setViewMode,
+    notifications,
+    dismissNotification,
+    clearAllNotifications,
+    triggerDeadlinePushNotification,
+    resetToInitialData,
+    activeProject,
+    setActiveProjectId,
+    allowedProjects,
+    projects,
+    users,
+    activeUserId,
+    setActiveUserId,
+    setActiveTab,
+  } = useCleaning();
+
+  const [showNotifDropdown, setShowNotifDropdown] = useState(false);
+  const [showRoleDropdown, setShowRoleDropdown] = useState(false);
+  const [showProjectDropdown, setShowProjectDropdown] = useState(false);
+
+  const unreadNotifs = notifications.filter((n) => !n.read);
+
+  const roleLabels: Record<UserRole, { title: string; color: string; desc: string }> = {
+    admin: {
+      title: 'Super Administrator',
+      color: 'bg-indigo-100 text-indigo-800 border-indigo-200',
+      desc: 'Akses penuh ke semua lokasi proyek & hak akses pengguna',
+    },
+    supervisor: {
+      title: 'Supervisor / Pengawas',
+      color: 'bg-amber-100 text-amber-800 border-amber-200',
+      desc: 'Hanya melihat proyek yang ditentukan oleh Super Admin',
+    },
+    petugas: {
+      title: 'Petugas Lapangan',
+      color: 'bg-emerald-100 text-emerald-800 border-emerald-200',
+      desc: 'Hanya melihat proyek yang ditentukan & isi ceklist harian',
+    },
+    klien: {
+      title: 'Klien / Tenant Gedung',
+      color: 'bg-blue-100 text-blue-800 border-blue-200',
+      desc: 'Hanya memantau proyek yang menjadi area kontraknya',
+    },
+  };
+
+  return (
+    <header className="bg-white border-b border-slate-200 sticky top-0 z-40 px-4 lg:px-6 py-2.5 shadow-xs">
+      <div className="flex items-center justify-between gap-4">
+        {/* Brand & Project Selector */}
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-sky-600 to-cyan-500 flex items-center justify-center text-white shadow-sm shadow-sky-200 shrink-0">
+            <Sparkles className="w-5 h-5" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <h1 className="text-base font-bold tracking-tight text-slate-900 leading-tight">
+                Smart Cleaning Operations
+              </h1>
+              <span className="hidden sm:inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold bg-sky-50 text-sky-700 border border-sky-200">
+                v2.5
+              </span>
+            </div>
+
+            {/* Project Picker / Active Project Badge */}
+            <div className="relative mt-0.5">
+              <button
+                id="header-project-picker"
+                onClick={() => setShowProjectDropdown(!showProjectDropdown)}
+                className="flex items-center gap-1.5 text-xs text-slate-600 hover:text-slate-900 transition-colors group cursor-pointer"
+              >
+                <Building2 className="w-3.5 h-3.5 text-sky-600 shrink-0" />
+                <span className="font-semibold text-slate-800 group-hover:text-sky-700">
+                  {activeProject?.name || 'Pilih Proyek'}
+                </span>
+                <span className="text-slate-300">•</span>
+                <span className="text-slate-500 hidden sm:inline">{activeProject?.city}</span>
+                {userRole === 'admin' ? (
+                  <ChevronDown className="w-3.5 h-3.5 text-slate-400 group-hover:text-slate-700" />
+                ) : (
+                  <span className="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded text-[10px] bg-slate-100 text-slate-600 font-medium">
+                    <Lock className="w-2.5 h-2.5 text-slate-400" />
+                    Terbatas
+                  </span>
+                )}
+              </button>
+
+              {/* Project Dropdown */}
+              {showProjectDropdown && (
+                <div className="absolute left-0 mt-1.5 w-72 bg-white rounded-xl shadow-xl border border-slate-200 py-2 z-50">
+                  <div className="px-3 pb-2 border-b border-slate-100 flex items-center justify-between">
+                    <div>
+                      <p className="text-[11px] font-bold text-slate-700 uppercase tracking-wider">
+                        {userRole === 'admin' ? 'Pilih Lokasi Proyek' : 'Lokasi Proyek Anda'}
+                      </p>
+                      <p className="text-[11px] text-slate-400">
+                        {userRole === 'admin'
+                          ? 'Super Admin memiliki akses semua lokasi'
+                          : 'Ditentukan secara khusus oleh Super Admin'}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="max-h-60 overflow-y-auto py-1">
+                    {allowedProjects.map((p) => {
+                      const isSelected = p.id === activeProject?.id;
+                      return (
+                        <button
+                          key={p.id}
+                          onClick={() => {
+                            setActiveProjectId(p.id);
+                            setShowProjectDropdown(false);
+                          }}
+                          className={`w-full text-left px-3 py-2 text-xs flex items-center justify-between transition-colors ${
+                            isSelected ? 'bg-sky-50 text-sky-900 font-semibold' : 'text-slate-700 hover:bg-slate-50'
+                          }`}
+                        >
+                          <div className="min-w-0 pr-2">
+                            <p className="font-semibold truncate">{p.name}</p>
+                            <p className="text-[10px] text-slate-400 truncate">
+                              {p.city} • {p.totalFloors} Lantai ({p.code})
+                            </p>
+                          </div>
+                          {isSelected && <span className="text-sky-600 font-bold text-xs">✓</span>}
+                        </button>
+                      );
+                    })}
+
+                    {allowedProjects.length === 0 && (
+                      <div className="p-3 text-center text-xs text-slate-400">
+                        Tidak ada lokasi proyek yang ditugaskan ke akun Anda.
+                      </div>
+                    )}
+                  </div>
+
+                  {userRole === 'admin' && (
+                    <div className="px-3 pt-2 border-t border-slate-100">
+                      <button
+                        onClick={() => {
+                          setShowProjectDropdown(false);
+                          setActiveTab('proyek');
+                        }}
+                        className="w-full text-center text-xs text-sky-600 font-semibold hover:text-sky-800 py-1 hover:bg-sky-50 rounded-lg transition-colors"
+                      >
+                        + Kelola & Tambah Lokasi Proyek
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Center: View Switcher (Split, Web Only, Mobile Only) */}
+        <div className="hidden md:flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs font-medium">
+          <button
+            onClick={() => setViewMode('split')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all ${
+              viewMode === 'split'
+                ? 'bg-white text-sky-700 shadow-xs font-semibold'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+            title="Tampilkan Dashboard Web dan Aplikasi Mobile berdampingan"
+          >
+            <Columns className="w-3.5 h-3.5" />
+            <span>Dual View (Web + Mobile)</span>
+          </button>
+          <button
+            onClick={() => setViewMode('web')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all ${
+              viewMode === 'web'
+                ? 'bg-white text-sky-700 shadow-xs font-semibold'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+            title="Tampilkan hanya Dashboard Web"
+          >
+            <Monitor className="w-3.5 h-3.5" />
+            <span>Web Dashboard</span>
+          </button>
+          <button
+            onClick={() => setViewMode('mobile')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all ${
+              viewMode === 'mobile'
+                ? 'bg-white text-sky-700 shadow-xs font-semibold'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+            title="Tampilkan hanya Aplikasi Mobile Petugas"
+          >
+            <Smartphone className="w-3.5 h-3.5" />
+            <span>Aplikasi Mobile</span>
+          </button>
+        </div>
+
+        {/* Right Side: Role Selector, Notifications & Tools */}
+        <div className="flex items-center gap-2">
+          {/* Role Switcher */}
+          <div className="relative">
+            <button
+              id="header-role-switcher"
+              onClick={() => setShowRoleDropdown(!showRoleDropdown)}
+              className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-slate-200 hover:border-slate-300 bg-white text-xs font-medium text-slate-700 transition-colors shadow-xs"
+            >
+              <ShieldCheck className="w-4 h-4 text-sky-600" />
+              <div className="text-left hidden sm:block">
+                <span className="text-[10px] uppercase tracking-wider text-slate-400 block font-semibold">
+                  Role Aktif
+                </span>
+                <span className="font-semibold text-slate-800">
+                  {roleLabels[userRole].title.split('/')[0]}
+                </span>
+              </div>
+              <ChevronDown className="w-3.5 h-3.5 text-slate-400 ml-1" />
+            </button>
+
+            {showRoleDropdown && (
+              <div className="absolute right-0 mt-1.5 w-68 bg-white rounded-xl shadow-xl border border-slate-200 py-1.5 z-50">
+                <div className="px-3 py-1.5 border-b border-slate-100">
+                  <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
+                    Ganti Role Pengguna
+                  </p>
+                  <p className="text-xs text-slate-500">Uji hak akses proyek sesuai role</p>
+                </div>
+                {(['admin', 'supervisor', 'petugas', 'klien'] as UserRole[]).map((role) => (
+                  <button
+                    key={role}
+                    onClick={() => {
+                      setUserRole(role);
+                      const matchingUser = users.find((u) => u.role === role);
+                      if (matchingUser) {
+                        setActiveUserId(matchingUser.id);
+                      }
+                      setShowRoleDropdown(false);
+                      if (role === 'petugas') {
+                        if (viewMode === 'web') setViewMode('split');
+                      }
+                    }}
+                    className={`w-full text-left px-3 py-2 text-xs flex flex-col transition-colors ${
+                      userRole === role
+                        ? 'bg-sky-50 text-sky-900 font-semibold'
+                        : 'text-slate-700 hover:bg-slate-50'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="font-medium">{roleLabels[role].title}</span>
+                      {userRole === role && <span className="text-sky-600 text-xs">✓</span>}
+                    </div>
+                    <span className="text-[11px] text-slate-400 font-normal mt-0.5">
+                      {roleLabels[role].desc}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Notification Button */}
+          <div className="relative">
+            <button
+              onClick={() => setShowNotifDropdown(!showNotifDropdown)}
+              className="relative p-2 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-colors"
+              title="Notifikasi Operasional"
+            >
+              <Bell className="w-5 h-5" />
+              {unreadNotifs.length > 0 && (
+                <span className="absolute top-1 right-1 w-4 h-4 bg-rose-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center ring-2 ring-white">
+                  {unreadNotifs.length}
+                </span>
+              )}
+            </button>
+
+            {showNotifDropdown && (
+              <div className="absolute right-0 mt-1.5 w-80 sm:w-96 bg-white rounded-xl shadow-xl border border-slate-200 z-50 overflow-hidden">
+                <div className="p-3 border-b border-slate-100 flex items-center justify-between bg-slate-50/80">
+                  <div className="flex items-center gap-2">
+                    <Bell className="w-4 h-4 text-slate-600" />
+                    <span className="text-xs font-semibold text-slate-800">
+                      Notifikasi Sistem & Push
+                    </span>
+                    <span className="bg-sky-100 text-sky-700 text-[10px] font-bold px-1.5 py-0.2 rounded-full">
+                      {notifications.length}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={triggerDeadlinePushNotification}
+                      className="text-[11px] text-amber-600 hover:text-amber-800 font-medium hover:underline flex items-center gap-1"
+                      title="Tes Push Notifikasi Deadline"
+                    >
+                      <Clock className="w-3 h-3" />
+                      <span>Tes Alarm</span>
+                    </button>
+                    {notifications.length > 0 && (
+                      <button
+                        onClick={clearAllNotifications}
+                        className="text-[11px] text-slate-400 hover:text-slate-700"
+                      >
+                        Bersihkan
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                <div className="max-h-80 overflow-y-auto divide-y divide-slate-100">
+                  {notifications.length === 0 ? (
+                    <div className="p-6 text-center text-slate-400">
+                      <CheckCircle2 className="w-8 h-8 mx-auto mb-2 text-slate-300" />
+                      <p className="text-xs">Tidak ada notifikasi saat ini</p>
+                    </div>
+                  ) : (
+                    notifications.map((notif) => (
+                      <div
+                        key={notif.id}
+                        className={`p-3 flex items-start gap-2.5 transition-colors ${
+                          notif.read ? 'bg-white' : 'bg-sky-50/40'
+                        }`}
+                      >
+                        <div className="mt-0.5 shrink-0">
+                          {notif.type === 'urgent' && (
+                            <AlertTriangle className="w-4 h-4 text-rose-500" />
+                          )}
+                          {notif.type === 'warning' && (
+                            <Clock className="w-4 h-4 text-amber-500" />
+                          )}
+                          {notif.type === 'success' && (
+                            <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+                          )}
+                          {notif.type === 'info' && (
+                            <Sparkles className="w-4 h-4 text-sky-500" />
+                          )}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-semibold text-slate-800">{notif.title}</p>
+                          <p className="text-[11px] text-slate-600 mt-0.5 leading-relaxed">
+                            {notif.message}
+                          </p>
+                          <span className="text-[10px] text-slate-400 mt-1 block">
+                            {notif.timestamp}
+                          </span>
+                        </div>
+                        <button
+                          onClick={() => dismissNotification(notif.id)}
+                          className="text-slate-300 hover:text-slate-500 p-1"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Reset App State */}
+          <button
+            onClick={resetToInitialData}
+            className="p-2 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
+            title="Reset Data ke Default Awal"
+          >
+            <RotateCcw className="w-4 h-4" />
+          </button>
+        </div>
+      </div>
+
+      {/* Mobile view selector banner */}
+      <div className="flex md:hidden items-center justify-center gap-2 mt-2 pt-2 border-t border-slate-100 text-xs">
+        <button
+          onClick={() => setViewMode('split')}
+          className={`px-2.5 py-1 rounded-md text-[11px] font-medium ${
+            viewMode === 'split' ? 'bg-sky-600 text-white' : 'bg-slate-100 text-slate-700'
+          }`}
+        >
+          Dual View
+        </button>
+        <button
+          onClick={() => setViewMode('web')}
+          className={`px-2.5 py-1 rounded-md text-[11px] font-medium ${
+            viewMode === 'web' ? 'bg-sky-600 text-white' : 'bg-slate-100 text-slate-700'
+          }`}
+        >
+          Dashboard Web
+        </button>
+        <button
+          onClick={() => setViewMode('mobile')}
+          className={`px-2.5 py-1 rounded-md text-[11px] font-medium ${
+            viewMode === 'mobile' ? 'bg-sky-600 text-white' : 'bg-slate-100 text-slate-700'
+          }`}
+        >
+          Aplikasi Mobile
+        </button>
+      </div>
+    </header>
+  );
+};

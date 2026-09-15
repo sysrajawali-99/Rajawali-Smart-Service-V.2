@@ -1,0 +1,6 @@
+{
+  "name": "Smart Cleaning Operations",
+  "description": "Sistem operasional kebersihan gedung multi-proyek dengan kontrol ceklist area 24 jam (00.00-24.00), laporan bulanan pekerjaan dengan foto before-progress-after terwatermark tanggal, dan kontrol hak akses proyek.",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1,0 +1,1048 @@
+import React, { useState, useMemo } from 'react';
+import {
+  CalendarRange,
+  Plus,
+  Search,
+  Filter,
+  Download,
+  FileDown,
+  CheckCircle2,
+  Clock,
+  Calendar,
+  Building2,
+  Edit2,
+  Trash2,
+  Copy,
+  Info,
+  Check,
+  X,
+  Sparkles,
+  Layers,
+  ChevronRight,
+  UserCheck,
+  AlertCircle,
+  HelpCircle,
+} from 'lucide-react';
+import { useCleaning } from '../../context/CleaningContext';
+import { MasterCleaningProgramItem, ProgramDayStatus } from '../../types';
+import { exportMasterCleaningProgramToPDF } from '../../utils/pdfExport';
+
+export const MasterCleaningProgramView: React.FC = () => {
+  const {
+    masterPrograms,
+    activeProject,
+    cleaners,
+    areas,
+    addMasterProgram,
+    updateMasterProgram,
+    deleteMasterProgram,
+    toggleMasterProgramDay,
+    batchSetMasterProgramDays,
+    duplicateMasterProgram,
+    userRole,
+  } = useCleaning();
+
+  // Filter and period states
+  const currentDate = new Date();
+  const [selectedMonth, setSelectedMonth] = useState<number>(currentDate.getMonth() + 1); // 1 - 12
+  const [selectedYear, setSelectedYear] = useState<number>(2026);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [filterFrequency, setFilterFrequency] = useState<string>('all');
+  const [filterLocation, setFilterLocation] = useState<string>('all');
+
+  // Modal states
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [editingItem, setEditingItem] = useState<MasterCleaningProgramItem | null>(null);
+
+  // Form states for Add / Edit
+  const [formWorkDescription, setFormWorkDescription] = useState('');
+  const [formWorkMethod, setFormWorkMethod] = useState('');
+  const [formLocation, setFormLocation] = useState('');
+  const [formFrequency, setFormFrequency] = useState<'harian' | 'mingguan' | 'bulanan' | 'khusus'>('bulanan');
+  const [formPicName, setFormPicName] = useState('');
+  const [formDays, setFormDays] = useState<Record<number, ProgramDayStatus>>({});
+
+  // Notification Toast
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const showToast = (msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => setToastMessage(null), 3000);
+  };
+
+  // Month names in Indonesian
+  const monthOptions = [
+    { value: 1, label: 'Januari' },
+    { value: 2, label: 'Februari' },
+    { value: 3, label: 'Maret' },
+    { value: 4, label: 'April' },
+    { value: 5, label: 'Mei' },
+    { value: 6, label: 'Juni' },
+    { value: 7, label: 'Juli' },
+    { value: 8, label: 'Agustus' },
+    { value: 9, label: 'September' },
+    { value: 10, label: 'Oktober' },
+    { value: 11, label: 'November' },
+    { value: 12, label: 'Desember' },
+  ];
+
+  // Filter programs by project (already filtered in context), month, year, search term, and category
+  const filteredPrograms = useMemo(() => {
+    return masterPrograms.filter((item) => {
+      if (item.month !== selectedMonth || item.year !== selectedYear) return false;
+      if (filterFrequency !== 'all' && item.frequency !== filterFrequency) return false;
+      if (filterLocation !== 'all' && item.location !== filterLocation) return false;
+
+      if (searchTerm.trim()) {
+        const term = searchTerm.toLowerCase();
+        const matchDesc = item.workDescription.toLowerCase().includes(term);
+        const matchMethod = item.workMethod.toLowerCase().includes(term);
+        const matchLoc = item.location.toLowerCase().includes(term);
+        const matchPic = item.picName.toLowerCase().includes(term);
+        if (!matchDesc && !matchMethod && !matchLoc && !matchPic) return false;
+      }
+
+      return true;
+    });
+  }, [masterPrograms, selectedMonth, selectedYear, filterFrequency, filterLocation, searchTerm]);
+
+  // Unique locations from programs for filter
+  const availableLocations = useMemo(() => {
+    const locSet = new Set<string>();
+    masterPrograms.forEach((p) => {
+      if (p.location) locSet.add(p.location);
+    });
+    return Array.from(locSet);
+  }, [masterPrograms]);
+
+  // Statistics
+  const statistics = useMemo(() => {
+    let totalPlan = 0;
+    let totalDone = 0;
+    let totalProgress = 0;
+
+    filteredPrograms.forEach((prog) => {
+      for (let day = 1; day <= 31; day++) {
+        const st = prog.days[day];
+        if (st === 'planned') totalPlan++;
+        else if (st === 'done') {
+          totalPlan++;
+          totalDone++;
+        } else if (st === 'in_progress') {
+          totalPlan++;
+          totalProgress++;
+        } else if (st === 'rescheduled') {
+          totalPlan++;
+        }
+      }
+    });
+
+    const completionRate = totalPlan > 0 ? Math.round((totalDone / totalPlan) * 100) : 100;
+    return {
+      totalPrograms: filteredPrograms.length,
+      totalPlan,
+      totalDone,
+      totalProgress,
+      completionRate,
+    };
+  }, [filteredPrograms]);
+
+  // Open modal for new item
+  const handleOpenAddModal = () => {
+    setEditingItem(null);
+    setFormWorkDescription('');
+    setFormWorkMethod('');
+    setFormLocation(areas[0]?.name || 'Lobby Utama');
+    setFormFrequency('bulanan');
+    setFormPicName(cleaners[0]?.name || 'Budi Santoso');
+
+    // Default empty days
+    const initialDays: Record<number, ProgramDayStatus> = {};
+    for (let i = 1; i <= 31; i++) {
+      initialDays[i] = 'none';
+    }
+    setFormDays(initialDays);
+    setIsAddModalOpen(true);
+  };
+
+  // Open modal for editing existing item
+  const handleOpenEditModal = (item: MasterCleaningProgramItem) => {
+    setEditingItem(item);
+    setFormWorkDescription(item.workDescription);
+    setFormWorkMethod(item.workMethod);
+    setFormLocation(item.location);
+    setFormFrequency(item.frequency);
+    setFormPicName(item.picName);
+    setFormDays({ ...item.days });
+    setIsAddModalOpen(true);
+  };
+
+  // Save Add / Edit
+  const handleSaveProgram = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!formWorkDescription.trim() || !formWorkMethod.trim()) {
+      alert('Mohon lengkapi uraian pekerjaan dan metode pekerjaan.');
+      return;
+    }
+
+    if (editingItem) {
+      updateMasterProgram(editingItem.id, {
+        workDescription: formWorkDescription.trim(),
+        workMethod: formWorkMethod.trim(),
+        location: formLocation,
+        frequency: formFrequency,
+        picName: formPicName,
+        days: formDays,
+      });
+      showToast('Program kerja berhasil diperbarui.');
+    } else {
+      addMasterProgram({
+        projectId: activeProject.id,
+        month: selectedMonth,
+        year: selectedYear,
+        workDescription: formWorkDescription.trim(),
+        workMethod: formWorkMethod.trim(),
+        location: formLocation,
+        frequency: formFrequency,
+        picName: formPicName,
+        days: formDays,
+      });
+      showToast('Program kerja baru berhasil ditambahkan.');
+    }
+
+    setIsAddModalOpen(false);
+  };
+
+  // Export PDF
+  const handleDownloadPDF = () => {
+    exportMasterCleaningProgramToPDF({
+      programs: filteredPrograms,
+      project: activeProject,
+      month: selectedMonth,
+      year: selectedYear,
+    });
+    showToast('Dokumen PDF Master Cleaning Program berhasil diunduh.');
+  };
+
+  // Export CSV
+  const handleExportCSV = () => {
+    const dayHeaders = Array.from({ length: 31 }, (_, i) => `Tgl_${i + 1}`);
+    const csvHeaders = [
+      'No',
+      'Lokasi Proyek',
+      'Uraian Pekerjaan',
+      'Metode Pekerjaan',
+      'Lokasi Area',
+      'Frekuensi',
+      'PIC',
+      ...dayHeaders,
+      'Total_Rencana',
+      'Total_Selesai',
+      'Persentase',
+    ];
+
+    const csvRows = filteredPrograms.map((prog, idx) => {
+      let plan = 0;
+      let done = 0;
+      const dayValues = Array.from({ length: 31 }, (_, i) => {
+        const d = i + 1;
+        const st = prog.days[d] || 'none';
+        if (st === 'planned') {
+          plan++;
+          return 'R';
+        } else if (st === 'done') {
+          plan++;
+          done++;
+          return 'S';
+        } else if (st === 'in_progress') {
+          plan++;
+          return 'P';
+        } else if (st === 'rescheduled') {
+          plan++;
+          return 'T';
+        }
+        return '-';
+      });
+
+      const pct = plan > 0 ? Math.round((done / plan) * 100) : 100;
+
+      return [
+        (idx + 1).toString(),
+        `"${activeProject.name}"`,
+        `"${prog.workDescription.replace(/"/g, '""')}"`,
+        `"${prog.workMethod.replace(/"/g, '""')}"`,
+        `"${prog.location}"`,
+        `"${prog.frequency}"`,
+        `"${prog.picName}"`,
+        ...dayValues,
+        plan,
+        done,
+        `${pct}%`,
+      ];
+    });
+
+    const csvContent =
+      'data:text/csv;charset=utf-8,\uFEFF' +
+      [csvHeaders.join(','), ...csvRows.map((r) => r.join(','))].join('\n');
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement('a');
+    link.setAttribute('href', encodedUri);
+    link.setAttribute(
+      'download',
+      `Master_Cleaning_Program_${activeProject.name}_${selectedYear}_${selectedMonth}.csv`
+    );
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    showToast('File CSV Master Cleaning Program berhasil diekspor.');
+  };
+
+  // Quick preset helper in modal
+  const applyPresetDays = (preset: 'all' | 'workdays' | 'weekends' | 'alternate' | 'clear') => {
+    const updated: Record<number, ProgramDayStatus> = {};
+    for (let day = 1; day <= 31; day++) {
+      if (preset === 'all') {
+        updated[day] = 'planned';
+      } else if (preset === 'workdays') {
+        // Approximate workdays assuming standard month distribution
+        const dayOfWeek = (day % 7);
+        updated[day] = dayOfWeek !== 0 && dayOfWeek !== 6 ? 'planned' : 'none';
+      } else if (preset === 'weekends') {
+        const dayOfWeek = (day % 7);
+        updated[day] = dayOfWeek === 0 || dayOfWeek === 6 ? 'planned' : 'none';
+      } else if (preset === 'alternate') {
+        updated[day] = day % 2 === 1 ? 'planned' : 'none';
+      } else {
+        updated[day] = 'none';
+      }
+    }
+    setFormDays(updated);
+  };
+
+  // Status visual styles for Day Cell in calendar table
+  const renderStatusCell = (status: ProgramDayStatus | undefined) => {
+    switch (status) {
+      case 'planned':
+        return (
+          <span
+            className="w-5 h-5 rounded-md bg-sky-100 text-sky-700 border border-sky-300 font-bold text-[10px] flex items-center justify-center shadow-2xs select-none"
+            title="Rencana (Planned)"
+          >
+            R
+          </span>
+        );
+      case 'in_progress':
+        return (
+          <span
+            className="w-5 h-5 rounded-md bg-amber-100 text-amber-700 border border-amber-300 font-bold text-[10px] flex items-center justify-center shadow-2xs select-none"
+            title="Sedang Dikerjakan (Progress)"
+          >
+            P
+          </span>
+        );
+      case 'done':
+        return (
+          <span
+            className="w-5 h-5 rounded-md bg-emerald-100 text-emerald-700 border border-emerald-300 font-bold text-[10px] flex items-center justify-center shadow-2xs select-none"
+            title="Selesai & Valid (Done)"
+          >
+            S
+          </span>
+        );
+      case 'rescheduled':
+        return (
+          <span
+            className="w-5 h-5 rounded-md bg-rose-100 text-rose-700 border border-rose-300 font-bold text-[10px] flex items-center justify-center shadow-2xs select-none"
+            title="Jadwal Tertunda / Dipindah (Rescheduled)"
+          >
+            T
+          </span>
+        );
+      default:
+        return (
+          <span
+            className="w-5 h-5 rounded-md text-slate-300 hover:text-slate-500 hover:bg-slate-100 font-medium text-[11px] flex items-center justify-center transition-colors select-none"
+            title="Tidak Terjadwal (Klik untuk set rencana)"
+          >
+            -
+          </span>
+        );
+    }
+  };
+
+  return (
+    <div className="p-4 sm:p-6 space-y-6 max-w-7xl mx-auto">
+      {/* Toast Notification */}
+      {toastMessage && (
+        <div className="fixed bottom-6 right-6 z-50 bg-slate-900 text-white px-4 py-3 rounded-xl shadow-xl flex items-center gap-2.5 text-xs font-semibold animate-in fade-in slide-in-from-bottom-3 duration-200">
+          <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+          <span>{toastMessage}</span>
+        </div>
+      )}
+
+      {/* Top Banner & Project Location Notice */}
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs">
+        <div>
+          <div className="flex items-center gap-2.5 flex-wrap">
+            <div className="w-9 h-9 rounded-xl bg-teal-600 text-white flex items-center justify-center shadow-xs">
+              <CalendarRange className="w-5 h-5" />
+            </div>
+            <div>
+              <h2 className="text-xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
+                Master Cleaning Program (MCP)
+                <span className="px-2.5 py-0.5 rounded-full bg-teal-100 text-teal-800 text-[11px] font-bold">
+                  Siklus Tanggal 1 - 31
+                </span>
+              </h2>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Rencana & monitoring berkala uraian pekerjaan, metode SOP, lokasi, dan status harian
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-3 flex items-center gap-2 text-xs text-slate-600 bg-teal-50/70 border border-teal-200/60 px-3 py-1.5 rounded-xl w-fit">
+            <Building2 className="w-3.5 h-3.5 text-teal-700 shrink-0" />
+            <span>
+              Lokasi Aktif Pengguna:&nbsp;
+              <strong className="text-teal-950 font-bold">{activeProject.name}</strong>
+              &nbsp;({activeProject.clientName} • {activeProject.city})
+            </span>
+          </div>
+        </div>
+
+        {/* Action buttons */}
+        <div className="flex flex-wrap items-center gap-2.5">
+          <button
+            onClick={handleDownloadPDF}
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-sky-700 hover:bg-sky-800 text-white text-xs font-semibold shadow-xs transition-colors"
+            title="Download PDF Master Cleaning Program Landscape Lengkap Kop Surat"
+          >
+            <FileDown className="w-3.5 h-3.5" />
+            <span>Download PDF MCP</span>
+          </button>
+
+          <button
+            onClick={handleExportCSV}
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold shadow-xs transition-colors"
+          >
+            <Download className="w-3.5 h-3.5 text-slate-500" />
+            <span>Ekspor Excel / CSV</span>
+          </button>
+
+          <button
+            onClick={handleOpenAddModal}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-xs font-semibold shadow-xs transition-colors"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Tambah Program Kerja</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Summary KPI Cards */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5">
+        <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-slate-500">Total Program Kerja</span>
+            <span className="p-1.5 rounded-lg bg-teal-50 text-teal-600">
+              <Layers className="w-4 h-4" />
+            </span>
+          </div>
+          <div className="mt-2 flex items-baseline gap-2">
+            <span className="text-2xl font-black text-slate-900">{statistics.totalPrograms}</span>
+            <span className="text-[11px] text-slate-500">Item Pekerjaan</span>
+          </div>
+        </div>
+
+        <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-slate-500">Titik Jadwal Terencana</span>
+            <span className="p-1.5 rounded-lg bg-sky-50 text-sky-600">
+              <Calendar className="w-4 h-4" />
+            </span>
+          </div>
+          <div className="mt-2 flex items-baseline gap-2">
+            <span className="text-2xl font-black text-sky-700">{statistics.totalPlan}</span>
+            <span className="text-[11px] text-slate-500">Titik [R]</span>
+          </div>
+        </div>
+
+        <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-slate-500">Realisasi Selesai</span>
+            <span className="p-1.5 rounded-lg bg-emerald-50 text-emerald-600">
+              <CheckCircle2 className="w-4 h-4" />
+            </span>
+          </div>
+          <div className="mt-2 flex items-baseline gap-2">
+            <span className="text-2xl font-black text-emerald-700">{statistics.totalDone}</span>
+            <span className="text-[11px] text-slate-500">Titik [S]</span>
+          </div>
+        </div>
+
+        <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-slate-500">Tingkat Capaian Kinerja</span>
+            <span className="p-1.5 rounded-lg bg-indigo-50 text-indigo-600">
+              <Sparkles className="w-4 h-4" />
+            </span>
+          </div>
+          <div className="mt-2 flex items-baseline gap-2">
+            <span className="text-2xl font-black text-indigo-700">{statistics.completionRate}%</span>
+            <span className="text-[11px] text-emerald-600 font-bold">Target SOP Gedung</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Filter and Period Selection Bar */}
+      <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-3.5">
+        <div className="flex flex-wrap items-center gap-3">
+          {/* Period Selector: Bulan & Tahun */}
+          <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-xl text-xs">
+            <Calendar className="w-3.5 h-3.5 text-teal-600" />
+            <span className="text-[11px] text-slate-500 font-medium">Bulan:</span>
+            <select
+              value={selectedMonth}
+              onChange={(e) => setSelectedMonth(Number(e.target.value))}
+              className="bg-transparent font-bold text-slate-800 text-xs focus:outline-hidden cursor-pointer"
+            >
+              {monthOptions.map((m) => (
+                <option key={m.value} value={m.value}>
+                  {m.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-xl text-xs">
+            <span className="text-[11px] text-slate-500 font-medium">Tahun:</span>
+            <select
+              value={selectedYear}
+              onChange={(e) => setSelectedYear(Number(e.target.value))}
+              className="bg-transparent font-bold text-slate-800 text-xs focus:outline-hidden cursor-pointer"
+            >
+              <option value={2025}>2025</option>
+              <option value={2026}>2026</option>
+              <option value={2027}>2027</option>
+            </select>
+          </div>
+
+          {/* Category / Frequency Filter */}
+          <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-xl text-xs">
+            <Filter className="w-3.5 h-3.5 text-slate-400" />
+            <span className="text-[11px] text-slate-500 font-medium">Frekuensi:</span>
+            <select
+              value={filterFrequency}
+              onChange={(e) => setFilterFrequency(e.target.value)}
+              className="bg-transparent font-semibold text-slate-800 text-xs focus:outline-hidden cursor-pointer"
+            >
+              <option value="all">Semua Frekuensi</option>
+              <option value="harian">Harian</option>
+              <option value="mingguan">Mingguan</option>
+              <option value="bulanan">Bulanan</option>
+              <option value="khusus">Khusus / Periodic</option>
+            </select>
+          </div>
+
+          {/* Location Filter */}
+          {availableLocations.length > 0 && (
+            <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-xl text-xs">
+              <span className="text-[11px] text-slate-500 font-medium">Lokasi:</span>
+              <select
+                value={filterLocation}
+                onChange={(e) => setFilterLocation(e.target.value)}
+                className="bg-transparent font-semibold text-slate-800 text-xs focus:outline-hidden cursor-pointer"
+              >
+                <option value="all">Semua Area</option>
+                {availableLocations.map((loc) => (
+                  <option key={loc} value={loc}>
+                    {loc}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+        </div>
+
+        {/* Search Field */}
+        <div className="relative min-w-[220px]">
+          <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+          <input
+            type="text"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            placeholder="Cari uraian, metode, PIC..."
+            className="w-full pl-9 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:outline-hidden focus:border-teal-500 focus:bg-white transition-all"
+          />
+          {searchTerm && (
+            <button
+              onClick={() => setSearchTerm('')}
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+            >
+              <X className="w-3 h-3" />
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Legend Information Box */}
+      <div className="bg-slate-50/80 border border-slate-200/80 p-3 rounded-xl flex flex-wrap items-center justify-between gap-3 text-xs">
+        <div className="flex items-center gap-2 text-slate-600 font-medium">
+          <Info className="w-4 h-4 text-teal-600 shrink-0" />
+          <span>Petunjuk Status Tanggal (Klik sel tanggal untuk mengubah status siklus):</span>
+        </div>
+        <div className="flex flex-wrap items-center gap-3 font-semibold text-[11px]">
+          <div className="flex items-center gap-1.5">
+            <span className="w-4 h-4 rounded bg-sky-100 text-sky-700 border border-sky-300 text-[10px] font-bold flex items-center justify-center">
+              R
+            </span>
+            <span className="text-slate-600">Rencana (Planned)</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="w-4 h-4 rounded bg-amber-100 text-amber-700 border border-amber-300 text-[10px] font-bold flex items-center justify-center">
+              P
+            </span>
+            <span className="text-slate-600">Sedang Pengerjaan (Progress)</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="w-4 h-4 rounded bg-emerald-100 text-emerald-700 border border-emerald-300 text-[10px] font-bold flex items-center justify-center">
+              S
+            </span>
+            <span className="text-slate-600">Selesai / Valid (Done)</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="w-4 h-4 rounded bg-rose-100 text-rose-700 border border-rose-300 text-[10px] font-bold flex items-center justify-center">
+              T
+            </span>
+            <span className="text-slate-600">Tertunda / Reschedule</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="w-4 h-4 rounded text-slate-400 font-bold flex items-center justify-center">
+              -
+            </span>
+            <span className="text-slate-500">Tidak Terjadwal</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Main Master Cleaning Program Grid Table */}
+      <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-xs border-collapse">
+            <thead>
+              <tr className="bg-slate-800 text-white font-semibold text-[11px]">
+                <th className="py-3 px-2.5 text-center w-10 border-r border-slate-700 sticky left-0 z-20 bg-slate-800">
+                  No
+                </th>
+                <th className="py-3 px-3 min-w-[220px] max-w-[280px] border-r border-slate-700 sticky left-10 z-20 bg-slate-800 shadow-sm">
+                  Uraian Pekerjaan
+                </th>
+                <th className="py-3 px-3 min-w-[200px] border-r border-slate-700">
+                  Metode Pekerjaan (SOP)
+                </th>
+                <th className="py-3 px-3 min-w-[130px] border-r border-slate-700">
+                  Lokasi / Area
+                </th>
+                <th className="py-3 px-3 min-w-[110px] border-r border-slate-700">
+                  PIC & Frek.
+                </th>
+
+                {/* Date Columns 1 - 31 */}
+                {Array.from({ length: 31 }, (_, i) => (
+                  <th
+                    key={i + 1}
+                    className="py-2.5 px-1 text-center w-8 min-w-[32px] border-r border-slate-700 text-[10px] font-bold"
+                  >
+                    {i + 1}
+                  </th>
+                ))}
+
+                <th className="py-3 px-2 text-center w-14 border-r border-slate-700">
+                  Plan
+                </th>
+                <th className="py-3 px-2 text-center w-14 border-r border-slate-700">
+                  Done
+                </th>
+                <th className="py-3 px-2 text-center w-14 border-r border-slate-700">
+                  %
+                </th>
+                <th className="py-3 px-3 text-center w-24">
+                  Aksi
+                </th>
+              </tr>
+            </thead>
+
+            <tbody className="divide-y divide-slate-200">
+              {filteredPrograms.length === 0 ? (
+                <tr>
+                  <td colSpan={41} className="py-12 text-center text-slate-400">
+                    <div className="max-w-xs mx-auto space-y-2">
+                      <Layers className="w-8 h-8 text-slate-300 mx-auto" />
+                      <p className="font-semibold text-slate-700 text-sm">
+                        Belum ada program kerja untuk periode ini
+                      </p>
+                      <p className="text-xs text-slate-400">
+                        Klik tombol "+ Tambah Program Kerja" di atas untuk menambahkan program kerja kebersihan pada lokasi {activeProject.name}.
+                      </p>
+                    </div>
+                  </td>
+                </tr>
+              ) : (
+                filteredPrograms.map((program, index) => {
+                  let planCount = 0;
+                  let doneCount = 0;
+                  for (let d = 1; d <= 31; d++) {
+                    const st = program.days[d];
+                    if (st === 'planned') planCount++;
+                    else if (st === 'done') {
+                      planCount++;
+                      doneCount++;
+                    } else if (st === 'in_progress') planCount++;
+                    else if (st === 'rescheduled') planCount++;
+                  }
+                  const pct = planCount > 0 ? Math.round((doneCount / planCount) * 100) : 100;
+
+                  return (
+                    <tr
+                      key={program.id}
+                      className="hover:bg-teal-50/30 transition-colors group"
+                    >
+                      {/* No */}
+                      <td className="py-2.5 px-2.5 text-center font-bold text-slate-500 border-r border-slate-200 sticky left-0 z-10 bg-white group-hover:bg-teal-50/30">
+                        {index + 1}
+                      </td>
+
+                      {/* Uraian Pekerjaan */}
+                      <td className="py-2.5 px-3 border-r border-slate-200 sticky left-10 z-10 bg-white group-hover:bg-teal-50/30 shadow-xs">
+                        <p className="font-bold text-slate-900 line-clamp-2">
+                          {program.workDescription}
+                        </p>
+                        <span className="inline-block mt-1 px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wider bg-slate-100 text-slate-600">
+                          {program.frequency}
+                        </span>
+                      </td>
+
+                      {/* Metode Pekerjaan */}
+                      <td className="py-2.5 px-3 border-r border-slate-200 text-slate-700">
+                        <p className="line-clamp-2 text-[11px] leading-relaxed">
+                          {program.workMethod}
+                        </p>
+                      </td>
+
+                      {/* Lokasi */}
+                      <td className="py-2.5 px-3 border-r border-slate-200">
+                        <div className="flex items-center gap-1 text-slate-800 font-semibold text-[11px]">
+                          <span>{program.location}</span>
+                        </div>
+                      </td>
+
+                      {/* PIC & Frekuensi */}
+                      <td className="py-2.5 px-3 border-r border-slate-200">
+                        <p className="font-semibold text-slate-800 text-[11px]">
+                          {program.picName}
+                        </p>
+                      </td>
+
+                      {/* Day Cells 1 - 31 */}
+                      {Array.from({ length: 31 }, (_, i) => {
+                        const dayNumber = i + 1;
+                        const status = program.days[dayNumber];
+                        return (
+                          <td
+                            key={dayNumber}
+                            onClick={() => toggleMasterProgramDay(program.id, dayNumber)}
+                            className="py-1 px-0.5 text-center border-r border-slate-100 cursor-pointer hover:bg-teal-100/60 transition-colors"
+                          >
+                            <div className="flex items-center justify-center">
+                              {renderStatusCell(status)}
+                            </div>
+                          </td>
+                        );
+                      })}
+
+                      {/* Plan, Done, % */}
+                      <td className="py-2.5 px-2 text-center font-bold text-sky-700 border-r border-slate-200">
+                        {planCount}
+                      </td>
+                      <td className="py-2.5 px-2 text-center font-bold text-emerald-700 border-r border-slate-200">
+                        {doneCount}
+                      </td>
+                      <td className="py-2.5 px-2 text-center font-bold text-slate-800 border-r border-slate-200">
+                        <span
+                          className={`px-1.5 py-0.5 rounded text-[10px] ${
+                            pct >= 80
+                              ? 'bg-emerald-100 text-emerald-800'
+                              : pct >= 50
+                              ? 'bg-amber-100 text-amber-800'
+                              : 'bg-rose-100 text-rose-800'
+                          }`}
+                        >
+                          {pct}%
+                        </span>
+                      </td>
+
+                      {/* Action buttons */}
+                      <td className="py-2.5 px-3 text-center">
+                        <div className="flex items-center justify-center gap-1">
+                          <button
+                            onClick={() => handleOpenEditModal(program)}
+                            className="p-1 rounded-lg hover:bg-slate-100 text-slate-600 hover:text-teal-700 transition-colors"
+                            title="Ubah Program"
+                          >
+                            <Edit2 className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={() => duplicateMasterProgram(program.id)}
+                            className="p-1 rounded-lg hover:bg-slate-100 text-slate-600 hover:text-sky-700 transition-colors"
+                            title="Duplikat Program"
+                          >
+                            <Copy className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={() => {
+                              if (confirm(`Hapus program: "${program.workDescription}"?`)) {
+                                deleteMasterProgram(program.id);
+                                showToast('Program kerja berhasil dihapus.');
+                              }
+                            }}
+                            className="p-1 rounded-lg hover:bg-rose-50 text-slate-400 hover:text-rose-600 transition-colors"
+                            title="Hapus Program"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Add / Edit Modal */}
+      {isAddModalOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white w-full max-w-2xl rounded-2xl shadow-2xl border border-slate-200 overflow-hidden my-8 animate-in zoom-in-95 duration-200">
+            {/* Modal Header */}
+            <div className="p-5 border-b border-slate-100 bg-slate-50/70 flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-teal-600 text-white flex items-center justify-center shadow-xs">
+                  <CalendarRange className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-slate-900 text-base">
+                    {editingItem ? 'Edit Master Cleaning Program' : 'Tambah Master Cleaning Program'}
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Lokasi Proyek: <strong>{activeProject.name}</strong> • Periode: {monthOptions[selectedMonth - 1]?.label} {selectedYear}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsAddModalOpen(false)}
+                className="p-2 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Modal Form */}
+            <form onSubmit={handleSaveProgram} className="p-6 space-y-4 max-h-[75vh] overflow-y-auto">
+              {/* Uraian Pekerjaan */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Uraian Pekerjaan <span className="text-rose-500">*</span>
+                </label>
+                <textarea
+                  required
+                  rows={2}
+                  value={formWorkDescription}
+                  onChange={(e) => setFormWorkDescription(e.target.value)}
+                  placeholder="Contoh: Stripping dan recoating lantai vinyl ruang tindakan medik..."
+                  className="w-full px-3.5 py-2.5 text-xs bg-white border border-slate-200 rounded-xl focus:outline-hidden focus:border-teal-500 focus:ring-2 focus:ring-teal-100"
+                />
+              </div>
+
+              {/* Metode Pekerjaan */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Metode Pekerjaan (SOP Teknis) <span className="text-rose-500">*</span>
+                </label>
+                <textarea
+                  required
+                  rows={3}
+                  value={formWorkMethod}
+                  onChange={(e) => setFormWorkMethod(e.target.value)}
+                  placeholder="Contoh: 1. Pasang wet floor sign. 2. Larutkan wax stripper 1:4. 3. Scrubbing mesin single disc pad hitam..."
+                  className="w-full px-3.5 py-2.5 text-xs bg-white border border-slate-200 rounded-xl focus:outline-hidden focus:border-teal-500 focus:ring-2 focus:ring-teal-100"
+                />
+              </div>
+
+              {/* 3 Columns: Lokasi, Frekuensi, PIC */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Lokasi / Area <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={formLocation}
+                    onChange={(e) => setFormLocation(e.target.value)}
+                    placeholder="Contoh: Lobby Utama Lantai 1"
+                    className="w-full px-3 py-2 text-xs bg-white border border-slate-200 rounded-xl focus:outline-hidden focus:border-teal-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Kategori Frekuensi
+                  </label>
+                  <select
+                    value={formFrequency}
+                    onChange={(e) => setFormFrequency(e.target.value as any)}
+                    className="w-full px-3 py-2 text-xs bg-white border border-slate-200 rounded-xl focus:outline-hidden focus:border-teal-500 cursor-pointer"
+                  >
+                    <option value="harian">Harian (Daily)</option>
+                    <option value="mingguan">Mingguan (Weekly)</option>
+                    <option value="bulanan">Bulanan (Monthly)</option>
+                    <option value="khusus">Khusus / Deep Cleaning</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Petugas Penanggung Jawab (PIC)
+                  </label>
+                  <select
+                    value={formPicName}
+                    onChange={(e) => setFormPicName(e.target.value)}
+                    className="w-full px-3 py-2 text-xs bg-white border border-slate-200 rounded-xl focus:outline-hidden focus:border-teal-500 cursor-pointer"
+                  >
+                    {cleaners.map((c) => (
+                      <option key={c.id} value={c.name}>
+                        {c.name} ({c.shift})
+                      </option>
+                    ))}
+                    <option value="Tim Reguler">Tim Reguler Operasional</option>
+                    <option value="Tim Khusus Periodic">Tim Khusus Periodic</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Day Picker: 1 - 31 */}
+              <div className="border-t border-slate-200 pt-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2.5">
+                  <div>
+                    <label className="text-xs font-bold text-slate-800">
+                      Jadwal Tanggal (1 - 31)
+                    </label>
+                    <p className="text-[11px] text-slate-500">
+                      Klik tanggal untuk mengatur status (R = Rencana, S = Selesai, P = Proses, T = Tertunda)
+                    </p>
+                  </div>
+
+                  {/* Preset buttons */}
+                  <div className="flex flex-wrap items-center gap-1 text-[10px]">
+                    <button
+                      type="button"
+                      onClick={() => applyPresetDays('all')}
+                      className="px-2 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold"
+                    >
+                      Semua Hari (1-31)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => applyPresetDays('workdays')}
+                      className="px-2 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold"
+                    >
+                      Hari Kerja
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => applyPresetDays('alternate')}
+                      className="px-2 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold"
+                    >
+                      Selang-Seling
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => applyPresetDays('clear')}
+                      className="px-2 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 font-semibold"
+                    >
+                      Kosongkan
+                    </button>
+                  </div>
+                </div>
+
+                {/* 31 Days Buttons Grid */}
+                <div className="grid grid-cols-7 sm:grid-cols-11 gap-1.5 bg-slate-50 p-3 rounded-xl border border-slate-200">
+                  {Array.from({ length: 31 }, (_, idx) => {
+                    const day = idx + 1;
+                    const st = formDays[day] || 'none';
+
+                    let badgeColor = 'bg-white border-slate-200 text-slate-600 hover:bg-teal-50';
+                    let label = '-';
+
+                    if (st === 'planned') {
+                      badgeColor = 'bg-sky-500 text-white border-sky-600 font-bold';
+                      label = 'R';
+                    } else if (st === 'done') {
+                      badgeColor = 'bg-emerald-600 text-white border-emerald-700 font-bold';
+                      label = 'S';
+                    } else if (st === 'in_progress') {
+                      badgeColor = 'bg-amber-500 text-white border-amber-600 font-bold';
+                      label = 'P';
+                    } else if (st === 'rescheduled') {
+                      badgeColor = 'bg-rose-500 text-white border-rose-600 font-bold';
+                      label = 'T';
+                    }
+
+                    return (
+                      <button
+                        key={day}
+                        type="button"
+                        onClick={() => {
+                          let nextStatus: ProgramDayStatus = 'planned';
+                          if (st === 'none') nextStatus = 'planned';
+                          else if (st === 'planned') nextStatus = 'done';
+                          else if (st === 'done') nextStatus = 'in_progress';
+                          else if (st === 'in_progress') nextStatus = 'rescheduled';
+                          else nextStatus = 'none';
+
+                          setFormDays((prev) => ({ ...prev, [day]: nextStatus }));
+                        }}
+                        className={`p-1.5 rounded-lg border text-center transition-all flex flex-col items-center justify-center ${badgeColor}`}
+                      >
+                        <span className="text-[10px] leading-none opacity-80">{day}</span>
+                        <span className="text-[11px] font-bold leading-tight">{label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Modal Footer */}
+              <div className="pt-4 border-t border-slate-100 flex items-center justify-end gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => setIsAddModalOpen(false)}
+                  className="px-4 py-2 rounded-xl border border-slate-200 text-slate-700 text-xs font-semibold hover:bg-slate-50 transition-colors"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-xs font-semibold shadow-xs transition-colors"
+                >
+                  {editingItem ? 'Simpan Perubahan' : 'Tambahkan ke Program Kerja'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
