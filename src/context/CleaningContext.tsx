@@ -202,17 +202,26 @@ interface CleaningContextType {
   submitQCInspection: (
     payload: {
       taskId: string;
+      areaName?: string;
+      cleanerName?: string;
       score: number;
       status: 'passed' | 'failed' | 'needs_rework';
-      criteriaScores: {
+      criteriaScores?: {
         floor: number;
         glassAndMirrors: number;
         odorAndAir: number;
         wasteManagement: number;
         suppliesCompleteness: number;
       };
+      auditParameters?: QCInspection['auditParameters'];
       notes: string;
+      recommendations?: string[];
       photoProof?: string;
+      photoBefore?: string;
+      photoProgress?: string;
+      photoAfter?: string;
+      inspectionSource?: 'weekly' | 'monthly' | 'special_job' | 'complaint' | 'task' | 'other';
+      evaluatedInputSummary?: string;
     }
   ) => void;
   submitNewComplaint: (
@@ -1279,74 +1288,94 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const submitQCInspection = (payload: {
     taskId: string;
+    areaName?: string;
+    cleanerName?: string;
     score: number;
     status: 'passed' | 'failed' | 'needs_rework';
-    criteriaScores: {
+    criteriaScores?: {
       floor: number;
       glassAndMirrors: number;
       odorAndAir: number;
       wasteManagement: number;
       suppliesCompleteness: number;
     };
+    auditParameters?: QCInspection['auditParameters'];
     notes: string;
+    recommendations?: string[];
     photoProof?: string;
+    photoBefore?: string;
+    photoProgress?: string;
+    photoAfter?: string;
+    inspectionSource?: 'weekly' | 'monthly' | 'special_job' | 'complaint' | 'task' | 'other';
+    evaluatedInputSummary?: string;
   }) => {
     const task = tasks.find((t) => t.id === payload.taskId);
-    if (!task) return;
+    const resolvedAreaName = payload.areaName || task?.areaName || 'Area Gedung';
+    const resolvedCleanerName = payload.cleanerName || task?.cleanerName || 'Tim Kebersihan';
+    const resolvedPhoto = payload.photoAfter || payload.photoProof || task?.photoAfter;
 
     const nowStr = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB';
 
     const newInspection: QCInspection = {
       id: `qc-${Date.now()}`,
-      projectId: task.projectId || safeActiveProjectId,
+      projectId: task?.projectId || safeActiveProjectId,
       taskId: payload.taskId,
-      areaName: task.areaName,
-      cleanerName: task.cleanerName,
-      inspectorName: 'Hendra Wijaya (Supervisor)',
+      areaName: resolvedAreaName,
+      cleanerName: resolvedCleanerName,
+      inspectorName: 'Hendra Wijaya (Auditor QC)',
       inspectedAt: `Hari ini, ${nowStr}`,
       score: payload.score,
       status: payload.status,
       criteriaScores: payload.criteriaScores,
+      auditParameters: payload.auditParameters,
       notes: payload.notes,
-      photoProof: payload.photoProof || task.photoAfter,
+      recommendations: payload.recommendations,
+      photoProof: resolvedPhoto,
+      photoBefore: payload.photoBefore || task?.photoBefore,
+      photoProgress: payload.photoProgress || task?.photoProgress,
+      photoAfter: payload.photoAfter || task?.photoAfter,
+      inspectionSource: payload.inspectionSource || 'task',
+      evaluatedInputSummary: payload.evaluatedInputSummary,
     };
 
     setInspections((prev) => [newInspection, ...prev]);
 
-    setTasks((prev) =>
-      prev.map((t) =>
-        t.id === payload.taskId
-          ? {
-              ...t,
-              status: payload.status === 'passed' ? 'completed' : 'pending',
-              qcScore: payload.score,
-              qcStatus: payload.status === 'passed' ? 'approved' : 'rejected',
-              qcNotes: payload.notes,
-              inspectedBy: 'Hendra Wijaya',
-              inspectedAt: nowStr,
-            }
-          : t
-      )
-    );
+    if (task) {
+      setTasks((prev) =>
+        prev.map((t) =>
+          t.id === payload.taskId
+            ? {
+                ...t,
+                status: payload.status === 'passed' ? 'completed' : 'pending',
+                qcScore: payload.score,
+                qcStatus: payload.status === 'passed' ? 'approved' : 'rejected',
+                qcNotes: payload.notes,
+                inspectedBy: 'Hendra Wijaya',
+                inspectedAt: nowStr,
+              }
+            : t
+        )
+      );
 
-    setAreas((prev) =>
-      prev.map((a) =>
-        a.id === task.areaId
-          ? { ...a, status: payload.status === 'passed' ? 'inspected' : 'needs_cleaning' }
-          : a
-      )
-    );
+      setAreas((prev) =>
+        prev.map((a) =>
+          a.id === task.areaId
+            ? { ...a, status: payload.status === 'passed' ? 'inspected' : 'needs_cleaning' }
+            : a
+        )
+      );
+    }
 
     const notif: AppNotification = {
       id: `notif-${Date.now()}`,
       title: payload.status === 'passed' ? '🎉 Inspeksi QC Lolos!' : '⚠️ Revisi Inspeksi Diperlukan',
-      message: `Inspeksi untuk ${task.areaName} diberikan nilai ${payload.score}/100 oleh Supervisor: "${payload.notes}"`,
+      message: `Inspeksi untuk ${resolvedAreaName} diberikan nilai ${payload.score}/100 oleh Auditor QC: "${payload.notes}"`,
       timestamp: nowStr,
       type: payload.status === 'passed' ? 'success' : 'warning',
       targetRole: ['petugas', 'admin'],
       read: false,
-      taskId: task.id,
-      projectId: task.projectId || safeActiveProjectId,
+      taskId: task?.id || payload.taskId,
+      projectId: task?.projectId || safeActiveProjectId,
     };
     setNotifications((prev) => [notif, ...prev]);
 

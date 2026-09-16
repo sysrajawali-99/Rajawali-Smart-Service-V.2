@@ -80,6 +80,34 @@ export const DashboardKpiSettingsModal: React.FC<DashboardKpiSettingsModalProps>
     onChange(updated);
   };
 
+  const handlePresetFocusKpi = () => {
+    onChange({
+      kpiSummaryCards: true,
+      kpiWorkLifecycle: true,
+      kpiQualityScore: true,
+      kpiChecklistCompliance: true,
+      kpiDamageReports: true,
+      areaRealtimeStatus: false,
+      quickActions: false,
+      checklist24QuickView: false,
+      liveActivityFeed: false,
+    });
+  };
+
+  const handlePresetCompact = () => {
+    onChange({
+      kpiSummaryCards: true,
+      kpiWorkLifecycle: true,
+      kpiQualityScore: true,
+      kpiChecklistCompliance: false,
+      kpiDamageReports: false,
+      areaRealtimeStatus: false,
+      quickActions: false,
+      checklist24QuickView: false,
+      liveActivityFeed: false,
+    });
+  };
+
   const sections: {
     key: keyof DashboardKpiVisibilityConfig;
     title: string;
@@ -193,26 +221,41 @@ export const DashboardKpiSettingsModal: React.FC<DashboardKpiSettingsModalProps>
               {visibleCount} dari {totalCount} widget aktif
             </strong>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="text-slate-400 text-[11px] mr-1 hidden sm:inline">Preset:</span>
             <button
               onClick={() => handleSelectAll(true)}
-              className="px-2.5 py-1 font-semibold text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-md border border-blue-200 transition-colors"
+              className="px-2.5 py-1 font-semibold text-blue-700 hover:text-blue-800 hover:bg-blue-100/70 bg-blue-50 rounded-lg border border-blue-200 transition-colors"
             >
-              Tampilkan Semua
+              Semua Aktif
+            </button>
+            <button
+              onClick={handlePresetFocusKpi}
+              className="px-2.5 py-1 font-semibold text-amber-800 hover:text-amber-900 hover:bg-amber-100/70 bg-amber-50 rounded-lg border border-amber-200 transition-colors"
+              title="Fokus hanya pada kartu KPI kinerja & kualitas"
+            >
+              🎯 Fokus KPI Kinerja
+            </button>
+            <button
+              onClick={handlePresetCompact}
+              className="px-2.5 py-1 font-semibold text-slate-700 hover:text-slate-900 hover:bg-slate-100 bg-white rounded-lg border border-slate-200 transition-colors"
+              title="Tampilkan hanya ringkasan siklus kerja & skor kualitas"
+            >
+              ⚡ Ringkas
             </button>
             <button
               onClick={() => handleSelectAll(false)}
-              className="px-2.5 py-1 font-semibold text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-md border border-slate-200 transition-colors"
+              className="px-2 py-1 font-semibold text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded-lg border border-slate-200 transition-colors"
             >
-              Sembunyikan Semua
+              Sembunyikan
             </button>
             <button
               onClick={onReset}
-              className="inline-flex items-center gap-1 px-2.5 py-1 font-semibold text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-md border border-slate-200 transition-colors"
+              className="inline-flex items-center gap-1 px-2.5 py-1 font-semibold text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-lg border border-slate-200 transition-colors"
               title="Kembalikan ke susunan standar"
             >
               <RotateCcw className="w-3 h-3" />
-              <span>Reset Default</span>
+              <span>Reset</span>
             </button>
           </div>
         </div>

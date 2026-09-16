@@ -145,6 +145,14 @@ export interface CleaningTask {
   monthlyReportExportDate?: string;
 }
 
+export interface QCAuditParameterResult {
+  parameterName: string;
+  scale: number; // 1 - 5
+  category: string; // e.g. "Sangat Bersih", "Bersih", etc.
+  weight: number; // 25, 20, 15
+  weightedScore: number; // (scale / 5) * weight
+}
+
 export interface QCInspection {
   id: string;
   projectId?: string;
@@ -155,15 +163,32 @@ export interface QCInspection {
   inspectedAt: string;
   score: number; // 0 - 100
   status: 'passed' | 'failed' | 'needs_rework';
-  criteriaScores: {
+  criteriaScores?: {
     floor: number; // 0-20
     glassAndMirrors: number; // 0-20
     odorAndAir: number; // 0-20
     wasteManagement: number; // 0-20
     suppliesCompleteness: number; // 0-20
   };
+  auditParameters?: {
+    supplies?: QCAuditParameterResult;
+    sanitationAndOdor?: QCAuditParameterResult;
+    surfaceFloor?: QCAuditParameterResult;
+    wasteManagement?: QCAuditParameterResult;
+    detailEsthetics?: QCAuditParameterResult;
+  };
+  qualityScale?: number; // 1 - 5 (Sangat Kotor s/d Sangat Bersih)
+  qualityCategory?: string; // e.g. "Bersih"
+  sessionWeight?: number; // bobot pekerjaan dalam sesi (e.g. 25%)
+  sessionContribution?: number; // kontribusi skor terhadap total sesi
   notes: string;
+  recommendations?: string[];
   photoProof?: string;
+  photoBefore?: string; // Dokumentasi visual kerja sebelum pengerjaan
+  photoProgress?: string; // Dokumentasi visual saat proses pengerjaan
+  photoAfter?: string; // Dokumentasi visual setelah pengerjaan selesai
+  inspectionSource?: 'weekly' | 'monthly' | 'special_job' | 'complaint' | 'task' | 'other';
+  evaluatedInputSummary?: string;
 }
 
 export interface Complaint {

@@ -76,6 +76,11 @@ export const DashboardView: React.FC = () => {
     }
   };
 
+  const handleToggleWidget = (key: keyof DashboardKpiVisibilityConfig) => {
+    const updated = { ...kpiConfig, [key]: !kpiConfig[key] };
+    handleUpdateKpiConfig(updated);
+  };
+
   // Statistics calculation
   const totalAreas = areas.length;
   const cleanAreas = areas.filter((a) => a.status === 'clean' || a.status === 'inspected').length;
@@ -172,6 +177,7 @@ export const DashboardView: React.FC = () => {
         <DashboardKpiSection
           visibility={kpiConfig}
           onOpenSettings={() => setShowSettingsModal(true)}
+          onToggleVisibility={handleToggleWidget}
         />
       )}
 
