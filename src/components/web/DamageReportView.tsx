@@ -572,6 +572,11 @@ export const DamageReportView: React.FC = () => {
             <span className="text-xs text-slate-500">
               {activeProject.managerName} (Facility Manager)
             </span>
+            <span className="text-xs text-slate-400">•</span>
+            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200">
+              <Calendar className="w-3.5 h-3.5 text-blue-600" />
+              Periode: {activePeriodLabel}
+            </span>
           </div>
         </div>
 
@@ -597,8 +602,8 @@ export const DamageReportView: React.FC = () => {
         </div>
       </div>
 
-      {/* KPI Stats Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3.5">
+      {/* KPI Stats Cards - 4 Balanced Columns */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
         <div className="bg-white rounded-xl p-4 border border-slate-200 shadow-2xs">
           <div className="text-slate-500 text-xs font-medium uppercase tracking-wider mb-1">
             Total Laporan
@@ -607,7 +612,7 @@ export const DamageReportView: React.FC = () => {
             <span className="text-2xl font-bold text-slate-900">{totalReports}</span>
             <span className="text-xs text-slate-400">Tiket</span>
           </div>
-          <div className="mt-1 text-[11px] text-slate-500">Seluruh periode proyek</div>
+          <div className="mt-1 text-[11px] text-slate-500 truncate">Periode: {activePeriodLabel}</div>
         </div>
 
         <div className="bg-white rounded-xl p-4 border border-rose-200 bg-rose-50/20 shadow-2xs">
@@ -647,23 +652,95 @@ export const DamageReportView: React.FC = () => {
           </div>
           <div className="mt-1 text-[11px] text-emerald-600 font-medium">Berfungsi normal</div>
         </div>
-
-        <div className="col-span-2 sm:col-span-1 bg-white rounded-xl p-4 border border-indigo-200 bg-indigo-50/20 shadow-2xs">
-          <div className="text-indigo-700 text-xs font-semibold uppercase tracking-wider mb-1 flex items-center gap-1">
-            <DollarSign className="w-3.5 h-3.5" />
-            Estimasi Biaya
-          </div>
-          <div className="flex items-baseline justify-between">
-            <span className="text-lg font-bold text-indigo-900 truncate">
-              Rp {totalCost.toLocaleString('id-ID')}
-            </span>
-          </div>
-          <div className="mt-1 text-[11px] text-indigo-600 font-medium">Total usulan sparepart</div>
-        </div>
       </div>
 
       {/* Filter and Search Bar */}
-      <div className="bg-white rounded-xl shadow-xs border border-slate-200 p-4 space-y-3">
+      <div className="bg-white rounded-xl shadow-xs border border-slate-200 p-4 space-y-3.5">
+        {/* Filter Periode Bulan & Tahun */}
+        <div className="flex flex-wrap items-center justify-between gap-3 p-3 bg-gradient-to-r from-blue-50/70 via-indigo-50/40 to-slate-50 rounded-xl border border-blue-100">
+          <div className="flex items-center gap-2.5">
+            <div className="p-2 bg-blue-600 text-white rounded-lg shadow-2xs">
+              <Calendar className="w-4 h-4" />
+            </div>
+            <div>
+              <div className="text-xs font-bold text-slate-900 flex items-center gap-2">
+                <span>Filter Periode</span>
+                <span className="text-[11px] font-semibold text-blue-700 bg-blue-100/80 px-2 py-0.5 rounded-full border border-blue-200">
+                  {activePeriodLabel}
+                </span>
+              </div>
+              <div className="text-[11px] text-slate-500">
+                Menampilkan <span className="font-semibold text-slate-700">{periodFilteredReports.length}</span> dari {damageReports.length} total laporan kerusakan
+              </div>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Month Dropdown */}
+            <div className="flex items-center gap-1.5 bg-white border border-slate-200 px-3 py-1.5 rounded-lg shadow-2xs">
+              <span className="text-xs font-medium text-slate-500">Bulan:</span>
+              <select
+                value={selectedMonth}
+                onChange={(e) => setSelectedMonth(e.target.value)}
+                className="text-xs font-bold text-slate-800 bg-transparent focus:outline-hidden cursor-pointer"
+              >
+                {MONTH_OPTIONS.map((m) => (
+                  <option key={m.value} value={m.value}>
+                    {m.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Year Dropdown */}
+            <div className="flex items-center gap-1.5 bg-white border border-slate-200 px-3 py-1.5 rounded-lg shadow-2xs">
+              <span className="text-xs font-medium text-slate-500">Tahun:</span>
+              <select
+                value={selectedYear}
+                onChange={(e) => setSelectedYear(e.target.value)}
+                className="text-xs font-bold text-slate-800 bg-transparent focus:outline-hidden cursor-pointer"
+              >
+                <option value="all">Semua Tahun</option>
+                {availableYears.map((yr) => (
+                  <option key={yr} value={yr.toString()}>
+                    {yr}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Quick Presets */}
+            <button
+              type="button"
+              onClick={() => {
+                setSelectedMonth('9');
+                setSelectedYear('2026');
+              }}
+              className={`px-2.5 py-1.5 text-xs font-semibold rounded-lg border transition-all ${
+                selectedMonth === '9' && selectedYear === '2026'
+                  ? 'bg-blue-600 text-white border-blue-600 shadow-2xs'
+                  : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+              }`}
+            >
+              Sep 2026 (Bulan Ini)
+            </button>
+
+            {(selectedMonth !== 'all' || selectedYear !== 'all') && (
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedMonth('all');
+                  setSelectedYear('all');
+                }}
+                className="px-2.5 py-1.5 text-xs font-semibold text-slate-600 hover:text-slate-900 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
+                title="Tampilkan semua periode"
+              >
+                Semua Periode
+              </button>
+            )}
+          </div>
+        </div>
+
         <div className="flex flex-col md:flex-row gap-3 items-stretch md:items-center justify-between">
           {/* Search Input */}
           <div className="relative flex-1">
@@ -760,26 +837,26 @@ export const DamageReportView: React.FC = () => {
         {/* Status Filter Tabs */}
         <div className="flex flex-wrap items-center gap-1.5 pt-1 border-t border-slate-100">
           {[
-            { id: 'all', label: 'Semua Laporan', count: damageReports.length },
+            { id: 'all', label: 'Semua Laporan', count: periodFilteredReports.length },
             {
               id: 'dilaporkan',
               label: 'Baru Dilaporkan',
-              count: damageReports.filter((r) => r.status === 'dilaporkan').length,
+              count: periodFilteredReports.filter((r) => r.status === 'dilaporkan').length,
             },
             {
               id: 'dalam_penanganan',
               label: 'Dalam Penanganan',
-              count: damageReports.filter((r) => r.status === 'dalam_penanganan').length,
+              count: periodFilteredReports.filter((r) => r.status === 'dalam_penanganan').length,
             },
             {
               id: 'menunggu_sparepart',
               label: 'Menunggu Sparepart',
-              count: damageReports.filter((r) => r.status === 'menunggu_sparepart').length,
+              count: periodFilteredReports.filter((r) => r.status === 'menunggu_sparepart').length,
             },
             {
               id: 'selesai',
               label: 'Selesai',
-              count: damageReports.filter((r) => r.status === 'selesai').length,
+              count: periodFilteredReports.filter((r) => r.status === 'selesai').length,
             },
           ].map((tab) => {
             const isActive = statusFilter === tab.id;
@@ -826,10 +903,12 @@ export const DamageReportView: React.FC = () => {
               setCategoryFilter('all');
               setSeverityFilter('all');
               setFloorFilter('all');
+              setSelectedMonth('all');
+              setSelectedYear('all');
             }}
             className="text-xs font-semibold text-blue-600 hover:text-blue-700 underline"
           >
-            Reset Semua Filter
+            Reset Semua Filter Termasuk Periode
           </button>
         </div>
       ) : viewMode === 'cards' ? (
@@ -919,9 +998,9 @@ export const DamageReportView: React.FC = () => {
                     <span>Pelapor: </span>
                     <span className="font-medium text-slate-700">{report.reporterName}</span>
                   </div>
-                  {report.costEstimate && (
-                    <span className="font-bold text-slate-800">
-                      Rp {report.costEstimate.toLocaleString('id-ID')}
+                  {report.technicianName && (
+                    <span className="font-medium text-blue-700 truncate max-w-[130px]">
+                      Teknisi: {report.technicianName}
                     </span>
                   )}
                 </div>
@@ -993,7 +1072,7 @@ export const DamageReportView: React.FC = () => {
                   <th className="py-3 px-3">Tgl Lapor</th>
                   <th className="py-3 px-3">Pelapor</th>
                   <th className="py-3 px-3">Status</th>
-                  <th className="py-3 px-3">Estimasi Biaya</th>
+                  <th className="py-3 px-3">Teknisi / Ditangani</th>
                   <th className="py-3 px-3 text-right">Aksi</th>
                 </tr>
               </thead>
@@ -1021,7 +1100,7 @@ export const DamageReportView: React.FC = () => {
                     <td className="py-3 px-3 text-slate-700">{report.reporterName}</td>
                     <td className="py-3 px-3">{getStatusBadge(report.status)}</td>
                     <td className="py-3 px-3 font-medium text-slate-800">
-                      {report.costEstimate ? `Rp ${report.costEstimate.toLocaleString('id-ID')}` : '-'}
+                      {report.technicianName || '-'}
                     </td>
                     <td className="py-3 px-3 text-right whitespace-nowrap space-x-1">
                       <button
@@ -1323,8 +1402,8 @@ export const DamageReportView: React.FC = () => {
                 </div>
               </div>
 
-              {/* Pelapor & Estimasi Biaya */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {/* Pelapor & Kontak */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
                     Nama Petugas Pelapor
@@ -1345,19 +1424,6 @@ export const DamageReportView: React.FC = () => {
                     type="text"
                     value={newReport.reporterPhone}
                     onChange={(e) => setNewReport({ ...newReport, reporterPhone: e.target.value })}
-                    className="w-full text-sm px-3 py-2 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-hidden"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Estimasi Biaya Sparepart (Rp)
-                  </label>
-                  <input
-                    type="number"
-                    placeholder="Contoh: 450000"
-                    value={newReport.costEstimate}
-                    onChange={(e) => setNewReport({ ...newReport, costEstimate: e.target.value })}
                     className="w-full text-sm px-3 py-2 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-hidden"
                   />
                 </div>
@@ -1519,21 +1585,6 @@ export const DamageReportView: React.FC = () => {
                   value={resolveForm.technicianNotes}
                   onChange={(e) =>
                     setResolveForm({ ...resolveForm, technicianNotes: e.target.value })
-                  }
-                  className="w-full text-sm px-3 py-2 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-hidden"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Biaya Akhir / Realisasi Sparepart (Rp)
-                </label>
-                <input
-                  type="number"
-                  placeholder="Contoh: 450000"
-                  value={resolveForm.costEstimate}
-                  onChange={(e) =>
-                    setResolveForm({ ...resolveForm, costEstimate: e.target.value })
                   }
                   className="w-full text-sm px-3 py-2 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-hidden"
                 />
@@ -1784,14 +1835,6 @@ export const DamageReportView: React.FC = () => {
                   <div className="grid grid-cols-1 sm:grid-cols-3 p-3 bg-white gap-1 sm:gap-0">
                     <span className="font-semibold text-slate-500">Catatan Perbaikan</span>
                     <span className="sm:col-span-2 text-slate-800">{selectedReport.technicianNotes}</span>
-                  </div>
-                )}
-                {selectedReport.costEstimate && (
-                  <div className="grid grid-cols-1 sm:grid-cols-3 p-3 bg-emerald-50/50 gap-1 sm:gap-0">
-                    <span className="font-semibold text-emerald-800">Realisasi / Estimasi Biaya</span>
-                    <span className="sm:col-span-2 font-bold text-emerald-900 text-sm">
-                      Rp {selectedReport.costEstimate.toLocaleString('id-ID')}
-                    </span>
                   </div>
                 )}
               </div>

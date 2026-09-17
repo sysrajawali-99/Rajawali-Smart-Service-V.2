@@ -119,7 +119,7 @@ export const PengaturanView: React.FC = () => {
     {
       key: 'kpiDamageReports',
       title: 'KPI Laporan Kerusakan Barang / Fasilitas',
-      description: 'Statistik tiket kerusakan fasilitas gedung, tingkat kritis/urgent, progres penanganan teknisi, dan estimasi biaya perbaikan.',
+      description: 'Statistik tiket kerusakan fasilitas gedung, tingkat kritis/urgent, progres penanganan teknisi, dan status penyelesaian perbaikan.',
       category: 'KPI Kinerja',
       icon: Wrench,
     },
