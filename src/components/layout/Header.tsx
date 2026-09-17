@@ -1,9 +1,7 @@
 import React, { useState } from 'react';
 import {
   Sparkles,
-  Smartphone,
-  Monitor,
-  Columns,
+  Menu,
   Bell,
   CheckCircle2,
   AlertTriangle,
@@ -12,18 +10,17 @@ import {
   ShieldCheck,
   Building2,
   ChevronDown,
+  ChevronRight,
   X,
   Lock,
 } from 'lucide-react';
 import { useCleaning } from '../../context/CleaningContext';
-import { UserRole, ViewMode } from '../../types';
+import { UserRole } from '../../types';
 
 export const Header: React.FC = () => {
   const {
     userRole,
     setUserRole,
-    viewMode,
-    setViewMode,
     notifications,
     dismissNotification,
     clearAllNotifications,
@@ -32,11 +29,12 @@ export const Header: React.FC = () => {
     activeProject,
     setActiveProjectId,
     allowedProjects,
-    projects,
     users,
-    activeUserId,
     setActiveUserId,
+    activeTab,
     setActiveTab,
+    mobileMenuOpen,
+    toggleMobileMenu,
   } = useCleaning();
 
   const [showNotifDropdown, setShowNotifDropdown] = useState(false);
@@ -68,20 +66,79 @@ export const Header: React.FC = () => {
     },
   };
 
+  const getTabInfo = (tab: string): { category: string; label: string } => {
+    switch (tab) {
+      case 'dashboard':
+        return { category: 'Ringkasan', label: 'Dashboard Utama' };
+      case 'ceklist':
+        return { category: 'Inspeksi Report', label: 'Ceklist Kebersihan Area' };
+      case 'area':
+        return { category: 'Inspeksi Report', label: 'Area Cleaning' };
+      case 'activity':
+        return { category: 'Inspeksi Report', label: 'Cleaning Activity' };
+      case 'inspeksi':
+        return { category: 'Inspeksi Report', label: 'Inspeksi & Control' };
+      case 'report':
+        return { category: 'Inspeksi Report', label: 'Laporan & Report' };
+      case 'petugas':
+        return { category: 'Operational Report', label: 'Petugas' };
+      case 'shift':
+        return { category: 'Operational Report', label: 'Shift' };
+      case 'jadwal':
+        return { category: 'Operational Report', label: 'Jadwal Cleaning' };
+      case 'kerusakan':
+      case 'damage-report':
+        return { category: 'Operational Report', label: 'Laporan Kerusakan' };
+      case 'proyek':
+        return { category: 'Operational Report', label: 'Lokasi Proyek' };
+      case 'daily-activity':
+        return { category: 'Activity Report', label: 'Daily Activity' };
+      case 'weekly-activity':
+        return { category: 'Activity Report', label: 'Weekly Activity' };
+      case 'monthly-activity':
+        return { category: 'Activity Report', label: 'Monthly Activity' };
+      case 'master-program':
+      case 'mcp':
+        return { category: 'Activity Report', label: 'Master Cleaning Program' };
+      case 'complaint':
+        return { category: 'Activity Report', label: 'Complaint' };
+      case 'pengaturan':
+        return { category: 'Sistem', label: 'Pengaturan & Master Data' };
+      default:
+        return { category: 'Sistem', label: tab };
+    }
+  };
+
+  const currentTabInfo = getTabInfo(activeTab);
+
   return (
-    <header className="bg-white border-b border-slate-200 sticky top-0 z-40 px-4 lg:px-6 py-2.5 shadow-xs">
-      <div className="flex items-center justify-between gap-4">
-        {/* Brand & Project Selector */}
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-sky-600 to-cyan-500 flex items-center justify-center text-white shadow-sm shadow-sky-200 shrink-0">
+    <header className="bg-white border-b border-slate-200 sticky top-0 z-40 px-3 sm:px-4 lg:px-6 py-2.5 shadow-2xs">
+      <div className="flex items-center justify-between gap-2 sm:gap-4">
+        {/* Left: Hamburger (Mobile/Tablet) & Brand / Project Selector */}
+        <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+          {/* Hamburger Menu button for mobile and tablet */}
+          <button
+            id="header-mobile-menu-toggle"
+            onClick={toggleMobileMenu}
+            className="lg:hidden p-2 -ml-1 rounded-xl text-slate-700 hover:text-slate-900 hover:bg-slate-100 active:bg-slate-200 transition-colors"
+            aria-label="Buka Menu Navigasi"
+            title="Buka Menu Navigasi"
+          >
+            {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+          </button>
+
+          {/* Logo icon */}
+          <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-tr from-sky-600 to-cyan-500 flex items-center justify-center text-white shadow-xs shadow-sky-200 shrink-0">
             <Sparkles className="w-5 h-5" />
           </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-base font-bold tracking-tight text-slate-900 leading-tight">
-                Smart Cleaning Operations
+
+          {/* Brand and Project Info */}
+          <div className="min-w-0">
+            <div className="flex items-center gap-1.5 sm:gap-2">
+              <h1 className="text-sm sm:text-base font-bold tracking-tight text-slate-900 leading-tight truncate">
+                Smart Cleaning
               </h1>
-              <span className="hidden sm:inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold bg-sky-50 text-sky-700 border border-sky-200">
+              <span className="hidden md:inline-flex items-center px-1.5 py-0.2 rounded text-[10px] font-semibold bg-sky-50 text-sky-700 border border-sky-200">
                 v2.5
               </span>
             </div>
@@ -91,18 +148,18 @@ export const Header: React.FC = () => {
               <button
                 id="header-project-picker"
                 onClick={() => setShowProjectDropdown(!showProjectDropdown)}
-                className="flex items-center gap-1.5 text-xs text-slate-600 hover:text-slate-900 transition-colors group cursor-pointer"
+                className="flex items-center gap-1 text-xs text-slate-600 hover:text-slate-900 transition-colors group cursor-pointer"
               >
                 <Building2 className="w-3.5 h-3.5 text-sky-600 shrink-0" />
-                <span className="font-semibold text-slate-800 group-hover:text-sky-700">
+                <span className="font-semibold text-slate-800 group-hover:text-sky-700 truncate max-w-[130px] sm:max-w-[200px]">
                   {activeProject?.name || 'Pilih Proyek'}
                 </span>
-                <span className="text-slate-300">•</span>
+                <span className="text-slate-300 hidden sm:inline">•</span>
                 <span className="text-slate-500 hidden sm:inline">{activeProject?.city}</span>
                 {userRole === 'admin' ? (
-                  <ChevronDown className="w-3.5 h-3.5 text-slate-400 group-hover:text-slate-700" />
+                  <ChevronDown className="w-3 h-3 text-slate-400 group-hover:text-slate-700 shrink-0" />
                 ) : (
-                  <span className="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded text-[10px] bg-slate-100 text-slate-600 font-medium">
+                  <span className="hidden sm:inline-flex items-center gap-0.5 px-1 py-0.2 rounded text-[9px] bg-slate-100 text-slate-600 font-medium shrink-0">
                     <Lock className="w-2.5 h-2.5 text-slate-400" />
                     Terbatas
                   </span>
@@ -176,69 +233,36 @@ export const Header: React.FC = () => {
           </div>
         </div>
 
-        {/* Center: View Switcher (Split, Web Only, Mobile Only) */}
-        <div className="hidden md:flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs font-medium">
-          <button
-            onClick={() => setViewMode('split')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all ${
-              viewMode === 'split'
-                ? 'bg-white text-sky-700 shadow-xs font-semibold'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
-            title="Tampilkan Dashboard Web dan Aplikasi Mobile berdampingan"
-          >
-            <Columns className="w-3.5 h-3.5" />
-            <span>Dual View (Web + Mobile)</span>
-          </button>
-          <button
-            onClick={() => setViewMode('web')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all ${
-              viewMode === 'web'
-                ? 'bg-white text-sky-700 shadow-xs font-semibold'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
-            title="Tampilkan hanya Dashboard Web"
-          >
-            <Monitor className="w-3.5 h-3.5" />
-            <span>Web Dashboard</span>
-          </button>
-          <button
-            onClick={() => setViewMode('mobile')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all ${
-              viewMode === 'mobile'
-                ? 'bg-white text-sky-700 shadow-xs font-semibold'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
-            title="Tampilkan hanya Aplikasi Mobile Petugas"
-          >
-            <Smartphone className="w-3.5 h-3.5" />
-            <span>Aplikasi Mobile</span>
-          </button>
+        {/* Center: Responsive Active Section Breadcrumb */}
+        <div className="hidden md:flex items-center gap-1.5 px-3 py-1 rounded-xl bg-slate-100/90 border border-slate-200/80 text-xs font-medium">
+          <span className="text-slate-500 font-normal">{currentTabInfo.category}</span>
+          <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
+          <span className="font-semibold text-slate-800">{currentTabInfo.label}</span>
         </div>
 
-        {/* Right Side: Role Selector, Notifications & Tools */}
-        <div className="flex items-center gap-2">
+        {/* Right Side: Role Selector, Notifications & Reset Tools */}
+        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
           {/* Role Switcher */}
           <div className="relative">
             <button
               id="header-role-switcher"
               onClick={() => setShowRoleDropdown(!showRoleDropdown)}
-              className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-slate-200 hover:border-slate-300 bg-white text-xs font-medium text-slate-700 transition-colors shadow-xs"
+              className="flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-1.5 rounded-lg border border-slate-200 hover:border-slate-300 bg-white text-xs font-medium text-slate-700 transition-colors shadow-2xs"
             >
               <ShieldCheck className="w-4 h-4 text-sky-600" />
               <div className="text-left hidden sm:block">
-                <span className="text-[10px] uppercase tracking-wider text-slate-400 block font-semibold">
+                <span className="text-[9px] uppercase tracking-wider text-slate-400 block font-semibold leading-tight">
                   Role Aktif
                 </span>
-                <span className="font-semibold text-slate-800">
+                <span className="font-semibold text-slate-800 text-[11px] leading-tight block">
                   {roleLabels[userRole].title.split('/')[0]}
                 </span>
               </div>
-              <ChevronDown className="w-3.5 h-3.5 text-slate-400 ml-1" />
+              <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
             </button>
 
             {showRoleDropdown && (
-              <div className="absolute right-0 mt-1.5 w-68 bg-white rounded-xl shadow-xl border border-slate-200 py-1.5 z-50">
+              <div className="absolute right-0 mt-1.5 w-64 sm:w-68 bg-white rounded-xl shadow-xl border border-slate-200 py-1.5 z-50">
                 <div className="px-3 py-1.5 border-b border-slate-100">
                   <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
                     Ganti Role Pengguna
@@ -255,9 +279,6 @@ export const Header: React.FC = () => {
                         setActiveUserId(matchingUser.id);
                       }
                       setShowRoleDropdown(false);
-                      if (role === 'petugas') {
-                        if (viewMode === 'web') setViewMode('split');
-                      }
                     }}
                     className={`w-full text-left px-3 py-2 text-xs flex flex-col transition-colors ${
                       userRole === role
@@ -285,7 +306,7 @@ export const Header: React.FC = () => {
               className="relative p-2 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-colors"
               title="Notifikasi Operasional"
             >
-              <Bell className="w-5 h-5" />
+              <Bell className="w-4 h-4 sm:w-5 sm:h-5" />
               {unreadNotifs.length > 0 && (
                 <span className="absolute top-1 right-1 w-4 h-4 bg-rose-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center ring-2 ring-white">
                   {unreadNotifs.length}
@@ -294,12 +315,12 @@ export const Header: React.FC = () => {
             </button>
 
             {showNotifDropdown && (
-              <div className="absolute right-0 mt-1.5 w-80 sm:w-96 bg-white rounded-xl shadow-xl border border-slate-200 z-50 overflow-hidden">
+              <div className="absolute right-0 mt-1.5 w-76 sm:w-96 bg-white rounded-xl shadow-xl border border-slate-200 z-50 overflow-hidden">
                 <div className="p-3 border-b border-slate-100 flex items-center justify-between bg-slate-50/80">
                   <div className="flex items-center gap-2">
                     <Bell className="w-4 h-4 text-slate-600" />
                     <span className="text-xs font-semibold text-slate-800">
-                      Notifikasi Sistem & Push
+                      Notifikasi Sistem
                     </span>
                     <span className="bg-sky-100 text-sky-700 text-[10px] font-bold px-1.5 py-0.2 rounded-full">
                       {notifications.length}
@@ -385,34 +406,6 @@ export const Header: React.FC = () => {
             <RotateCcw className="w-4 h-4" />
           </button>
         </div>
-      </div>
-
-      {/* Mobile view selector banner */}
-      <div className="flex md:hidden items-center justify-center gap-2 mt-2 pt-2 border-t border-slate-100 text-xs">
-        <button
-          onClick={() => setViewMode('split')}
-          className={`px-2.5 py-1 rounded-md text-[11px] font-medium ${
-            viewMode === 'split' ? 'bg-sky-600 text-white' : 'bg-slate-100 text-slate-700'
-          }`}
-        >
-          Dual View
-        </button>
-        <button
-          onClick={() => setViewMode('web')}
-          className={`px-2.5 py-1 rounded-md text-[11px] font-medium ${
-            viewMode === 'web' ? 'bg-sky-600 text-white' : 'bg-slate-100 text-slate-700'
-          }`}
-        >
-          Dashboard Web
-        </button>
-        <button
-          onClick={() => setViewMode('mobile')}
-          className={`px-2.5 py-1 rounded-md text-[11px] font-medium ${
-            viewMode === 'mobile' ? 'bg-sky-600 text-white' : 'bg-slate-100 text-slate-700'
-          }`}
-        >
-          Aplikasi Mobile
-        </button>
       </div>
     </header>
   );

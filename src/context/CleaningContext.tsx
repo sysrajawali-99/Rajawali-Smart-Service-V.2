@@ -58,6 +58,9 @@ interface CleaningContextType {
   setUserRole: (role: UserRole) => void;
   viewMode: ViewMode;
   setViewMode: (mode: ViewMode) => void;
+  mobileMenuOpen: boolean;
+  setMobileMenuOpen: React.Dispatch<React.SetStateAction<boolean>>;
+  toggleMobileMenu: () => void;
   activeCleanerId: string;
   setActiveCleanerId: (id: string) => void;
   activeCleaner: Cleaner;
@@ -265,7 +268,9 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const [userRole, setUserRole] = useState<UserRole>(() => {
     return (localStorage.getItem('sco_role') as UserRole) || 'admin';
   });
-  const [viewMode, setViewMode] = useState<ViewMode>('split');
+  const [viewMode, setViewMode] = useState<ViewMode>('web');
+  const [mobileMenuOpen, setMobileMenuOpen] = useState<boolean>(false);
+  const toggleMobileMenu = () => setMobileMenuOpen((prev) => !prev);
   const [activeCleanerId, setActiveCleanerId] = useState<string>('cln-1');
   const [activeTab, setActiveTab] = useState<string>('dashboard');
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>('task-101');
@@ -1739,7 +1744,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setMasterPrograms(INITIAL_MASTER_PROGRAMS);
     setDamageReports(INITIAL_DAMAGE_REPORTS);
     setUserRole('admin');
-    setViewMode('split');
+    setViewMode('web');
   };
 
   return (
@@ -1749,6 +1754,9 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         setUserRole,
         viewMode,
         setViewMode,
+        mobileMenuOpen,
+        setMobileMenuOpen,
+        toggleMobileMenu,
         activeCleanerId,
         setActiveCleanerId,
         activeCleaner,

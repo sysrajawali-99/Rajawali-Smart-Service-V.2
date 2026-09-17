@@ -19,47 +19,50 @@ import { DailyActivityView } from './components/web/DailyActivityView';
 import { WeeklyActivityView } from './components/web/WeeklyActivityView';
 import { MonthlyActivityView } from './components/web/MonthlyActivityView';
 import { DamageReportView } from './components/web/DamageReportView';
-import { MobileAppView } from './components/mobile/MobileAppView';
 
 const MainLayout: React.FC = () => {
-  const { activeTab, viewMode } = useCleaning();
+  const { activeTab } = useCleaning();
 
   const renderActiveWebView = () => {
     switch (activeTab) {
       case 'dashboard':
         return <DashboardView />;
+      // Inspeksi Report
       case 'ceklist':
         return <CeklistAreaView />;
-      case 'proyek':
-        return <LokasiProyekView />;
       case 'area':
         return <AreaCleaningView />;
+      case 'activity':
+        return <CleaningActivityView />;
+      case 'inspeksi':
+        return <InspeksiControlView />;
+      case 'report':
+        return <LaporanReportView />;
+      // Operational Report
       case 'petugas':
         return <PetugasView />;
       case 'shift':
         return <ShiftView />;
       case 'jadwal':
         return <JadwalCleaningView />;
-      case 'master-program':
-      case 'mcp':
-        return <MasterCleaningProgramView />;
+      case 'kerusakan':
+      case 'damage-report':
+        return <DamageReportView />;
+      case 'proyek':
+        return <LokasiProyekView />;
+      // Activity Report
       case 'daily-activity':
         return <DailyActivityView />;
       case 'weekly-activity':
         return <WeeklyActivityView />;
       case 'monthly-activity':
         return <MonthlyActivityView />;
-      case 'activity':
-        return <CleaningActivityView />;
-      case 'inspeksi':
-        return <InspeksiControlView />;
+      case 'master-program':
+      case 'mcp':
+        return <MasterCleaningProgramView />;
       case 'complaint':
         return <ComplaintView />;
-      case 'kerusakan':
-      case 'damage-report':
-        return <DamageReportView />;
-      case 'report':
-        return <LaporanReportView />;
+      // Sistem & Master Data
       case 'pengaturan':
         return <PengaturanView />;
       default:
@@ -68,38 +71,18 @@ const MainLayout: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col font-sans text-slate-900">
+    <div className="min-h-screen bg-slate-50 flex flex-col font-sans text-slate-900 antialiased selection:bg-sky-500 selection:text-white">
       <Header />
 
-      {/* View Mode Switching: 'split' | 'web' | 'mobile' */}
-      {viewMode === 'mobile' ? (
-        <main className="flex-1 bg-slate-100 flex items-center justify-center p-2 sm:p-4">
-          <MobileAppView />
+      {/* Unified responsive multi-device layout (PC, Laptop, Tablet, Smartphone) */}
+      <div className="flex-1 flex overflow-hidden relative">
+        <Sidebar />
+        <main className="flex-1 overflow-y-auto bg-slate-50 min-h-[calc(100vh-61px)]">
+          <div className="max-w-7xl mx-auto w-full p-3 sm:p-5 md:p-6 lg:p-8">
+            {renderActiveWebView()}
+          </div>
         </main>
-      ) : viewMode === 'web' ? (
-        <div className="flex-1 flex overflow-hidden">
-          <Sidebar />
-          <main className="flex-1 overflow-y-auto bg-slate-50 min-h-[calc(100vh-65px)]">
-            {renderActiveWebView()}
-          </main>
-        </div>
-      ) : (
-        /* Split View: Web Dashboard + Live Mobile App companion on the side */
-        <div className="flex-1 flex flex-col xl:flex-row overflow-hidden">
-          <Sidebar />
-          <main className="flex-1 overflow-y-auto bg-slate-50 min-h-[calc(100vh-65px)] border-r border-slate-200">
-            {renderActiveWebView()}
-          </main>
-          <aside className="w-full xl:w-[420px] bg-slate-100 p-4 border-t xl:border-t-0 border-slate-200 overflow-y-auto flex flex-col items-center justify-start shrink-0">
-            <div className="w-full text-center mb-2">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 bg-white px-3 py-1 rounded-full border border-slate-200 shadow-2xs">
-                📱 Tampilan Aplikasi Mobile Petugas Lapangan
-              </span>
-            </div>
-            <MobileAppView />
-          </aside>
-        </div>
-      )}
+      </div>
     </div>
   );
 };
