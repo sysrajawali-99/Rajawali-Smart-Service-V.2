@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { useCleaning } from '../../context/CleaningContext';
 import { ProjectLocation } from '../../types';
+import { UserManagementSection } from './UserManagementSection';
 
 export const LokasiProyekView: React.FC = () => {
   const {
@@ -48,6 +49,12 @@ export const LokasiProyekView: React.FC = () => {
 
   // User assignment tab state
   const [activeSubTab, setActiveSubTab] = useState<'projects' | 'user_access'>('projects');
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  const showToast = (msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => setToastMessage(null), 3000);
+  };
 
   // Keyboard shortcut: Escape to close modal
   useEffect(() => {
@@ -313,11 +320,10 @@ export const LokasiProyekView: React.FC = () => {
                       {projects.length > 1 && (
                         <button
                           onClick={() => {
-                            if (confirm(`Yakin hapus proyek ${proj.name}?`)) {
-                              deleteProject(proj.id);
-                            }
+                            deleteProject(proj.id);
+                            showToast(`Proyek "${proj.name}" berhasil dihapus.`);
                           }}
-                          className="text-xs text-rose-500 hover:text-rose-700 font-medium flex items-center gap-1"
+                          className="text-xs text-rose-500 hover:text-rose-700 font-medium flex items-center gap-1 cursor-pointer"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                           <span>Hapus</span>
@@ -334,112 +340,7 @@ export const LokasiProyekView: React.FC = () => {
 
       {/* VIEW: User Access Configuration (Super Admin Only) */}
       {isSuperAdmin && activeSubTab === 'user_access' && (
-        <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-xs">
-          <div className="p-4 border-b border-slate-200 bg-slate-50/70 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-            <div>
-              <h3 className="font-bold text-sm text-slate-900 flex items-center gap-2">
-                <UserCheck className="w-4 h-4 text-sky-600" />
-                Matriks Hak Akses Pengguna ke Lokasi Proyek
-              </h3>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Pilih lokasi proyek yang boleh diakses oleh masing-masing user. User hanya dapat melihat dan memilih proyek yang dicentang.
-              </p>
-            </div>
-            <span className="text-xs font-semibold text-slate-600 bg-white px-3 py-1 rounded-lg border border-slate-200">
-              {users.length} User Terdaftar
-            </span>
-          </div>
-
-          <div className="divide-y divide-slate-200 overflow-x-auto">
-            <table className="w-full text-xs text-left">
-              <thead className="bg-slate-50 text-slate-600 uppercase text-[10px] font-bold tracking-wider">
-                <tr>
-                  <th className="p-3.5">Nama Pengguna & Email</th>
-                  <th className="p-3.5">Role</th>
-                  <th className="p-3.5">Lokasi Proyek yang Diizinkan</th>
-                  <th className="p-3.5 text-right">Status</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {users.map((usr) => {
-                  const isAdminUser = usr.role === 'admin';
-                  return (
-                    <tr key={usr.id} className="hover:bg-slate-50/50">
-                      <td className="p-3.5">
-                        <div className="font-semibold text-slate-900">{usr.name}</div>
-                        <div className="text-slate-400 text-[11px]">{usr.email}</div>
-                      </td>
-                      <td className="p-3.5">
-                        <span
-                          className={`px-2 py-0.5 rounded text-[11px] font-semibold capitalize ${
-                            usr.role === 'admin'
-                              ? 'bg-indigo-100 text-indigo-800'
-                              : usr.role === 'supervisor'
-                              ? 'bg-amber-100 text-amber-800'
-                              : usr.role === 'petugas'
-                              ? 'bg-emerald-100 text-emerald-800'
-                              : 'bg-blue-100 text-blue-800'
-                          }`}
-                        >
-                          {usr.role}
-                        </span>
-                      </td>
-                      <td className="p-3.5">
-                        {isAdminUser ? (
-                          <div className="flex items-center gap-1.5 text-indigo-700 font-semibold bg-indigo-50 px-2.5 py-1 rounded-lg w-fit">
-                            <ShieldCheck className="w-4 h-4" />
-                            <span>Semua Proyek (Super Admin Otomatis)</span>
-                          </div>
-                        ) : (
-                          <div className="flex flex-wrap gap-2">
-                            {projects.map((proj) => {
-                              const isChecked = usr.assignedProjectIds?.includes(proj.id) || false;
-                              return (
-                                <label
-                                  key={proj.id}
-                                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs cursor-pointer select-none transition-all ${
-                                    isChecked
-                                      ? 'bg-sky-50 border-sky-300 text-sky-900 font-semibold'
-                                      : 'bg-slate-50 border-slate-200 text-slate-500 hover:bg-slate-100'
-                                  }`}
-                                >
-                                  <input
-                                    type="checkbox"
-                                    checked={isChecked}
-                                    onChange={(e) => {
-                                      const current = usr.assignedProjectIds || [];
-                                      const next = e.target.checked
-                                        ? [...current, proj.id]
-                                        : current.filter((id) => id !== proj.id);
-                                      updateUserProjectAssignment(usr.id, next);
-                                    }}
-                                    className="w-3.5 h-3.5 rounded text-sky-600 focus:ring-sky-500 border-slate-300"
-                                  />
-                                  <span>{proj.name}</span>
-                                </label>
-                              );
-                            })}
-                          </div>
-                        )}
-                      </td>
-                      <td className="p-3.5 text-right">
-                        {isAdminUser ? (
-                          <span className="text-emerald-600 font-medium">Akses Penuh</span>
-                        ) : (usr.assignedProjectIds?.length || 0) > 0 ? (
-                          <span className="text-emerald-600 font-medium">
-                            {usr.assignedProjectIds?.length} Lokasi
-                          </span>
-                        ) : (
-                          <span className="text-rose-500 font-medium">Belum Ditugaskan</span>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
+        <UserManagementSection />
       )}
 
       {/* Modal Add / Edit Project */}
@@ -574,6 +475,13 @@ export const LokasiProyekView: React.FC = () => {
               </div>
             </form>
           </div>
+        </div>
+      )}
+      {/* Toast Notification */}
+      {toastMessage && (
+        <div className="fixed bottom-6 right-6 bg-slate-900 text-white px-4 py-3 rounded-xl shadow-lg flex items-center gap-2 text-xs z-50 animate-in fade-in slide-in-from-bottom-2">
+          <Trash2 className="w-4 h-4 text-rose-400" />
+          <span>{toastMessage}</span>
         </div>
       )}
     </div>

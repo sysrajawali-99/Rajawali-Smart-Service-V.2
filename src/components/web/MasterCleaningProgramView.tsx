@@ -673,12 +673,10 @@ export const MasterCleaningProgramView: React.FC = () => {
                       <button
                         type="button"
                         onClick={() => {
-                          if (confirm(`Hapus program: "${program.workDescription}"?`)) {
-                            deleteMasterProgram(program.id);
-                            showToast('Program kerja berhasil dihapus.');
-                          }
+                          deleteMasterProgram(program.id);
+                          showToast('Program kerja berhasil dihapus.');
                         }}
-                        className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
+                        className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
                         title="Hapus Program"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
@@ -991,12 +989,10 @@ export const MasterCleaningProgramView: React.FC = () => {
                           </button>
                           <button
                             onClick={() => {
-                              if (confirm(`Hapus program: "${program.workDescription}"?`)) {
-                                deleteMasterProgram(program.id);
-                                showToast('Program kerja berhasil dihapus.');
-                              }
+                              deleteMasterProgram(program.id);
+                              showToast('Program kerja berhasil dihapus.');
                             }}
-                            className="p-1 rounded-lg hover:bg-rose-50 text-slate-400 hover:text-rose-600 transition-colors"
+                            className="p-1 rounded-lg hover:bg-rose-50 text-slate-400 hover:text-rose-600 transition-colors cursor-pointer"
                             title="Hapus Program"
                           >
                             <Trash2 className="w-3.5 h-3.5" />

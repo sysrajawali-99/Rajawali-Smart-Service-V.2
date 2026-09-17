@@ -30,6 +30,7 @@ import {
   ChevronRight,
   Info,
   ZoomIn,
+  Coins,
 } from 'lucide-react';
 import { useCleaning } from '../../context/CleaningContext';
 import {
@@ -166,6 +167,7 @@ export const DamageReportView: React.FC = () => {
     reporterRole: string;
     reporterPhone: string;
     photoBefore: string;
+    costEstimate?: string;
   }>({
     itemName: '',
     category: 'sanitair',
@@ -183,6 +185,7 @@ export const DamageReportView: React.FC = () => {
     reporterRole: 'Petugas Kebersihan',
     reporterPhone: '0812-3456-7890',
     photoBefore: '',
+    costEstimate: '',
   });
 
   // Resolve / Update Form State
@@ -191,11 +194,13 @@ export const DamageReportView: React.FC = () => {
     technicianName: string;
     technicianNotes: string;
     photoAfter: string;
+    costEstimate?: string;
   }>({
     status: 'selesai',
     technicianName: '',
     technicianNotes: '',
     photoAfter: '',
+    costEstimate: '',
   });
 
   // Unique floors for filter dropdown
@@ -279,6 +284,39 @@ export const DamageReportView: React.FC = () => {
   ).length;
   const completedReports = periodFilteredReports.filter((r) => r.status === 'selesai').length;
 
+  // Total Estimasi Biaya for selected period
+  const totalCostEstimate = useMemo(() => {
+    return periodFilteredReports.reduce((acc, r) => acc + (Number(r.costEstimate) || 0), 0);
+  }, [periodFilteredReports]);
+
+  // Toast Notification state
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const showToast = (msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => {
+      setToastMessage(null);
+    }, 3500);
+  };
+
+  // Hapus Estimasi Biaya (Clear estimated cost)
+  const handleClearCostEstimate = (reportId: string, ticketNo: string) => {
+    updateDamageReport(reportId, { costEstimate: undefined });
+    showToast(`Estimasi biaya pada tiket ${ticketNo} berhasil dihapus.`);
+    if (selectedReport && selectedReport.id === reportId) {
+      setSelectedReport((prev) => (prev ? { ...prev, costEstimate: undefined } : null));
+    }
+  };
+
+  // Hapus Laporan Kerusakan (Delete report)
+  const handleDeleteReport = (reportId: string, ticketNo: string) => {
+    deleteDamageReport(reportId);
+    showToast(`Laporan kerusakan ${ticketNo} berhasil dihapus.`);
+    if (selectedReport && selectedReport.id === reportId) {
+      setShowDetailModal(false);
+      setSelectedReport(null);
+    }
+  };
+
   // Preset suggestions for fast reporting
   const commonDamages = [
     { name: 'Kran Wastafel Sensor Bocor / Rusak', cat: 'sanitair', level: 'sedang' as DamageSeverity },
@@ -315,6 +353,8 @@ export const DamageReportView: React.FC = () => {
       return;
     }
 
+    const costNum = newReport.costEstimate ? parseFloat(newReport.costEstimate) : undefined;
+
     addDamageReport({
       itemName: newReport.itemName,
       category: newReport.category,
@@ -331,6 +371,7 @@ export const DamageReportView: React.FC = () => {
       reporterName: newReport.reporterName,
       reporterRole: newReport.reporterRole,
       reporterPhone: newReport.reporterPhone,
+      costEstimate: costNum,
       photoBefore:
         newReport.photoBefore ||
         'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?w=600&auto=format&fit=crop&q=80',
@@ -338,6 +379,7 @@ export const DamageReportView: React.FC = () => {
       status: 'dilaporkan',
     });
 
+    showToast(`Laporan kerusakan baru berhasil dibuat.`);
     setShowAddModal(false);
     // Reset form
     setNewReport({
@@ -357,6 +399,7 @@ export const DamageReportView: React.FC = () => {
       reporterRole: 'Petugas Kebersihan',
       reporterPhone: '0812-3456-7890',
       photoBefore: '',
+      costEstimate: '',
     });
   };
 
@@ -368,6 +411,10 @@ export const DamageReportView: React.FC = () => {
       technicianName: report.technicianName || '',
       technicianNotes: report.technicianNotes || '',
       photoAfter: report.photoAfter || '',
+      costEstimate:
+        report.costEstimate !== undefined && report.costEstimate !== null
+          ? String(report.costEstimate)
+          : '',
     });
     setShowResolveModal(true);
   };
@@ -377,6 +424,11 @@ export const DamageReportView: React.FC = () => {
     e.preventDefault();
     if (!selectedReport) return;
 
+    const costNum =
+      resolveForm.costEstimate && resolveForm.costEstimate.trim() !== ''
+        ? parseFloat(resolveForm.costEstimate)
+        : undefined;
+
     if (resolveForm.status === 'selesai') {
       resolveDamageReport(selectedReport.id, {
         technicianNotes: resolveForm.technicianNotes || 'Perbaikan telah selesai dilaksanakan dan fasilitas sudah berfungsi normal.',
@@ -384,15 +436,18 @@ export const DamageReportView: React.FC = () => {
         photoAfter:
           resolveForm.photoAfter ||
           'https://images.unsplash.com/photo-1497366811353-6870744d04b2?w=600&auto=format&fit=crop&q=80',
+        costEstimate: costNum,
       });
     } else {
       updateDamageReport(selectedReport.id, {
         status: resolveForm.status,
         technicianName: resolveForm.technicianName,
         technicianNotes: resolveForm.technicianNotes,
+        costEstimate: costNum,
       });
     }
 
+    showToast(`Penanganan laporan tiket ${selectedReport.ticketNo} berhasil diperbarui.`);
     setShowResolveModal(false);
     setSelectedReport(null);
   };
@@ -602,8 +657,8 @@ export const DamageReportView: React.FC = () => {
         </div>
       </div>
 
-      {/* KPI Stats Cards - 4 Balanced Columns */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
+      {/* KPI Stats Cards - 5 Balanced Columns */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3.5">
         <div className="bg-white rounded-xl p-4 border border-slate-200 shadow-2xs">
           <div className="text-slate-500 text-xs font-medium uppercase tracking-wider mb-1">
             Total Laporan
@@ -652,6 +707,21 @@ export const DamageReportView: React.FC = () => {
           </div>
           <div className="mt-1 text-[11px] text-emerald-600 font-medium">Berfungsi normal</div>
         </div>
+
+        <div className="col-span-2 sm:col-span-1 bg-white rounded-xl p-4 border border-teal-200 bg-teal-50/20 shadow-2xs">
+          <div className="text-teal-700 text-xs font-semibold uppercase tracking-wider mb-1 flex items-center gap-1">
+            <Coins className="w-3.5 h-3.5" />
+            Estimasi Biaya
+          </div>
+          <div className="flex items-baseline justify-between">
+            <span className="text-lg sm:text-xl font-bold text-teal-700 truncate">
+              Rp {totalCostEstimate.toLocaleString('id-ID')}
+            </span>
+          </div>
+          <div className="mt-1 text-[11px] text-teal-600 font-medium truncate">
+            Periode: {activePeriodLabel}
+          </div>
+        </div>
       </div>
 
       {/* Filter and Search Bar */}
@@ -670,7 +740,7 @@ export const DamageReportView: React.FC = () => {
                 </span>
               </div>
               <div className="text-[11px] text-slate-500">
-                Menampilkan <span className="font-semibold text-slate-700">{periodFilteredReports.length}</span> dari {damageReports.length} total laporan kerusakan
+                Menampilkan <span className="font-semibold text-slate-700">{periodFilteredReports.length}</span> dari {damageReports.length} total laporan • Total Biaya: <span className="font-bold text-teal-700">Rp {totalCostEstimate.toLocaleString('id-ID')}</span>
               </div>
             </div>
           </div>
@@ -983,6 +1053,25 @@ export const DamageReportView: React.FC = () => {
                   )}
                 </div>
 
+                {/* Estimasi Biaya & Hapus Biaya */}
+                {report.costEstimate !== undefined && report.costEstimate !== null && (
+                  <div className="p-2 rounded-lg bg-emerald-50/70 border border-emerald-200 flex items-center justify-between text-xs">
+                    <div className="flex items-center gap-1.5 text-emerald-800 font-semibold">
+                      <Coins className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                      <span>Estimasi: Rp {Number(report.costEstimate).toLocaleString('id-ID')}</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleClearCostEstimate(report.id, report.ticketNo)}
+                      className="px-2 py-0.5 rounded bg-white hover:bg-rose-50 border border-rose-200 text-[11px] font-bold text-rose-600 hover:text-rose-700 flex items-center gap-1 transition-colors cursor-pointer"
+                      title="Hapus Estimasi Biaya"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                      <span>Hapus Biaya</span>
+                    </button>
+                  </div>
+                )}
+
                 {/* Status & Category metadata */}
                 <div className="flex items-center justify-between gap-2 pt-1">
                   <div>{getStatusBadge(report.status)}</div>
@@ -1042,12 +1131,8 @@ export const DamageReportView: React.FC = () => {
                   </button>
 
                   <button
-                    onClick={() => {
-                      if (confirm(`Hapus laporan kerusakan ${report.ticketNo}?`)) {
-                        deleteDamageReport(report.id);
-                      }
-                    }}
-                    className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-md transition-colors"
+                    onClick={() => handleDeleteReport(report.id, report.ticketNo)}
+                    className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-md transition-colors cursor-pointer"
                     title="Hapus Laporan"
                   >
                     <Trash2 className="w-4 h-4" />
@@ -1070,6 +1155,7 @@ export const DamageReportView: React.FC = () => {
                   <th className="py-3 px-3">Lokasi & Lantai</th>
                   <th className="py-3 px-3">Tingkat</th>
                   <th className="py-3 px-3">Tgl Lapor</th>
+                  <th className="py-3 px-3">Estimasi Biaya</th>
                   <th className="py-3 px-3">Pelapor</th>
                   <th className="py-3 px-3">Status</th>
                   <th className="py-3 px-3">Teknisi / Ditangani</th>
@@ -1096,6 +1182,25 @@ export const DamageReportView: React.FC = () => {
                     <td className="py-3 px-3">{getSeverityBadge(report.damageLevel)}</td>
                     <td className="py-3 px-3 text-slate-600 whitespace-nowrap">
                       {report.reportDate}
+                    </td>
+                    <td className="py-3 px-3 whitespace-nowrap">
+                      {report.costEstimate !== undefined && report.costEstimate !== null ? (
+                        <div className="inline-flex items-center gap-1.5 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-md">
+                          <span className="font-bold text-xs text-emerald-700">
+                            Rp {Number(report.costEstimate).toLocaleString('id-ID')}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => handleClearCostEstimate(report.id, report.ticketNo)}
+                            className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-100 rounded transition-colors cursor-pointer"
+                            title="Hapus Estimasi Biaya"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </button>
+                        </div>
+                      ) : (
+                        <span className="text-xs text-slate-400 italic">-</span>
+                      )}
                     </td>
                     <td className="py-3 px-3 text-slate-700">{report.reporterName}</td>
                     <td className="py-3 px-3">{getStatusBadge(report.status)}</td>
@@ -1129,13 +1234,9 @@ export const DamageReportView: React.FC = () => {
                         <Edit3 className="w-3.5 h-3.5" />
                       </button>
                       <button
-                        onClick={() => {
-                          if (confirm(`Hapus laporan ${report.ticketNo}?`)) {
-                            deleteDamageReport(report.id);
-                          }
-                        }}
-                        className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded"
-                        title="Hapus"
+                        onClick={() => handleDeleteReport(report.id, report.ticketNo)}
+                        className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded transition-colors cursor-pointer"
+                        title="Hapus Laporan"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
@@ -1358,6 +1459,24 @@ export const DamageReportView: React.FC = () => {
                 </div>
               </div>
 
+              {/* Estimasi Biaya Perbaikan (Opsional) */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Estimasi Biaya Perbaikan (Rp) - Opsional
+                </label>
+                <div className="relative">
+                  <span className="absolute left-3 top-2.5 text-xs text-slate-400 font-bold">Rp</span>
+                  <input
+                    type="number"
+                    min="0"
+                    placeholder="Contoh: 350000 (dapat diisi nanti atau saat perbaikan)"
+                    value={newReport.costEstimate || ''}
+                    onChange={(e) => setNewReport({ ...newReport, costEstimate: e.target.value })}
+                    className="w-full text-sm pl-9 pr-3 py-2 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-hidden"
+                  />
+                </div>
+              </div>
+
               {/* Kronologi Kerusakan */}
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
@@ -1573,6 +1692,41 @@ export const DamageReportView: React.FC = () => {
                   }
                   className="w-full text-sm px-3 py-2 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-hidden"
                 />
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-xs font-semibold text-slate-700">
+                    Estimasi Biaya Perbaikan (Rp)
+                  </label>
+                  {resolveForm.costEstimate && resolveForm.costEstimate.trim() !== '' && (
+                    <button
+                      type="button"
+                      onClick={() => setResolveForm({ ...resolveForm, costEstimate: '' })}
+                      className="text-[11px] text-rose-600 hover:text-rose-800 font-bold flex items-center gap-1 cursor-pointer transition-colors"
+                      title="Kosongkan estimasi biaya"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                      <span>Hapus Estimasi Biaya</span>
+                    </button>
+                  )}
+                </div>
+                <div className="relative">
+                  <span className="absolute left-3 top-2.5 text-xs text-slate-400 font-bold">Rp</span>
+                  <input
+                    type="number"
+                    min="0"
+                    placeholder="0"
+                    value={resolveForm.costEstimate || ''}
+                    onChange={(e) =>
+                      setResolveForm({ ...resolveForm, costEstimate: e.target.value })
+                    }
+                    className="w-full text-sm pl-9 pr-3 py-2 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-hidden"
+                  />
+                </div>
+                <p className="text-[11px] text-slate-500 mt-1">
+                  Biaya suku cadang/material. Klik "Hapus Estimasi Biaya" di atas untuk menghapus biaya.
+                </p>
               </div>
 
               <div>
@@ -1837,6 +1991,31 @@ export const DamageReportView: React.FC = () => {
                     <span className="sm:col-span-2 text-slate-800">{selectedReport.technicianNotes}</span>
                   </div>
                 )}
+                <div className="grid grid-cols-1 sm:grid-cols-3 p-3 bg-emerald-50/60 gap-1 sm:gap-0 items-center">
+                  <span className="font-semibold text-emerald-800 flex items-center gap-1">
+                    <Coins className="w-3.5 h-3.5 text-emerald-600" />
+                    Estimasi Biaya Perbaikan
+                  </span>
+                  <div className="sm:col-span-2 flex items-center justify-between">
+                    {selectedReport.costEstimate !== undefined && selectedReport.costEstimate !== null ? (
+                      <>
+                        <span className="text-emerald-700 font-bold text-sm">
+                          Rp {Number(selectedReport.costEstimate).toLocaleString('id-ID')}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => handleClearCostEstimate(selectedReport.id, selectedReport.ticketNo)}
+                          className="px-2.5 py-1 text-xs font-bold text-rose-600 hover:text-rose-700 bg-white hover:bg-rose-50 border border-rose-200 rounded-lg flex items-center gap-1 transition-colors cursor-pointer"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                          <span>Hapus Estimasi Biaya</span>
+                        </button>
+                      </>
+                    ) : (
+                      <span className="text-slate-400 italic">Tidak ada estimasi biaya</span>
+                    )}
+                  </div>
+                </div>
               </div>
 
               {/* Bottom Actions */}
@@ -1911,6 +2090,22 @@ export const DamageReportView: React.FC = () => {
           <p className="text-xs text-white/60 mt-3 text-center">
             Sentuh area di luar foto atau tekan tombol silang/Esc untuk menutup
           </p>
+        </div>
+      )}
+      {/* Toast Notification */}
+      {toastMessage && (
+        <div
+          id="damage-toast"
+          className="fixed bottom-5 right-5 z-50 bg-slate-900 text-white px-4 py-3 rounded-xl shadow-2xl flex items-center gap-2.5 text-xs font-semibold animate-in slide-in-from-bottom-5 duration-200 border border-slate-700"
+        >
+          <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+          <span>{toastMessage}</span>
+          <button
+            onClick={() => setToastMessage(null)}
+            className="ml-2 text-slate-400 hover:text-white"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
         </div>
       )}
     </div>

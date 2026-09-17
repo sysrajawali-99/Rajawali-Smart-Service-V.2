@@ -52,6 +52,7 @@ export const Sidebar: React.FC = () => {
     damageReports,
     mobileMenuOpen,
     setMobileMenuOpen,
+    hasAccess,
   } = useCleaning();
 
   const pendingDamageCount = damageReports.filter(
@@ -62,7 +63,7 @@ export const Sidebar: React.FC = () => {
     (c) => c.status === 'open' || c.status === 'in_progress'
   ).length;
 
-  const menuGroups: MenuGroup[] = [
+  const rawMenuGroups: MenuGroup[] = [
     {
       id: 'inspeksi-report',
       title: 'Inspeksi Report',
@@ -167,6 +168,17 @@ export const Sidebar: React.FC = () => {
       ],
     },
   ];
+
+  // Filter groups and items by RBAC matrix
+  const menuGroups: MenuGroup[] = rawMenuGroups
+    .map((group) => ({
+      ...group,
+      items: group.items.filter((item) => hasAccess(userRole, item.id)),
+    }))
+    .filter((group) => group.items.length > 0);
+
+  const canAccessPengaturan = hasAccess(userRole, 'pengaturan');
+  const canAccessDashboard = hasAccess(userRole, 'dashboard');
 
   // Accordion state: only expanded groups show their sub-menus
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>(() => {
@@ -391,26 +403,28 @@ export const Sidebar: React.FC = () => {
           })}
 
           {/* Pengaturan & Master Data */}
-          <div className="pt-2 border-t border-slate-100">
-            <button
-              id="sidebar-nav-pengaturan"
-              onClick={() => handleNavClick('pengaturan')}
-              className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-medium transition-all cursor-pointer ${
-                activeTab === 'pengaturan'
-                  ? 'bg-sky-600 text-white font-semibold shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-              }`}
-            >
-              <div className="flex items-center gap-2.5 min-w-0">
-                <Settings
-                  className={`w-4 h-4 shrink-0 ${
-                    activeTab === 'pengaturan' ? 'text-white' : 'text-slate-400'
-                  }`}
-                />
-                <span className="truncate font-semibold">Pengaturan & Master Data</span>
-              </div>
-            </button>
-          </div>
+          {canAccessPengaturan && (
+            <div className="pt-2 border-t border-slate-100">
+              <button
+                id="sidebar-nav-pengaturan"
+                onClick={() => handleNavClick('pengaturan')}
+                className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-medium transition-all cursor-pointer ${
+                  activeTab === 'pengaturan'
+                    ? 'bg-sky-600 text-white font-semibold shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                }`}
+              >
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <Settings
+                    className={`w-4 h-4 shrink-0 ${
+                      activeTab === 'pengaturan' ? 'text-white' : 'text-slate-400'
+                    }`}
+                  />
+                  <span className="truncate font-semibold">Pengaturan & Master Data</span>
+                </div>
+              </button>
+            </div>
+          )}
         </nav>
 
         {/* User Profile Card Footer */}

@@ -19,11 +19,40 @@ import { DailyActivityView } from './components/web/DailyActivityView';
 import { WeeklyActivityView } from './components/web/WeeklyActivityView';
 import { MonthlyActivityView } from './components/web/MonthlyActivityView';
 import { DamageReportView } from './components/web/DamageReportView';
+import { LoginPage } from './components/auth/LoginPage';
+import { ShieldAlert } from 'lucide-react';
 
 const MainLayout: React.FC = () => {
-  const { activeTab } = useCleaning();
+  const { isAuthenticated, activeTab, userRole, hasAccess, setActiveTab } = useCleaning();
+
+  if (!isAuthenticated) {
+    return <LoginPage />;
+  }
+
+  const isAllowed = hasAccess(userRole, activeTab);
 
   const renderActiveWebView = () => {
+    if (!isAllowed) {
+      return (
+        <div className="p-8 text-center bg-white rounded-2xl border border-slate-200 shadow-sm max-w-md mx-auto my-12">
+          <div className="w-12 h-12 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center mx-auto mb-4">
+            <ShieldAlert className="w-6 h-6" />
+          </div>
+          <h2 className="text-lg font-bold text-slate-800 mb-1">Akses Menu Dibatasi</h2>
+          <p className="text-sm text-slate-600 mb-6 leading-relaxed">
+            Peran akun Anda (<span className="font-semibold text-slate-800 capitalize">{userRole}</span>) belum diizinkan membuka menu ini sesuai konfigurasi Matriks Hak Akses (RBAC).
+          </p>
+          <button
+            type="button"
+            onClick={() => setActiveTab('dashboard')}
+            className="px-5 py-2.5 bg-sky-600 hover:bg-sky-700 text-white text-sm font-medium rounded-xl shadow-sm transition-colors cursor-pointer"
+          >
+            Kembali ke Dashboard
+          </button>
+        </div>
+      );
+    }
+
     switch (activeTab) {
       case 'dashboard':
         return <DashboardView />;

@@ -250,8 +250,22 @@ export interface AppUser {
   id: string;
   name: string;
   email: string;
+  username?: string;
+  password?: string;
   role: UserRole;
   assignedProjectIds: string[]; // Projects this user is allowed to access
+  phone?: string;
+  createdAt?: string;
+}
+
+export interface RoleModulePermission {
+  moduleId: string;
+  moduleName: string;
+  category: string;
+  admin: boolean;
+  supervisor: boolean;
+  petugas: boolean;
+  klien: boolean;
 }
 
 export type ChecklistLocationCategory =

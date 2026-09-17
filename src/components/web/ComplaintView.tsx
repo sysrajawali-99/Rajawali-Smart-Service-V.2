@@ -14,6 +14,7 @@ import {
   Hourglass,
   Edit3,
   XCircle,
+  Trash2,
 } from 'lucide-react';
 import { useCleaning } from '../../context/CleaningContext';
 import { Complaint, PriorityLevel } from '../../types';
@@ -31,12 +32,14 @@ export const ComplaintView: React.FC = () => {
     requestComplaintExtension,
     respondToComplaintExtension,
     resolveComplaint,
+    deleteComplaint,
     userRole,
   } = useCleaning();
 
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [search, setSearch] = useState('');
   const [showNewModal, setShowNewModal] = useState(false);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   // Modals state
   const [selectedForResolve, setSelectedForResolve] = useState<Complaint | null>(null);
@@ -213,6 +216,20 @@ export const ComplaintView: React.FC = () => {
                     <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />
                     Batas SLA: {ticket.slaDeadline} ({ticket.slaHours || 1} Jam)
                   </span>
+
+                  {/* Delete Complaint Button */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      deleteComplaint(ticket.id);
+                      setToastMessage(`Tiket komplain "${ticket.ticketNumber}" berhasil dihapus.`);
+                      setTimeout(() => setToastMessage(null), 3000);
+                    }}
+                    className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer ml-auto"
+                    title="Hapus Tiket Komplain"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
                 </div>
               </div>
 
@@ -597,6 +614,13 @@ export const ComplaintView: React.FC = () => {
           completedTime={viewingDocumentation.resolvedAt}
           remarks={viewingDocumentation.resolutionNotes}
         />
+      )}
+      {/* Toast Notification */}
+      {toastMessage && (
+        <div className="fixed bottom-6 right-6 bg-slate-900 text-white px-4 py-3 rounded-xl shadow-lg flex items-center gap-2 text-xs z-50 animate-in fade-in slide-in-from-bottom-2">
+          <Trash2 className="w-4 h-4 text-rose-400" />
+          <span>{toastMessage}</span>
+        </div>
       )}
     </div>
   );

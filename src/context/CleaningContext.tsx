@@ -16,6 +16,7 @@ import {
   SupplyUsage,
   ProjectLocation,
   AppUser,
+  RoleModulePermission,
   ChecklistLocation,
   ChecklistTemplateItem,
   DailyAreaChecklist,
@@ -43,6 +44,7 @@ import {
   INITIAL_NOTIFICATIONS,
   INITIAL_PROJECTS,
   INITIAL_USERS,
+  DEFAULT_RBAC_PERMISSIONS,
   INITIAL_CHECKLIST_TEMPLATES,
   INITIAL_CHECKLIST_LOCATIONS,
   INITIAL_DAILY_CHECKLISTS,
@@ -95,6 +97,9 @@ interface CleaningContextType {
   activeUserId: string;
   setActiveUserId: (id: string) => void;
   currentUser: AppUser;
+  addUser: (user: Omit<AppUser, 'id'>) => AppUser;
+  updateUser: (userId: string, updates: Partial<AppUser>) => void;
+  deleteUser: (userId: string) => { success: boolean; message?: string };
   updateUserProjectAssignment: (userId: string, projectIds: string[]) => void;
   allowedProjects: ProjectLocation[];
 
@@ -279,6 +284,25 @@ interface CleaningContextType {
   updateKpiConfig: (newConfig: DashboardKpiVisibilityConfig) => void;
   resetKpiConfig: () => void;
   toggleKpiWidget: (key: keyof DashboardKpiVisibilityConfig) => void;
+
+  // Authentication & Session
+  isAuthenticated: boolean;
+  login: (identifier: string, pass: string) => { success: boolean; message?: string };
+  logout: () => void;
+
+  // System Reload Feature
+  reloadSystemData: () => Promise<void>;
+  isReloading: boolean;
+
+  // Role-Based Access Control (RBAC) Matrix
+  rbacPermissions: RoleModulePermission[];
+  updateRbacPermission: (moduleId: string, role: UserRole, allowed: boolean) => void;
+  resetRbacPermissions: () => void;
+  hasAccess: (role: UserRole, moduleId: string) => boolean;
+
+  // Delete helpers
+  deleteSchedule: (id: string) => void;
+  deleteComplaint: (id: string) => void;
 }
 
 const CleaningContext = createContext<CleaningContextType | undefined>(undefined);
@@ -681,8 +705,164 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   }, [complaints]);
 
   useEffect(() => {
+    localStorage.setItem('sco_schedules', JSON.stringify(schedules));
+  }, [schedules]);
+
+  useEffect(() => {
     localStorage.setItem('sco_notifs', JSON.stringify(notifications));
   }, [notifications]);
+
+  // Authentication & Session
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
+    const saved = localStorage.getItem('sco_auth_state');
+    return saved === 'true';
+  });
+
+  const login = (identifier: string, pass: string): { success: boolean; message?: string } => {
+    const cleanId = identifier.trim().toLowerCase();
+    const cleanPass = pass.trim();
+
+    if (!cleanId || !cleanPass) {
+      return { success: false, message: 'Harap masukkan Username/Email dan Password.' };
+    }
+
+    const matchedUser = users.find(
+      (u) =>
+        (u.username && u.username.toLowerCase() === cleanId) ||
+        (u.email && u.email.toLowerCase() === cleanId)
+    );
+
+    if (!matchedUser) {
+      return { success: false, message: 'Akun tidak ditemukan. Periksa kembali Username atau Email Anda.' };
+    }
+
+    const expectedPassword =
+      matchedUser.password ||
+      (matchedUser.role === 'admin'
+        ? 'admin123'
+        : matchedUser.role === 'supervisor'
+        ? 'spv123'
+        : matchedUser.role === 'petugas'
+        ? 'petugas123'
+        : 'klien123');
+
+    if (expectedPassword !== cleanPass) {
+      return { success: false, message: 'Password salah. Silakan periksa kembali kata sandi Anda.' };
+    }
+
+    setIsAuthenticated(true);
+    setActiveUserId(matchedUser.id);
+    setUserRole(matchedUser.role);
+
+    if (matchedUser.assignedProjectIds && matchedUser.assignedProjectIds.length > 0) {
+      setActiveProjectIdState(matchedUser.assignedProjectIds[0]);
+      localStorage.setItem('sco_active_project_id', matchedUser.assignedProjectIds[0]);
+    }
+
+    localStorage.setItem('sco_auth_state', 'true');
+    localStorage.setItem('sco_active_user_id', matchedUser.id);
+    localStorage.setItem('sco_role', matchedUser.role);
+
+    return { success: true };
+  };
+
+  const logout = () => {
+    setIsAuthenticated(false);
+    localStorage.removeItem('sco_auth_state');
+    setActiveTab('dashboard');
+  };
+
+  // Role-Based Access Control (RBAC) Permissions Matrix
+  const [rbacPermissions, setRbacPermissions] = useState<RoleModulePermission[]>(() => {
+    const saved = localStorage.getItem('sco_rbac_permissions');
+    if (saved) {
+      try {
+        const parsed: RoleModulePermission[] = JSON.parse(saved);
+        const existingModuleIds = new Set(parsed.map((p) => p.moduleId));
+        const missing = DEFAULT_RBAC_PERMISSIONS.filter((p) => !existingModuleIds.has(p.moduleId));
+        return [...parsed, ...missing];
+      } catch (e) {
+        console.error('Failed to parse RBAC permissions', e);
+      }
+    }
+    return DEFAULT_RBAC_PERMISSIONS;
+  });
+
+  useEffect(() => {
+    localStorage.setItem('sco_rbac_permissions', JSON.stringify(rbacPermissions));
+  }, [rbacPermissions]);
+
+  const updateRbacPermission = (moduleId: string, role: UserRole, allowed: boolean) => {
+    if (role === 'admin') return; // Super admin always has full access
+    setRbacPermissions((prev) =>
+      prev.map((perm) => (perm.moduleId === moduleId ? { ...perm, [role]: allowed } : perm))
+    );
+  };
+
+  const resetRbacPermissions = () => {
+    setRbacPermissions(DEFAULT_RBAC_PERMISSIONS);
+    localStorage.setItem('sco_rbac_permissions', JSON.stringify(DEFAULT_RBAC_PERMISSIONS));
+  };
+
+  const hasAccess = (role: UserRole, moduleId: string): boolean => {
+    if (role === 'admin') return true;
+    const perm = rbacPermissions.find((p) => p.moduleId === moduleId);
+    if (!perm) return true; // Default allow if not configured
+    return Boolean(perm[role]);
+  };
+
+  // System Reload Feature
+  const [isReloading, setIsReloading] = useState<boolean>(false);
+
+  const reloadSystemData = async () => {
+    setIsReloading(true);
+    await new Promise((res) => setTimeout(res, 650));
+
+    // Reload from localStorage
+    try {
+      const savedProjects = localStorage.getItem('sco_projects');
+      if (savedProjects) setProjects(JSON.parse(savedProjects));
+
+      const savedSchedules = localStorage.getItem('sco_schedules');
+      if (savedSchedules) setSchedules(JSON.parse(savedSchedules));
+
+      const savedComplaints = localStorage.getItem('sco_complaints');
+      if (savedComplaints) setComplaints(JSON.parse(savedComplaints));
+
+      const savedReports = localStorage.getItem('sco_damage_reports');
+      if (savedReports) setDamageReports(JSON.parse(savedReports));
+
+      const savedPrograms = localStorage.getItem('sco_master_programs');
+      if (savedPrograms) setMasterPrograms(JSON.parse(savedPrograms));
+
+      const savedChecklists = localStorage.getItem('sco_daily_checklists');
+      if (savedChecklists) setDailyChecklists(JSON.parse(savedChecklists));
+    } catch (err) {
+      console.warn('Reload sync info:', err);
+    }
+
+    const nowTime = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB';
+    const reloadNotif: AppNotification = {
+      id: `notif-reload-${Date.now()}`,
+      title: '🔄 Data Sistem Berhasil Dimuat Ulang',
+      message: `Seluruh data operasional, jadwal, tiket, dan ceklist telah disegarkan per ${nowTime}.`,
+      timestamp: nowTime,
+      type: 'info',
+      targetRole: ['admin', 'supervisor', 'petugas', 'klien'],
+      read: false,
+    };
+    setNotifications((prev) => [reloadNotif, ...prev]);
+    setIsReloading(false);
+  };
+
+  // Delete helpers for Schedule and Complaint
+  const deleteSchedule = (id: string) => {
+    setSchedules((prev) => prev.filter((s) => s.id !== id));
+  };
+
+  const deleteComplaint = (id: string) => {
+    setComplaints((prev) => prev.filter((c) => c.id !== id));
+  };
 
   // Project Location CRUD
   const addProject = (proj: Omit<ProjectLocation, 'id' | 'createdAt'>) => {
@@ -722,6 +902,89 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setUsers((prev) =>
       prev.map((u) => (u.id === userId ? { ...u, assignedProjectIds: projectIds } : u))
     );
+  };
+
+  const addUser = (userData: Omit<AppUser, 'id'>): AppUser => {
+    const newId = `usr-${userData.role.substring(0, 3)}-${Date.now()}`;
+    const newUser: AppUser = {
+      ...userData,
+      id: newId,
+      assignedProjectIds: userData.assignedProjectIds || [],
+      createdAt:
+        userData.createdAt ||
+        new Date().toLocaleDateString('id-ID', {
+          day: '2-digit',
+          month: 'short',
+          year: 'numeric',
+        }),
+    };
+    setUsers((prev) => [...prev, newUser]);
+
+    // If added user is a petugas, provision corresponding cleaner profile if not exists
+    if (userData.role === 'petugas') {
+      const existingCleaner = cleaners.find(
+        (c) => c.name.toLowerCase() === userData.name.toLowerCase()
+      );
+      if (!existingCleaner) {
+        const firstProjId =
+          (userData.assignedProjectIds && userData.assignedProjectIds[0]) || safeActiveProjectId;
+        const newCleanerId = `cln-${Date.now()}`;
+        const newNik = `CLN-${new Date().getFullYear()}-${String(cleaners.length + 1).padStart(3, '0')}`;
+        setCleaners((prev) => [
+          ...prev,
+          {
+            id: newCleanerId,
+            projectId: firstProjId,
+            nik: newNik,
+            name: userData.name,
+            phone: userData.phone || '0812-3456-7890',
+            photoUrl:
+              'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80',
+            shiftId: 'shift-1',
+            shiftName: 'Pagi (06:00 - 14:00)',
+            assignedAreas: [],
+            status: 'active',
+          },
+        ]);
+      }
+    }
+
+    return newUser;
+  };
+
+  const updateUser = (userId: string, updates: Partial<AppUser>) => {
+    setUsers((prev) =>
+      prev.map((u) => (u.id === userId ? { ...u, ...updates } : u))
+    );
+  };
+
+  const deleteUser = (userId: string): { success: boolean; message?: string } => {
+    const target = users.find((u) => u.id === userId);
+    if (!target) {
+      return { success: false, message: 'Pengguna tidak ditemukan.' };
+    }
+    if (target.role === 'admin') {
+      const remainingAdmins = users.filter((u) => u.role === 'admin' && u.id !== userId);
+      if (remainingAdmins.length === 0) {
+        return {
+          success: false,
+          message: 'Akun Super Admin utama tidak dapat dihapus demi keamanan sistem.',
+        };
+      }
+    }
+
+    setUsers((prev) => prev.filter((u) => u.id !== userId));
+
+    // If deleting current active user, fallback safely to an admin
+    if (activeUserId === userId) {
+      const fallback = users.find((u) => u.role === 'admin' && u.id !== userId) || users[0];
+      if (fallback) {
+        setActiveUserId(fallback.id);
+        setUserRole(fallback.role);
+      }
+    }
+
+    return { success: true, message: `Akun ${target.name} (${target.role}) berhasil dihapus.` };
   };
 
   // Checklist Master & Daily Methods
@@ -2082,6 +2345,9 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         activeUserId,
         setActiveUserId,
         currentUser,
+        addUser,
+        updateUser,
+        deleteUser,
         updateUserProjectAssignment,
         allowedProjects,
 
@@ -2167,6 +2433,25 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         updateKpiConfig,
         resetKpiConfig,
         toggleKpiWidget,
+
+        // Authentication & Session
+        isAuthenticated,
+        login,
+        logout,
+
+        // System Reload Feature
+        reloadSystemData,
+        isReloading,
+
+        // RBAC Permissions Matrix
+        rbacPermissions,
+        updateRbacPermission,
+        resetRbacPermissions,
+        hasAccess,
+
+        // Delete helpers
+        deleteSchedule,
+        deleteComplaint,
       }}
     >
       {children}

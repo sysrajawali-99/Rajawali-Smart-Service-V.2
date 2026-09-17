@@ -942,12 +942,10 @@ export const WeeklyActivityView: React.FC = () => {
                       <button
                         type="button"
                         onClick={() => {
-                          if (window.confirm(`Hapus program "${program.workDescription}"?`)) {
-                            deleteMasterProgram(program.id);
-                            showToast('Weekly Activity berhasil dihapus.');
-                          }
+                          deleteMasterProgram(program.id);
+                          showToast('Weekly Activity berhasil dihapus.');
                         }}
-                        className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
+                        className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
                         title="Hapus Weekly Activity"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
@@ -1255,12 +1253,10 @@ export const WeeklyActivityView: React.FC = () => {
                           <button
                             type="button"
                             onClick={() => {
-                              if (window.confirm(`Hapus program "${program.workDescription}"?`)) {
-                                deleteMasterProgram(program.id);
-                                showToast('Weekly Activity berhasil dihapus.');
-                              }
+                              deleteMasterProgram(program.id);
+                              showToast('Weekly Activity berhasil dihapus.');
                             }}
-                            className="p-1.5 rounded-lg hover:bg-rose-50 text-slate-400 hover:text-rose-600 transition-colors"
+                            className="p-1.5 rounded-lg hover:bg-rose-50 text-slate-400 hover:text-rose-600 transition-colors cursor-pointer"
                             title="Hapus Weekly Activity"
                           >
                             <Trash2 className="w-3.5 h-3.5" />

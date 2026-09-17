@@ -305,10 +305,8 @@ export const AreaCleaningView: React.FC = () => {
 
   // Handle Delete Area
   const handleDeleteAreaConfirm = (area: Area) => {
-    if (window.confirm(`Apakah Anda yakin ingin menghapus lokasi kerja "${area.name}" (${area.floor})?`)) {
-      deleteArea(area.id);
-      showToast(`Lokasi kerja "${area.name}" telah dihapus.`);
-    }
+    deleteArea(area.id);
+    showToast(`Lokasi kerja "${area.name}" (${area.floor}) telah berhasil dihapus.`);
   };
 
   // Handle Add Area Form Submit

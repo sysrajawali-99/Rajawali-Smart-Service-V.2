@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   CalendarCheck,
   Plus,
@@ -16,12 +16,13 @@ import {
   Check,
   UserCheck,
   Sparkles,
+  Trash2,
 } from 'lucide-react';
 import { useCleaning } from '../../context/CleaningContext';
 import { CleaningSchedule, Cleaner } from '../../types';
 
 export const JadwalCleaningView: React.FC = () => {
-  const { schedules, areas, cleaners, shifts, updateCleaner } = useCleaning();
+  const { schedules, areas, cleaners, shifts, updateCleaner, deleteSchedule } = useCleaning();
 
   // Navigation tab: 'schedules' | 'roster'
   const [activeMainTab, setActiveMainTab] = useState<'schedules' | 'roster'>('schedules');
@@ -29,6 +30,10 @@ export const JadwalCleaningView: React.FC = () => {
   // Frequency Filter for Schedules
   const [frequencyFilter, setFrequencyFilter] = useState<'all' | 'harian' | 'mingguan' | 'bulanan'>('all');
   const [scheduleList, setScheduleList] = useState<CleaningSchedule[]>(schedules);
+
+  useEffect(() => {
+    setScheduleList(schedules);
+  }, [schedules]);
   const [showAddModal, setShowAddModal] = useState(false);
 
   // New Schedule State
@@ -289,15 +294,29 @@ export const JadwalCleaningView: React.FC = () => {
                       >
                         {freqBadge.label}
                       </span>
-                      <label className="relative inline-flex items-center cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={item.isActive}
-                          onChange={() => toggleSchedule(item.id)}
-                          className="sr-only peer"
-                        />
-                        <div className="w-8 h-4 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-sky-600"></div>
-                      </label>
+                      <div className="flex items-center gap-2">
+                        <label className="relative inline-flex items-center cursor-pointer" title="Aktif / Nonaktif">
+                          <input
+                            type="checkbox"
+                            checked={item.isActive}
+                            onChange={() => toggleSchedule(item.id)}
+                            className="sr-only peer"
+                          />
+                          <div className="w-8 h-4 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-sky-600"></div>
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            deleteSchedule(item.id);
+                            setScheduleList((prev) => prev.filter((s) => s.id !== item.id));
+                            showToast(`Jadwal "${item.title}" berhasil dihapus.`);
+                          }}
+                          className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                          title="Hapus Jadwal"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     </div>
 
                     <h3 className="font-bold text-sm text-slate-900 mt-2">{item.title}</h3>
