@@ -1078,13 +1078,18 @@ export const InspeksiControlView: React.FC = () => {
 
               {/* Selected Category Guideline Banner */}
               {activeCategoryInfo && (
-                <div className={`p-3 rounded-xl border flex items-start gap-2.5 text-xs ${activeCategoryInfo.colorClass}`}>
-                  <span className="font-bold shrink-0 mt-0.5">
-                    Skala {activeCategoryInfo.scale}: {activeCategoryInfo.label} ({activeCategoryInfo.percent}%)
-                  </span>
-                  <span className="text-slate-700 font-medium flex-1">
+                <div className={`p-3.5 rounded-xl border text-xs space-y-1.5 ${activeCategoryInfo.colorClass}`}>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-bold text-[13px] text-slate-900">
+                      Skala {activeCategoryInfo.scale}: {activeCategoryInfo.label}
+                    </span>
+                    <span className="text-[11px] font-bold px-2 py-0.5 rounded-md bg-white/80 border border-current shadow-2xs">
+                      {activeCategoryInfo.percent}%
+                    </span>
+                  </div>
+                  <p className="text-slate-700 font-normal leading-relaxed text-xs">
                     {activeCategoryInfo.desc}
-                  </span>
+                  </p>
                 </div>
               )}
 
@@ -1125,19 +1130,40 @@ export const InspeksiControlView: React.FC = () => {
         <div className="lg:col-span-5 space-y-5">
           {/* Card: Tingkat Keberhasilan Pekerjaan Hari Ini */}
           <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-xs space-y-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <span className="p-1.5 bg-blue-100 text-blue-700 rounded-lg">
+            <div className="flex flex-wrap items-center justify-between gap-2.5 pb-0.5">
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="p-1.5 bg-blue-100 text-blue-700 rounded-lg shrink-0">
                   <Award className="w-4 h-4" />
                 </span>
-                <h3 className="font-bold text-slate-900 text-sm">
+                <h3 className="font-bold text-slate-900 text-sm truncate">
                   Rekapitulasi Mutu & Keberhasilan
                 </h3>
               </div>
 
-              <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${sessionSuccessRating.badgeClass}`}>
-                {sessionSuccessRating.statusLabel}
+              <span className={`px-3 py-1 rounded-full text-xs font-semibold shrink-0 shadow-2xs whitespace-nowrap ${sessionSuccessRating.badgeClass}`}>
+                {sessionSuccessRating.shortLabel}
               </span>
+            </div>
+
+            {/* Status Conclusion Banner */}
+            <div
+              className={`p-3 rounded-xl border text-xs flex items-start gap-2.5 leading-relaxed ${
+                cumulativeFinalScore >= 85
+                  ? 'bg-emerald-50/70 border-emerald-200 text-emerald-950'
+                  : cumulativeFinalScore >= 70
+                  ? 'bg-amber-50/70 border-amber-200 text-amber-950'
+                  : 'bg-rose-50/70 border-rose-200 text-rose-950'
+              }`}
+            >
+              <CheckCircle2 className={`w-4 h-4 shrink-0 mt-0.5 ${sessionSuccessRating.colorClass}`} />
+              <div className="space-y-0.5 min-w-0">
+                <span className="font-bold text-[12px] block text-slate-900">
+                  {sessionSuccessRating.statusLabel}
+                </span>
+                <p className="text-[11px] text-slate-600 font-normal">
+                  {sessionSuccessRating.conclusion}
+                </p>
+              </div>
             </div>
 
             {/* Big Score Display */}
@@ -1400,9 +1426,9 @@ export const InspeksiControlView: React.FC = () => {
                       <span className="font-bold text-slate-800 line-clamp-1">{insp.areaName}</span>
                       <div className="flex items-center gap-1.5 shrink-0">
                         <span
-                          className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${inspRating.badgeClass}`}
+                          className={`text-[10px] font-semibold px-2 py-0.5 rounded-full whitespace-nowrap ${inspRating.badgeClass}`}
                         >
-                          {inspRating.statusLabel}
+                          {inspRating.shortLabel}
                         </span>
                         <span className="font-black text-slate-900 font-heading">
                           {insp.score}%

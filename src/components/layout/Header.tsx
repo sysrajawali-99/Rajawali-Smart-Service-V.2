@@ -112,15 +112,15 @@ export const Header: React.FC = () => {
   const currentTabInfo = getTabInfo(activeTab);
 
   return (
-    <header className="bg-white border-b border-slate-200 sticky top-0 z-40 px-3 sm:px-4 lg:px-6 py-2.5 shadow-2xs">
+    <header className="bg-white border-b border-slate-200 sticky top-0 z-40 px-3 sm:px-4 lg:px-6 py-2 shadow-xs">
       <div className="flex items-center justify-between gap-2 sm:gap-4">
         {/* Left: Hamburger (Mobile/Tablet) & Brand / Project Selector */}
-        <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+        <div className="flex items-center gap-2.5 sm:gap-3 min-w-0 flex-1 sm:flex-initial">
           {/* Hamburger Menu button for mobile and tablet */}
           <button
             id="header-mobile-menu-toggle"
             onClick={toggleMobileMenu}
-            className="lg:hidden p-2 -ml-1 rounded-xl text-slate-700 hover:text-slate-900 hover:bg-slate-100 active:bg-slate-200 transition-colors"
+            className="lg:hidden p-1.5 -ml-1 rounded-lg text-slate-700 hover:text-slate-900 hover:bg-slate-100 active:bg-slate-200 transition-colors shrink-0"
             aria-label="Buka Menu Navigasi"
             title="Buka Menu Navigasi"
           >
@@ -133,12 +133,12 @@ export const Header: React.FC = () => {
           </div>
 
           {/* Brand and Project Info */}
-          <div className="min-w-0">
+          <div className="min-w-0 flex-1 sm:flex-initial">
             <div className="flex items-center gap-1.5 sm:gap-2">
-              <h1 className="text-sm sm:text-base font-bold tracking-tight text-slate-900 leading-tight truncate">
+              <h1 className="text-sm sm:text-base font-bold tracking-tight text-slate-900 leading-tight whitespace-nowrap">
                 Smart Cleaning
               </h1>
-              <span className="hidden md:inline-flex items-center px-1.5 py-0.2 rounded text-[10px] font-semibold bg-sky-50 text-sky-700 border border-sky-200">
+              <span className="hidden md:inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-sky-50 text-sky-700 border border-sky-200">
                 v2.5
               </span>
             </div>
@@ -148,14 +148,19 @@ export const Header: React.FC = () => {
               <button
                 id="header-project-picker"
                 onClick={() => setShowProjectDropdown(!showProjectDropdown)}
-                className="flex items-center gap-1 text-xs text-slate-600 hover:text-slate-900 transition-colors group cursor-pointer"
+                className="inline-flex items-center gap-1.5 text-xs text-slate-600 hover:text-slate-900 transition-colors group cursor-pointer max-w-full"
+                title={activeProject ? `${activeProject.name} (${activeProject.city})` : 'Pilih Proyek'}
               >
                 <Building2 className="w-3.5 h-3.5 text-sky-600 shrink-0" />
-                <span className="font-semibold text-slate-800 group-hover:text-sky-700 truncate max-w-[130px] sm:max-w-[200px]">
+                <span className="font-semibold text-slate-800 group-hover:text-sky-700 truncate max-w-[120px] xs:max-w-[180px] sm:max-w-[240px] md:max-w-xs">
                   {activeProject?.name || 'Pilih Proyek'}
                 </span>
-                <span className="text-slate-300 hidden sm:inline">•</span>
-                <span className="text-slate-500 hidden sm:inline">{activeProject?.city}</span>
+                {activeProject?.city && (
+                  <>
+                    <span className="text-slate-300 hidden sm:inline">•</span>
+                    <span className="text-slate-500 hidden sm:inline truncate max-w-[100px]">{activeProject.city}</span>
+                  </>
+                )}
                 {userRole === 'admin' ? (
                   <ChevronDown className="w-3 h-3 text-slate-400 group-hover:text-slate-700 shrink-0" />
                 ) : (
@@ -241,15 +246,15 @@ export const Header: React.FC = () => {
         </div>
 
         {/* Right Side: Role Selector, Notifications & Reset Tools */}
-        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+        <div className="flex items-center gap-2 sm:gap-2.5 shrink-0">
           {/* Role Switcher */}
           <div className="relative">
             <button
               id="header-role-switcher"
               onClick={() => setShowRoleDropdown(!showRoleDropdown)}
-              className="flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-1.5 rounded-lg border border-slate-200 hover:border-slate-300 bg-white text-xs font-medium text-slate-700 transition-colors shadow-2xs"
+              className="flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-1.5 rounded-lg border border-slate-200 hover:border-slate-300 bg-white text-xs font-medium text-slate-700 transition-colors shadow-2xs hover:bg-slate-50 cursor-pointer"
             >
-              <ShieldCheck className="w-4 h-4 text-sky-600" />
+              <ShieldCheck className="w-4 h-4 text-sky-600 shrink-0" />
               <div className="text-left hidden sm:block">
                 <span className="text-[9px] uppercase tracking-wider text-slate-400 block font-semibold leading-tight">
                   Role Aktif
@@ -258,7 +263,7 @@ export const Header: React.FC = () => {
                   {roleLabels[userRole].title.split('/')[0]}
                 </span>
               </div>
-              <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
+              <ChevronDown className="w-3.5 h-3.5 text-slate-400 shrink-0" />
             </button>
 
             {showRoleDropdown && (
@@ -280,7 +285,7 @@ export const Header: React.FC = () => {
                       }
                       setShowRoleDropdown(false);
                     }}
-                    className={`w-full text-left px-3 py-2 text-xs flex flex-col transition-colors ${
+                    className={`w-full text-left px-3 py-2 text-xs flex flex-col transition-colors cursor-pointer ${
                       userRole === role
                         ? 'bg-sky-50 text-sky-900 font-semibold'
                         : 'text-slate-700 hover:bg-slate-50'
@@ -303,13 +308,14 @@ export const Header: React.FC = () => {
           <div className="relative">
             <button
               onClick={() => setShowNotifDropdown(!showNotifDropdown)}
-              className="relative p-2 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-colors"
+              className="relative p-2 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-colors cursor-pointer flex items-center justify-center"
               title="Notifikasi Operasional"
+              aria-label="Notifikasi Operasional"
             >
-              <Bell className="w-4 h-4 sm:w-5 sm:h-5" />
+              <Bell className="w-4 h-4 sm:w-4.5 sm:h-4.5" />
               {unreadNotifs.length > 0 && (
-                <span className="absolute top-1 right-1 w-4 h-4 bg-rose-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center ring-2 ring-white">
-                  {unreadNotifs.length}
+                <span className="absolute top-0.5 right-0.5 min-w-4 h-4 px-1 bg-rose-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center ring-2 ring-white shadow-xs">
+                  {unreadNotifs.length > 99 ? '99+' : unreadNotifs.length}
                 </span>
               )}
             </button>
@@ -400,8 +406,9 @@ export const Header: React.FC = () => {
           {/* Reset App State */}
           <button
             onClick={resetToInitialData}
-            className="p-2 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
+            className="p-2 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer flex items-center justify-center shrink-0"
             title="Reset Data ke Default Awal"
+            aria-label="Reset Data ke Default Awal"
           >
             <RotateCcw className="w-4 h-4" />
           </button>

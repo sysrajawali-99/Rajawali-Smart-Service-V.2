@@ -208,9 +208,9 @@ export const QcAuditResultModal: React.FC<QcAuditResultModalProps> = ({
             <div className="bg-slate-900 text-white px-4 py-2.5 flex items-center justify-between">
               <h4 className="font-bold text-sm tracking-wide">## RESULT QC AUDIT</h4>
               <span
-                className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${successRating.badgeClass}`}
+                className={`px-3 py-1 rounded-full text-xs font-semibold whitespace-nowrap ${successRating.badgeClass}`}
               >
-                {successRating.statusLabel}
+                {successRating.shortLabel}
               </span>
             </div>
 

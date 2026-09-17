@@ -169,39 +169,48 @@ export const CleaningActivityView: React.FC = () => {
             >
               <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4 border-b border-slate-100">
                 {/* Left Task Title & Info */}
-                <div className="space-y-1">
-                  <div className="flex items-center gap-2">
-                    <span className="font-mono text-[11px] font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded">
+                <div className="space-y-1.5 min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-mono text-[11px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded shrink-0">
                       {task.id.toUpperCase()}
                     </span>
                     <span
-                      className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full border flex items-center gap-1.5 ${statusBadge.bg}`}
+                      className={`text-[11px] font-semibold px-2.5 py-0.5 rounded-full border flex items-center gap-1.5 whitespace-nowrap shrink-0 ${statusBadge.bg}`}
                     >
                       <span className={`w-1.5 h-1.5 rounded-full ${statusBadge.dot}`}></span>
                       {statusBadge.label}
                     </span>
-                    <span className="text-xs text-slate-400 font-medium">
-                      Jadwal: {task.scheduledTime} (Batas: {task.deadlineTime})
+                    <span className="text-xs text-slate-500 font-medium whitespace-nowrap">
+                      Jadwal: <strong className="text-slate-700 font-semibold">{task.scheduledTime}</strong> <span className="text-slate-400 font-normal">(Batas: {task.deadlineTime})</span>
                     </span>
                   </div>
 
-                  <h3 className="text-base font-bold text-slate-900">{task.areaName}</h3>
-                  <div className="flex items-center gap-3 text-xs text-slate-500">
-                    <span className="flex items-center gap-1">
-                      <MapPin className="w-3.5 h-3.5 text-slate-400" />
-                      {task.buildingFloor}
+                  <h3 className="text-base sm:text-lg font-bold text-slate-900 leading-snug">{task.areaName}</h3>
+
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs text-slate-600">
+                    <span className="inline-flex items-center gap-1 shrink-0 font-medium text-slate-700">
+                      <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                      <span>{task.buildingFloor}</span>
                     </span>
-                    <span>•</span>
-                    <span className="flex items-center gap-1">
-                      <Users className="w-3.5 h-3.5 text-sky-600" />
-                      Petugas: <strong className="text-slate-800">{task.cleanerName}</strong> ({task.shift})
+
+                    <span className="text-slate-300 hidden sm:inline">•</span>
+
+                    <span className="inline-flex items-center gap-1.5 shrink-0">
+                      <Users className="w-3.5 h-3.5 text-sky-600 shrink-0" />
+                      <span>
+                        Petugas: <strong className="text-slate-800 font-semibold">{task.cleanerName}</strong>{' '}
+                        <span className="text-slate-500">({task.shift})</span>
+                      </span>
                     </span>
+
                     {task.startTime && (
                       <>
-                        <span>•</span>
-                        <span className="flex items-center gap-1 text-slate-600">
-                          <Clock className="w-3.5 h-3.5 text-slate-400" />
-                          Mulai: {task.startTime}
+                        <span className="text-slate-300 hidden sm:inline">•</span>
+                        <span className="inline-flex items-center gap-1 shrink-0 text-slate-600">
+                          <Clock className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                          <span>
+                            Mulai: <strong className="text-slate-700 font-semibold">{task.startTime}</strong>
+                          </span>
                         </span>
                       </>
                     )}

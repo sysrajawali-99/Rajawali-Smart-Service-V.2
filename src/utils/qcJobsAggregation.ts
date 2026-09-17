@@ -28,6 +28,7 @@ export type QcSuccessRating = {
   score: number;
   status: 'gagal' | 'mendekati' | 'berhasil';
   statusLabel: string;
+  shortLabel: string;
   badgeClass: string;
   conclusion: string;
   colorClass: string;
@@ -38,7 +39,8 @@ export const evaluateQcSuccessRating = (score: number): QcSuccessRating => {
     return {
       score,
       status: 'gagal',
-      statusLabel: 'TIDAK BERHASIL TERCAPAI',
+      statusLabel: 'Tidak Berhasil Tercapai',
+      shortLabel: 'Tidak Tercapai (< 70%)',
       badgeClass: 'bg-rose-500 text-white',
       colorClass: 'text-rose-600',
       conclusion:
@@ -48,7 +50,8 @@ export const evaluateQcSuccessRating = (score: number): QcSuccessRating => {
     return {
       score,
       status: 'mendekati',
-      statusLabel: 'MENDEKATI HASIL YANG DIHARAPKAN',
+      statusLabel: 'Mendekati Hasil yang Diharapkan',
+      shortLabel: 'Mendekati (70% - 84%)',
       badgeClass: 'bg-amber-500 text-white',
       colorClass: 'text-amber-600',
       conclusion:
@@ -58,7 +61,8 @@ export const evaluateQcSuccessRating = (score: number): QcSuccessRating => {
     return {
       score,
       status: 'berhasil',
-      statusLabel: 'SESUAI DENGAN YANG DIHARAPKAN & BISA DIPERTAHANKAN',
+      statusLabel: 'Sesuai dengan yang Diharapkan & Bisa Dipertahankan',
+      shortLabel: 'Sesuai Standar (≥ 85%)',
       badgeClass: 'bg-emerald-600 text-white',
       colorClass: 'text-emerald-600',
       conclusion:
