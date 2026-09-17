@@ -378,8 +378,8 @@ export const PengaturanView: React.FC = () => {
             </div>
           </div>
 
-          <div className="border border-slate-200 rounded-xl overflow-hidden text-xs">
-            <table className="w-full text-left">
+          <div className="border border-slate-200 rounded-xl overflow-x-auto text-xs">
+            <table className="w-full min-w-[540px] text-left">
               <thead className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200">
                 <tr>
                   <th className="p-3">Modul & Fungsi Sistem</th>

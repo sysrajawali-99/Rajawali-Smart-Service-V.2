@@ -588,8 +588,111 @@ export const InspeksiControlView: React.FC = () => {
           </div>
         </div>
 
-        {/* Completed Jobs Table - Column PILIH removed, column BOBOT added */}
-        <div className="border border-slate-200 rounded-xl overflow-hidden shadow-2xs">
+        {/* Mobile View: Completed Jobs Cards */}
+        <div className="md:hidden space-y-3">
+          {filteredCompletedJobs.length === 0 ? (
+            <div className="p-6 text-center text-slate-400 bg-slate-50 rounded-xl border border-slate-200">
+              Tidak ada data pekerjaan yang ditemukan untuk kriteria filter ini.
+            </div>
+          ) : (
+            filteredCompletedJobs.map((job) => {
+              const isActive = activeJobId === job.id;
+              const jobInfo = jobScoresMap[job.id] || {
+                jobScore100: 80,
+                scale: 4,
+                sessionContribution: sessionWeightPerJob * 0.8,
+              };
+              const cat = QUALITY_SCALE_CATEGORIES[jobInfo.scale] || QUALITY_SCALE_CATEGORIES[4];
+
+              return (
+                <div
+                  key={job.id}
+                  onClick={() => setActiveJobId(job.id)}
+                  className={`p-3.5 rounded-xl border transition-all cursor-pointer space-y-2.5 ${
+                    isActive
+                      ? 'bg-blue-50/80 border-blue-400 ring-2 ring-blue-500/20 shadow-xs'
+                      : 'bg-white border-slate-200 hover:border-slate-300'
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <span
+                      className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold border ${job.sourceBadgeClass}`}
+                    >
+                      {job.sourceLabel}
+                    </span>
+                    <span className="text-[11px] text-slate-500 font-medium">
+                      {job.completedDate}
+                    </span>
+                  </div>
+
+                  <div>
+                    <h4 className="font-bold text-slate-900 text-xs leading-snug">
+                      {job.title}
+                    </h4>
+                    <p className="text-[11px] text-slate-500 line-clamp-1 mt-0.5">
+                      {job.location} • {job.cleanerName}
+                    </p>
+                  </div>
+
+                  {/* Rating Selector Strip on Card */}
+                  <div className="pt-2 border-t border-slate-100 flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-1">
+                      {([1, 2, 3, 4, 5] as const).map((val) => {
+                        const isValSelected = jobInfo.scale === val;
+                        const valCat = QUALITY_SCALE_CATEGORIES[val];
+                        return (
+                          <button
+                            key={val}
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setJobScale(job.id, val);
+                              setActiveJobId(job.id);
+                            }}
+                            className={`w-7 h-7 rounded-lg text-xs font-bold transition-all flex items-center justify-center ${
+                              isValSelected
+                                ? `${valCat.activeClass} shadow-xs scale-105`
+                                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                            }`}
+                          >
+                            {val}
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    <div className="text-right">
+                      <span className="text-xs font-black text-slate-900 block">
+                        {jobInfo.sessionContribution.toFixed(1)}%
+                      </span>
+                      <span className="text-[9px] text-slate-500 block">
+                        Bobot: {sessionWeightPerJob.toFixed(1)}%
+                      </span>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setActiveJobId(job.id);
+                    }}
+                    className={`w-full py-1.5 rounded-lg text-xs font-bold transition-all text-center ${
+                      isActive
+                        ? 'bg-blue-600 text-white shadow-xs'
+                        : 'bg-slate-100 text-slate-700 hover:bg-blue-50'
+                    }`}
+                  >
+                    {isActive ? '✓ Sedang Dinilai di Bawah' : 'Pilih & Nilai Pekerjaan Ini'}
+                  </button>
+                </div>
+              );
+            })
+          )}
+        </div>
+
+        {/* Desktop Completed Jobs Table */}
+        <div className="hidden md:block border border-slate-200 rounded-xl overflow-hidden shadow-2xs">
           <div className="overflow-x-auto max-h-64 overflow-y-auto">
             <table className="w-full text-xs text-left">
               <thead className="bg-slate-100 text-slate-700 uppercase font-bold text-[10px] sticky top-0 z-10 border-b border-slate-200">

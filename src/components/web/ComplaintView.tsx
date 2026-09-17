@@ -128,7 +128,7 @@ export const ComplaintView: React.FC = () => {
               }`}
             >
               <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 pb-3 border-b border-slate-100">
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <span className="font-mono text-xs font-bold text-slate-700 bg-slate-100 px-2.5 py-0.5 rounded">
                     {ticket.ticketNumber}
                   </span>
@@ -152,12 +152,12 @@ export const ComplaintView: React.FC = () => {
                   </span>
                 </div>
 
-                <div className="flex items-center gap-3 text-xs text-slate-500">
+                <div className="flex flex-wrap items-center gap-2 sm:gap-3 text-xs text-slate-500">
                   <span className="flex items-center gap-1">
                     <Clock className="w-3.5 h-3.5 text-slate-400" />
                     Dibuat: {ticket.createdAt}
                   </span>
-                  <span>•</span>
+                  <span className="hidden sm:inline">•</span>
                   <span className="text-rose-600 font-semibold flex items-center gap-1">
                     <AlertTriangle className="w-3.5 h-3.5" />
                     Batas SLA: {ticket.slaDeadline}
@@ -168,7 +168,7 @@ export const ComplaintView: React.FC = () => {
               {/* Main Info */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-3 text-xs">
                 <div className="md:col-span-2 space-y-1.5">
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     <span className="font-bold text-slate-800 text-sm">{ticket.category}</span>
                     <span className="text-slate-400">•</span>
                     <span className="text-slate-600 font-medium">{ticket.areaName} ({ticket.floor})</span>
@@ -178,11 +178,11 @@ export const ComplaintView: React.FC = () => {
                     "{ticket.description}"
                   </p>
 
-                  <div className="flex items-center gap-4 text-slate-500 text-[11px] pt-1">
+                  <div className="flex flex-wrap items-center gap-2 sm:gap-4 text-slate-500 text-[11px] pt-1">
                     <span>
                       Pelapor: <strong className="text-slate-800">{ticket.reporterName}</strong> ({ticket.reporterRole})
                     </span>
-                    <span>•</span>
+                    <span className="hidden sm:inline">•</span>
                     <span>
                       Petugas Ditugaskan: <strong className="text-sky-700">{ticket.assignedCleanerName}</strong>
                     </span>

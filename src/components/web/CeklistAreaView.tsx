@@ -26,6 +26,8 @@ import {
   MapPin,
   Layers,
   Briefcase,
+  Smartphone,
+  Table,
 } from 'lucide-react';
 import { useCleaning } from '../../context/CleaningContext';
 import {
@@ -102,7 +104,12 @@ export const CeklistAreaView: React.FC = () => {
     checklistLocations[0]?.id || 'cloc-1'
   );
   const [selectedShiftId, setSelectedShiftId] = useState<string>('shift-1');
-  const [viewMode, setViewMode] = useState<'official_table' | 'slot_details'>('official_table');
+  const [viewMode, setViewMode] = useState<'official_table' | 'slot_details'>(() => {
+    if (typeof window !== 'undefined' && window.innerWidth < 768) {
+      return 'slot_details';
+    }
+    return 'official_table';
+  });
   const [expandedHour, setExpandedHour] = useState<number | null>(new Date().getHours());
   const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
 
@@ -646,27 +653,33 @@ export const CeklistAreaView: React.FC = () => {
           </div>
 
           {/* View mode toggle & master actions */}
-          <div className="flex items-center gap-2">
-            <div className="flex items-center bg-slate-100 p-1 rounded-xl text-xs">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex items-center bg-slate-100 p-1 rounded-xl text-xs shadow-inner">
               <button
-                onClick={() => setViewMode('official_table')}
-                className={`px-3 py-1 rounded-lg font-bold transition-all ${
-                  viewMode === 'official_table'
-                    ? 'bg-sky-600 text-white shadow-xs'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                Model Formulir Resmi
-              </button>
-              <button
+                type="button"
                 onClick={() => setViewMode('slot_details')}
-                className={`px-3 py-1 rounded-lg font-bold transition-all ${
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-bold transition-all ${
                   viewMode === 'slot_details'
                     ? 'bg-sky-600 text-white shadow-xs'
                     : 'text-slate-600 hover:text-slate-900'
                 }`}
+                title="Tampilan kartu ramah layar ponsel (Touch-Friendly)"
               >
-                Detail Slot Per Jam
+                <Smartphone className="w-3.5 h-3.5" />
+                <span>Mode Ponsel (Kartu)</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode('official_table')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-bold transition-all ${
+                  viewMode === 'official_table'
+                    ? 'bg-sky-600 text-white shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+                title="Tampilan tabel cetak resmi operasional"
+              >
+                <Table className="w-3.5 h-3.5" />
+                <span>Tabel Resmi</span>
               </button>
             </div>
 
@@ -842,6 +855,23 @@ export const CeklistAreaView: React.FC = () => {
                 </div>
               </div>
             </div>
+          </div>
+
+          {/* MOBILE SWIPE HINT BANNER */}
+          <div className="md:hidden flex items-center justify-between gap-2 p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900 shadow-2xs">
+            <div className="flex items-center gap-2">
+              <Smartphone className="w-4 h-4 text-amber-600 shrink-0" />
+              <span className="text-[11px] leading-tight">
+                Tampilan tabel lebar: Geser ke samping, atau beralih ke <strong>Mode Ponsel</strong> untuk pengisian cepat per kartu.
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setViewMode('slot_details')}
+              className="shrink-0 px-2.5 py-1.5 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-lg text-[11px] shadow-xs"
+            >
+              Mode Ponsel
+            </button>
           </div>
 
           {/* TABLE CONTAINER - PERSIS MODEL DI GAMBAR CEKLIST.WEBP */}
@@ -1060,33 +1090,54 @@ export const CeklistAreaView: React.FC = () => {
       )}
 
       {/* ============================================================ */}
-      {/* 2. VIEW MODE: DETAIL KARTU SLOT PER JAM (ACCORDION & NOTES) */}
+      {/* 2. VIEW MODE: DETAIL KARTU SLOT PER JAM (TOUCH FRIENDLY)     */}
       {/* ============================================================ */}
       {viewMode === 'slot_details' && (
         <div className="space-y-4">
-          <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-xs flex items-center justify-between text-xs">
-            <span className="font-semibold text-slate-700">
-              Menampilkan {displayedSlotsWithMeta.length} slot waktu ({activeShift ? activeShift.name : '24 Jam'}). Klik tiap jam untuk mengubah status rincian per item atau menambahkan catatan temuan.
-            </span>
-            <button
-              onClick={() => setShowAddManualItemModal(true)}
-              className="px-3 py-1.5 bg-sky-600 hover:bg-sky-700 text-white rounded-xl font-semibold flex items-center gap-1.5 shadow-xs"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span>Tambah Item Ceklist Baru</span>
-            </button>
+          <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+            <div>
+              <p className="font-bold text-slate-800 flex items-center gap-1.5">
+                <Smartphone className="w-4 h-4 text-sky-600" />
+                <span>Mode Kartu Pemeriksaan Per Jam (Ramah Ponsel)</span>
+              </p>
+              <p className="text-slate-500 mt-0.5">
+                {displayedSlotsWithMeta.length} slot waktu aktif ({activeShift ? activeShift.name : '24 Jam'}). Ketuk tombol status untuk mengubah nilai dengan cepat.
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setExpandedHour(expandedHour === null ? (displayedSlotsWithMeta[0]?.hour ?? 7) : null)}
+                className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition-colors"
+              >
+                {expandedHour !== null ? 'Tutup Rincian' : 'Buka Rincian'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowAddManualItemModal(true)}
+                className="px-3 py-2 bg-sky-600 hover:bg-sky-700 text-white rounded-xl font-bold flex items-center gap-1.5 shadow-xs transition-colors"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Tambah Item</span>
+              </button>
+            </div>
           </div>
 
           <div className="space-y-3">
             {displayedSlotsWithMeta.map((slot) => {
               const isExpanded = expandedHour === slot.hour;
               const isCurrentHour = new Date().getHours() === slot.hour;
+              const cleanCount = slot.items.filter((it) => it.status === 'clean').length;
+              const issueCount = slot.items.filter((it) => it.status === 'issue').length;
+              const brokenCount = slot.items.filter((it) => it.status === 'broken').length;
 
               return (
                 <div
                   key={`${slot.hour}-${slot.dateStr}`}
                   className={`rounded-2xl border transition-all overflow-hidden ${
-                    slot.status === 'clean'
+                    isCurrentHour
+                      ? 'border-sky-300 ring-2 ring-sky-200 bg-white shadow-sm'
+                      : slot.status === 'clean'
                       ? 'border-emerald-200 bg-white'
                       : slot.status === 'has_issue'
                       ? 'border-rose-200 bg-white'
@@ -1095,14 +1146,14 @@ export const CeklistAreaView: React.FC = () => {
                 >
                   <div
                     onClick={() => setExpandedHour(isExpanded ? null : slot.hour)}
-                    className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 cursor-pointer hover:bg-slate-50/60"
+                    className="p-3.5 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 cursor-pointer hover:bg-slate-50/70 select-none"
                   >
-                    <div className="flex items-center gap-3">
-                      <div className="w-20 text-center">
+                    <div className="flex items-start sm:items-center gap-3">
+                      <div className="w-16 sm:w-20 text-center shrink-0 bg-slate-50 p-1.5 rounded-xl border border-slate-100">
                         <span className="font-bold text-slate-900 text-xs font-mono block">
                           {slot.timeLabel}
                         </span>
-                        <span className="text-[10px] text-slate-400">
+                        <span className="text-[10px] text-slate-500">
                           {slot.dateStr}
                         </span>
                         {slot.isNextDay && (
@@ -1112,75 +1163,126 @@ export const CeklistAreaView: React.FC = () => {
                         )}
                       </div>
 
-                      <div className="h-8 w-px bg-slate-200"></div>
+                      <div className="h-10 w-px bg-slate-200 hidden sm:block"></div>
 
-                      <div>
-                        <div className="flex items-center gap-2">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex flex-wrap items-center gap-1.5">
                           <span className="font-bold text-slate-900 text-sm">
-                            Pengecekan Jam {slot.timeLabel} WIB
+                            Jam {slot.timeLabel} WIB
                           </span>
-                          <span className="text-xs text-slate-500 font-medium hidden sm:inline">
-                            • {slot.dateStr}
-                          </span>
-                          {slot.isNextDay && (
-                            <span className="px-1.5 py-0.5 bg-purple-100 text-purple-800 rounded-full text-[10px] font-bold">
-                              Shift Lintas Hari (+1)
-                            </span>
-                          )}
                           {isCurrentHour && (
-                            <span className="px-2 py-0.5 bg-amber-100 text-amber-800 rounded-full text-[10px] font-bold">
+                            <span className="px-2 py-0.5 bg-amber-100 text-amber-900 border border-amber-300 rounded-full text-[10px] font-bold animate-pulse">
                               Jam Sekarang
                             </span>
                           )}
+                          {slot.status === 'clean' && (
+                            <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded-md text-[10px] font-bold">
+                              Lengkap Bersih
+                            </span>
+                          )}
                         </div>
-                        <p className="text-xs text-slate-500">
-                          Petugas: <strong>{slot.checkedBy || 'Belum diinspeksi'}</strong> •{' '}
-                          {slot.items.length} item checklist
+                        <p className="text-xs text-slate-500 mt-0.5 truncate">
+                          Pengawas: <strong className="text-slate-700">{slot.checkedBy || 'Belum ditugaskan'}</strong> •{' '}
+                          {slot.items.length} parameter
                         </p>
+
+                        {/* Quick counts chips */}
+                        <div className="flex items-center gap-1.5 mt-1.5">
+                          <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                            {cleanCount} B
+                          </span>
+                          {issueCount > 0 && (
+                            <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200">
+                              {issueCount} K
+                            </span>
+                          )}
+                          {brokenCount > 0 && (
+                            <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
+                              {brokenCount} R
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-3">
-                      {/* Status badge */}
-                      {slot.status === 'clean' ? (
-                        <span className="px-3 py-1 bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-xl text-xs font-bold flex items-center gap-1.5">
-                          <Check className="w-3.5 h-3.5 text-emerald-700" />
-                          <span>Bersih (B)</span>
-                        </span>
-                      ) : slot.status === 'has_issue' ? (
-                        <span className="px-3 py-1 bg-rose-100 text-rose-800 border border-rose-300 rounded-xl text-xs font-bold flex items-center gap-1.5">
-                          <AlertTriangle className="w-3.5 h-3.5 text-rose-700" />
-                          <span>Ada Temuan (K)</span>
-                        </span>
-                      ) : (
-                        <span className="px-3 py-1 bg-slate-100 text-slate-600 rounded-xl text-xs font-medium">
-                          Belum Diperiksa
-                        </span>
-                      )}
+                    <div className="flex items-center justify-between sm:justify-end gap-2 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-100">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (currentDailyChecklist) {
+                            batchUpdateHourStatus(
+                              currentDailyChecklist.id,
+                              slot.hour,
+                              'clean',
+                              currentUser?.name?.split(' ')[0] || 'Asep S.'
+                            );
+                          }
+                        }}
+                        className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-xl text-xs font-bold transition-all flex items-center gap-1"
+                        title="Tandai semua parameter jam ini bersih"
+                      >
+                        <Sparkles className="w-3.5 h-3.5" />
+                        <span>+ B Semua</span>
+                      </button>
 
-                      <ChevronDown
-                        className={`w-4 h-4 text-slate-400 transition-transform ${
-                          isExpanded ? 'rotate-180' : ''
-                        }`}
-                      />
+                      <div className="flex items-center gap-1 text-slate-500 text-xs font-semibold">
+                        <span className="hidden sm:inline">{isExpanded ? 'Tutup' : 'Buka'}</span>
+                        <div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center">
+                          <ChevronDown
+                            className={`w-4 h-4 text-slate-600 transition-transform ${
+                              isExpanded ? 'rotate-180' : ''
+                            }`}
+                          />
+                        </div>
+                      </div>
                     </div>
                   </div>
 
                   {/* Expanded detail items */}
                   {isExpanded && (
-                    <div className="p-4 pt-0 border-t border-slate-100 bg-slate-50/50 space-y-4">
+                    <div className="p-4 pt-1 border-t border-slate-100 bg-slate-50/60 space-y-4">
                       {/* Grid of items */}
-                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2.5 pt-3">
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2.5 pt-2">
                         {slot.items.map((item) => (
                           <div
                             key={item.itemId}
-                            className="p-2.5 rounded-xl bg-white border border-slate-200 flex items-center justify-between gap-2 shadow-2xs"
+                            className="p-3 rounded-xl bg-white border border-slate-200 shadow-2xs space-y-2"
                           >
-                            <span className="text-xs font-medium text-slate-800 truncate">
-                              {item.itemName}
-                            </span>
-                            <div className="flex items-center gap-1">
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="flex items-center gap-2 min-w-0">
+                                <div className="w-7 h-7 rounded-lg bg-sky-50 border border-sky-200 flex items-center justify-center shrink-0">
+                                  {renderParameterIcon(item.itemName, 15, 'text-sky-700')}
+                                </div>
+                                <span className="text-xs font-bold text-slate-900 truncate">
+                                  {item.itemName}
+                                </span>
+                              </div>
+                              <span
+                                className={`text-[10px] font-black px-1.5 py-0.5 rounded ${
+                                  item.status === 'clean'
+                                    ? 'bg-emerald-100 text-emerald-800'
+                                    : item.status === 'issue'
+                                    ? 'bg-rose-100 text-rose-800'
+                                    : item.status === 'broken'
+                                    ? 'bg-amber-100 text-amber-800'
+                                    : 'bg-slate-100 text-slate-600'
+                                }`}
+                              >
+                                {item.status === 'clean'
+                                  ? 'Bersih'
+                                  : item.status === 'issue'
+                                  ? 'Kotor'
+                                  : item.status === 'broken'
+                                  ? 'Rusak'
+                                  : 'Belum'}
+                              </span>
+                            </div>
+
+                            {/* Touch-Friendly Buttons Grid (min 44px touch ergonomics) */}
+                            <div className="grid grid-cols-4 gap-1.5 pt-1">
                               <button
+                                type="button"
                                 onClick={() =>
                                   updateHourlySlotItem(
                                     currentDailyChecklist!.id,
@@ -1189,16 +1291,16 @@ export const CeklistAreaView: React.FC = () => {
                                     'clean'
                                   )
                                 }
-                                title="Bersih (B)"
-                                className={`px-2 py-0.5 rounded text-[11px] font-bold transition-all ${
+                                className={`h-10 rounded-xl font-black text-xs flex items-center justify-center transition-all ${
                                   item.status === 'clean'
-                                    ? 'bg-emerald-600 text-white shadow-xs'
-                                    : 'bg-slate-100 text-slate-600 hover:bg-emerald-50 hover:text-emerald-700'
+                                    ? 'bg-emerald-600 text-white shadow-sm scale-102 ring-2 ring-emerald-300'
+                                    : 'bg-slate-100 text-slate-700 hover:bg-emerald-50 hover:text-emerald-700'
                                 }`}
                               >
                                 B
                               </button>
                               <button
+                                type="button"
                                 onClick={() =>
                                   updateHourlySlotItem(
                                     currentDailyChecklist!.id,
@@ -1208,16 +1310,16 @@ export const CeklistAreaView: React.FC = () => {
                                     'Ditemukan kotor'
                                   )
                                 }
-                                title="Kotor (K)"
-                                className={`px-2 py-0.5 rounded text-[11px] font-bold transition-all ${
+                                className={`h-10 rounded-xl font-black text-xs flex items-center justify-center transition-all ${
                                   item.status === 'issue'
-                                    ? 'bg-rose-600 text-white shadow-xs'
-                                    : 'bg-slate-100 text-slate-600 hover:bg-rose-50 hover:text-rose-700'
+                                    ? 'bg-rose-600 text-white shadow-sm scale-102 ring-2 ring-rose-300'
+                                    : 'bg-slate-100 text-slate-700 hover:bg-rose-50 hover:text-rose-700'
                                 }`}
                               >
                                 K
                               </button>
                               <button
+                                type="button"
                                 onClick={() =>
                                   updateHourlySlotItem(
                                     currentDailyChecklist!.id,
@@ -1227,16 +1329,16 @@ export const CeklistAreaView: React.FC = () => {
                                     'Ditemukan rusak'
                                   )
                                 }
-                                title="Rusak (R)"
-                                className={`px-2 py-0.5 rounded text-[11px] font-bold transition-all ${
+                                className={`h-10 rounded-xl font-black text-xs flex items-center justify-center transition-all ${
                                   item.status === 'broken'
-                                    ? 'bg-amber-600 text-white shadow-xs'
-                                    : 'bg-slate-100 text-slate-600 hover:bg-amber-50 hover:text-amber-700'
+                                    ? 'bg-amber-600 text-white shadow-sm scale-102 ring-2 ring-amber-300'
+                                    : 'bg-slate-100 text-slate-700 hover:bg-amber-50 hover:text-amber-700'
                                 }`}
                               >
                                 R
                               </button>
                               <button
+                                type="button"
                                 onClick={() =>
                                   updateHourlySlotItem(
                                     currentDailyChecklist!.id,
@@ -1245,11 +1347,10 @@ export const CeklistAreaView: React.FC = () => {
                                     'not_checked'
                                   )
                                 }
-                                title="Belum Diperiksa (-)"
-                                className={`px-1.5 py-0.5 rounded text-[11px] font-bold transition-all ${
+                                className={`h-10 rounded-xl font-black text-xs flex items-center justify-center transition-all ${
                                   item.status === 'not_checked'
-                                    ? 'bg-slate-400 text-white shadow-xs'
-                                    : 'bg-slate-100 text-slate-400 hover:bg-slate-200 hover:text-slate-600'
+                                    ? 'bg-slate-500 text-white shadow-sm'
+                                    : 'bg-slate-100 text-slate-400 hover:bg-slate-200 hover:text-slate-700'
                                 }`}
                               >
                                 -
@@ -1259,38 +1360,74 @@ export const CeklistAreaView: React.FC = () => {
                         ))}
                       </div>
 
-                      {/* Quick slot actions */}
-                      <div className="flex items-center justify-between pt-2 text-xs">
+                      {/* Quick Inspector & Paraf within card */}
+                      <div className="p-3 bg-white rounded-xl border border-slate-200 grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
                         <div className="flex items-center gap-2">
+                          <label className="text-slate-600 font-bold shrink-0">Pengawas:</label>
+                          <input
+                            type="text"
+                            value={slot.checkedBy || ''}
+                            placeholder="Nama Pengawas"
+                            onChange={(e) => {
+                              if (currentDailyChecklist) {
+                                updateSlotInspector(
+                                  currentDailyChecklist.id,
+                                  slot.hour,
+                                  e.target.value,
+                                  slot.supervisorVerified
+                                );
+                              }
+                            }}
+                            className="flex-1 px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold focus:ring-1 focus:ring-sky-500"
+                          />
+                        </div>
+
+                        <div className="flex items-center justify-between sm:justify-end gap-3">
+                          <label className="text-slate-600 font-bold">Verifikasi / Paraf:</label>
                           <button
-                            onClick={() =>
-                              batchUpdateHourStatus(
-                                currentDailyChecklist!.id,
-                                slot.hour,
-                                'clean',
-                                currentUser?.name?.split(' ')[0] || 'Asep S.'
-                              )
-                            }
-                            className="px-3 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-semibold"
+                            type="button"
+                            onClick={() => {
+                              if (currentDailyChecklist) {
+                                updateSlotInspector(
+                                  currentDailyChecklist.id,
+                                  slot.hour,
+                                  slot.checkedBy || 'Pengawas',
+                                  !slot.supervisorVerified
+                                );
+                              }
+                            }}
+                            className={`h-9 px-4 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all ${
+                              slot.supervisorVerified
+                                ? 'bg-emerald-600 text-white shadow-xs'
+                                : 'bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-200'
+                            }`}
                           >
-                            Set Jam Ini = Semua Bersih (B)
+                            <Check className="w-4 h-4" />
+                            <span>{slot.supervisorVerified ? 'Terverifikasi' : 'Beri Paraf'}</span>
                           </button>
-                          <button
-                            onClick={() =>
+                        </div>
+                      </div>
+
+                      {/* Reset Jam Ini */}
+                      <div className="flex items-center justify-between pt-1 text-xs">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (currentDailyChecklist) {
                               batchUpdateHourStatus(
-                                currentDailyChecklist!.id,
+                                currentDailyChecklist.id,
                                 slot.hour,
                                 'not_checked',
                                 ''
-                              )
+                              );
                             }
-                            className="px-3 py-1 border border-slate-200 hover:bg-white text-slate-600 rounded-lg"
-                          >
-                            Reset Jam Ini
-                          </button>
-                        </div>
+                          }}
+                          className="px-3 py-1.5 border border-slate-300 hover:bg-white text-slate-600 rounded-xl font-medium"
+                        >
+                          Reset Semua Parameter Jam Ini
+                        </button>
 
-                        <span className="text-slate-400">
+                        <span className="text-slate-400 text-[11px]">
                           Terakhir diperiksa: {slot.checkedAt || 'Belum diisi'}
                         </span>
                       </div>
