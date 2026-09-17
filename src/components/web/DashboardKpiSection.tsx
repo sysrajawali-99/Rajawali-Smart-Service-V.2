@@ -200,9 +200,9 @@ export const DashboardKpiSection: React.FC<DashboardKpiSectionProps> = ({
 
   // 4. Laporan Kerusakan
   const activeDamages = damageReports.filter((r) => r.status !== 'selesai');
-  const criticalDamages = activeDamages.filter((r) => r.severity === 'kritis' || r.severity === 'berat');
+  const criticalDamages = activeDamages.filter((r) => r.damageLevel === 'kritis' || r.damageLevel === 'berat');
   const resolvedDamages = damageReports.filter((r) => r.status === 'selesai');
-  const totalCost = damageReports.reduce((sum, r) => sum + (r.estimatedCost || 0), 0);
+  const damageResolutionRate = damageReports.length > 0 ? Math.round((resolvedDamages.length / damageReports.length) * 100) : 100;
 
   // Drill-down filtering
   const getFilteredTasksForDrillDown = () => {
@@ -747,10 +747,10 @@ export const DashboardKpiSection: React.FC<DashboardKpiSectionProps> = ({
                   <span className="text-slate-500 block font-medium text-[11px]">Telah Diperbaiki</span>
                   <span className="text-base font-bold text-slate-900">{resolvedDamages.length} tiket</span>
                 </div>
-                <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-200">
-                  <span className="text-amber-800 block font-medium text-[11px]">Est. Biaya Kerusakan</span>
-                  <span className="text-base font-bold text-amber-900">
-                    Rp {totalCost > 0 ? (totalCost / 1000).toLocaleString('id-ID') + 'k' : '0'}
+                <div className="p-2.5 rounded-xl bg-emerald-50 border border-emerald-200">
+                  <span className="text-emerald-800 block font-medium text-[11px]">Tingkat Penyelesaian</span>
+                  <span className="text-base font-bold text-emerald-900">
+                    {damageResolutionRate}%
                   </span>
                 </div>
               </div>

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Wrench,
   AlertTriangle,
@@ -23,7 +23,6 @@ import {
   Tag,
   Phone,
   User,
-  DollarSign,
   FileText,
   ShieldAlert,
   Sparkles,
@@ -64,6 +63,54 @@ export const DamageReportView: React.FC = () => {
   const [severityFilter, setSeverityFilter] = useState<string>('all');
   const [floorFilter, setFloorFilter] = useState<string>('all');
   const [viewMode, setViewMode] = useState<'cards' | 'table'>('cards');
+
+  // Month & Year Period Filter
+  const [selectedMonth, setSelectedMonth] = useState<string>('all');
+  const [selectedYear, setSelectedYear] = useState<string>('all');
+
+  // Available Years
+  const availableYears = useMemo(() => {
+    const years = new Set<number>([2024, 2025, 2026, 2027]);
+    damageReports.forEach((r) => {
+      const dateStr = r.reportDate || (r.createdAt ? r.createdAt.split('T')[0] : '');
+      if (dateStr) {
+        const y = parseInt(dateStr.split('-')[0], 10);
+        if (!isNaN(y)) years.add(y);
+      }
+    });
+    return Array.from(years).sort((a, b) => b - a);
+  }, [damageReports]);
+
+  const MONTH_OPTIONS = [
+    { value: 'all', label: 'Semua Bulan' },
+    { value: '1', label: 'Januari' },
+    { value: '2', label: 'Februari' },
+    { value: '3', label: 'Maret' },
+    { value: '4', label: 'April' },
+    { value: '5', label: 'Mei' },
+    { value: '6', label: 'Juni' },
+    { value: '7', label: 'Juli' },
+    { value: '8', label: 'Agustus' },
+    { value: '9', label: 'September' },
+    { value: '10', label: 'Oktober' },
+    { value: '11', label: 'November' },
+    { value: '12', label: 'Desember' },
+  ];
+
+  const activePeriodLabel = useMemo(() => {
+    if (selectedMonth === 'all' && selectedYear === 'all') {
+      return 'Semua Periode';
+    }
+    const monthObj = MONTH_OPTIONS.find((m) => m.value === selectedMonth);
+    const mLabel = monthObj && selectedMonth !== 'all' ? monthObj.label : '';
+    if (mLabel && selectedYear !== 'all') {
+      return `${mLabel} ${selectedYear}`;
+    }
+    if (mLabel) {
+      return `Bulan ${mLabel} (Semua Tahun)`;
+    }
+    return `Tahun ${selectedYear}`;
+  }, [selectedMonth, selectedYear]);
 
   // Modals state
   const [showAddModal, setShowAddModal] = useState(false);
@@ -118,7 +165,6 @@ export const DamageReportView: React.FC = () => {
     reporterName: string;
     reporterRole: string;
     reporterPhone: string;
-    costEstimate: string;
     photoBefore: string;
   }>({
     itemName: '',
@@ -136,7 +182,6 @@ export const DamageReportView: React.FC = () => {
     reporterName: currentUser?.name || 'Asep Supriyadi',
     reporterRole: 'Petugas Kebersihan',
     reporterPhone: '0812-3456-7890',
-    costEstimate: '',
     photoBefore: '',
   });
 
@@ -146,13 +191,11 @@ export const DamageReportView: React.FC = () => {
     technicianName: string;
     technicianNotes: string;
     photoAfter: string;
-    costEstimate: string;
   }>({
     status: 'selesai',
     technicianName: '',
     technicianNotes: '',
     photoAfter: '',
-    costEstimate: '',
   });
 
   // Unique floors for filter dropdown
@@ -160,56 +203,81 @@ export const DamageReportView: React.FC = () => {
     new Set(damageReports.map((r) => r.floor).filter(Boolean))
   );
 
-  // Filtered Damage Reports
-  const filteredReports = damageReports.filter((report) => {
-    // Search filter
-    if (searchTerm) {
-      const term = searchTerm.toLowerCase();
-      const matchSearch =
-        report.ticketNo.toLowerCase().includes(term) ||
-        report.itemName.toLowerCase().includes(term) ||
-        report.locationName.toLowerCase().includes(term) ||
-        report.floor.toLowerCase().includes(term) ||
-        report.reporterName.toLowerCase().includes(term) ||
-        (report.technicianName && report.technicianName.toLowerCase().includes(term)) ||
-        (report.targetDepartment && report.targetDepartment.toLowerCase().includes(term));
+  // Filter by Month & Year Period
+  const periodFilteredReports = useMemo(() => {
+    return damageReports.filter((report) => {
+      const dateStr = report.reportDate || (report.createdAt ? report.createdAt.split('T')[0] : '');
+      if (!dateStr) {
+        return selectedYear === 'all' && selectedMonth === 'all';
+      }
+      const parts = dateStr.split('-');
+      if (parts.length >= 2) {
+        const rYear = parseInt(parts[0], 10);
+        const rMonth = parseInt(parts[1], 10);
 
-      if (!matchSearch) return false;
-    }
+        if (selectedYear !== 'all' && rYear !== parseInt(selectedYear, 10)) {
+          return false;
+        }
+        if (selectedMonth !== 'all' && rMonth !== parseInt(selectedMonth, 10)) {
+          return false;
+        }
+        return true;
+      }
+      return selectedYear === 'all' && selectedMonth === 'all';
+    });
+  }, [damageReports, selectedMonth, selectedYear]);
 
-    // Status filter
-    if (statusFilter !== 'all' && report.status !== statusFilter) {
-      return false;
-    }
+  // Filtered Damage Reports based on Period + Search + Category/Severity/Floor/Status
+  const filteredReports = useMemo(() => {
+    return periodFilteredReports.filter((report) => {
+      // Search filter
+      if (searchTerm) {
+        const term = searchTerm.toLowerCase();
+        const matchSearch =
+          report.ticketNo.toLowerCase().includes(term) ||
+          report.itemName.toLowerCase().includes(term) ||
+          report.locationName.toLowerCase().includes(term) ||
+          report.floor.toLowerCase().includes(term) ||
+          report.reporterName.toLowerCase().includes(term) ||
+          (report.technicianName && report.technicianName.toLowerCase().includes(term)) ||
+          (report.targetDepartment && report.targetDepartment.toLowerCase().includes(term));
 
-    // Category filter
-    if (categoryFilter !== 'all' && report.category !== categoryFilter) {
-      return false;
-    }
+        if (!matchSearch) return false;
+      }
 
-    // Severity filter
-    if (severityFilter !== 'all' && report.damageLevel !== severityFilter) {
-      return false;
-    }
+      // Status filter
+      if (statusFilter !== 'all' && report.status !== statusFilter) {
+        return false;
+      }
 
-    // Floor filter
-    if (floorFilter !== 'all' && report.floor !== floorFilter) {
-      return false;
-    }
+      // Category filter
+      if (categoryFilter !== 'all' && report.category !== categoryFilter) {
+        return false;
+      }
 
-    return true;
-  });
+      // Severity filter
+      if (severityFilter !== 'all' && report.damageLevel !== severityFilter) {
+        return false;
+      }
 
-  // KPIs
-  const totalReports = damageReports.length;
-  const inProgressReports = damageReports.filter(
+      // Floor filter
+      if (floorFilter !== 'all' && report.floor !== floorFilter) {
+        return false;
+      }
+
+      return true;
+    });
+  }, [periodFilteredReports, searchTerm, statusFilter, categoryFilter, severityFilter, floorFilter]);
+
+  // KPIs based on selected period
+  const totalReports = periodFilteredReports.length;
+  const inProgressReports = periodFilteredReports.filter(
     (r) => r.status === 'dalam_penanganan' || r.status === 'menunggu_sparepart'
   ).length;
-  const criticalReports = damageReports.filter(
+  const criticalReports = periodFilteredReports.filter(
     (r) => r.damageLevel === 'kritis' || r.priority === 'urgent'
   ).length;
-  const completedReports = damageReports.filter((r) => r.status === 'selesai').length;
-  const totalCost = damageReports.reduce((acc, curr) => acc + (curr.costEstimate || 0), 0);
+  const completedReports = periodFilteredReports.filter((r) => r.status === 'selesai').length;
 
   // Preset suggestions for fast reporting
   const commonDamages = [
@@ -263,7 +331,6 @@ export const DamageReportView: React.FC = () => {
       reporterName: newReport.reporterName,
       reporterRole: newReport.reporterRole,
       reporterPhone: newReport.reporterPhone,
-      costEstimate: newReport.costEstimate ? parseInt(newReport.costEstimate, 10) : undefined,
       photoBefore:
         newReport.photoBefore ||
         'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?w=600&auto=format&fit=crop&q=80',
@@ -289,7 +356,6 @@ export const DamageReportView: React.FC = () => {
       reporterName: currentUser?.name || 'Asep Supriyadi',
       reporterRole: 'Petugas Kebersihan',
       reporterPhone: '0812-3456-7890',
-      costEstimate: '',
       photoBefore: '',
     });
   };
@@ -302,7 +368,6 @@ export const DamageReportView: React.FC = () => {
       technicianName: report.technicianName || '',
       technicianNotes: report.technicianNotes || '',
       photoAfter: report.photoAfter || '',
-      costEstimate: report.costEstimate ? String(report.costEstimate) : '',
     });
     setShowResolveModal(true);
   };
@@ -319,14 +384,12 @@ export const DamageReportView: React.FC = () => {
         photoAfter:
           resolveForm.photoAfter ||
           'https://images.unsplash.com/photo-1497366811353-6870744d04b2?w=600&auto=format&fit=crop&q=80',
-        costEstimate: resolveForm.costEstimate ? parseInt(resolveForm.costEstimate, 10) : selectedReport.costEstimate,
       });
     } else {
       updateDamageReport(selectedReport.id, {
         status: resolveForm.status,
         technicianName: resolveForm.technicianName,
         technicianNotes: resolveForm.technicianNotes,
-        costEstimate: resolveForm.costEstimate ? parseInt(resolveForm.costEstimate, 10) : selectedReport.costEstimate,
       });
     }
 
@@ -341,7 +404,7 @@ export const DamageReportView: React.FC = () => {
       exportDamageSummaryToPDF({
         reports: filteredReports,
         project: activeProject,
-        filterPeriod: `${new Date().toLocaleString('id-ID', { month: 'long', year: 'numeric' })}`,
+        filterPeriod: activePeriodLabel,
         filterStatus: statusFilter !== 'all' ? statusFilter : undefined,
         filterCategory: categoryFilter !== 'all' ? categoryFilter : undefined,
         filterFloor: floorFilter !== 'all' ? floorFilter : undefined,

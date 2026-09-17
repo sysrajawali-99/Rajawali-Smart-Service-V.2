@@ -182,12 +182,10 @@ export const exportDamageSummaryToPDF = (options: ExportDamageSummaryOptions): v
   const totalReports = reports.length;
   const completedCount = reports.filter((r) => r.status === 'selesai').length;
   const inProgressCount = reports.filter((r) => r.status === 'dalam_penanganan' || r.status === 'menunggu_sparepart').length;
-  const openCount = reports.filter((r) => r.status === 'dilaporkan').length;
   const criticalCount = reports.filter((r) => r.damageLevel === 'kritis' || r.damageLevel === 'berat').length;
-  const totalCost = reports.reduce((acc, curr) => acc + (curr.costEstimate || 0), 0);
 
   const kpiY = startY + 11;
-  const kpiCardWidth = (pageWidth - marginX * 2 - 16) / 5;
+  const kpiCardWidth = (pageWidth - marginX * 2 - 12) / 4;
   const kpiH = 13;
 
   const kpis = [
@@ -195,11 +193,6 @@ export const exportDamageSummaryToPDF = (options: ExportDamageSummaryOptions): v
     { label: 'Selesai Diperbaiki', value: `${completedCount} Kasus`, color: [16, 149, 100] },
     { label: 'Sedang Ditangani', value: `${inProgressCount} Kasus`, color: [217, 119, 6] },
     { label: 'Prioritas Kritis/Berat', value: `${criticalCount} Kasus`, color: [220, 38, 38] },
-    {
-      label: 'Estimasi Biaya Total',
-      value: `Rp ${totalCost.toLocaleString('id-ID')}`,
-      color: [79, 70, 229],
-    },
   ];
 
   kpis.forEach((kpi, idx) => {
@@ -231,13 +224,11 @@ export const exportDamageSummaryToPDF = (options: ExportDamageSummaryOptions): v
       'Uraian Kerusakan & Dugaan',
       'Tindakan Awal Petugas',
       'Status',
-      'Dept / Teknisi',
-      'Estimasi Biaya',
+      'Dept / Teknisi & Selesai',
     ],
   ];
 
   const tableBody = reports.map((r, idx) => {
-    const costText = r.costEstimate ? `Rp ${r.costEstimate.toLocaleString('id-ID')}` : '-';
     return [
       idx + 1,
       r.ticketNo,
@@ -248,8 +239,7 @@ export const exportDamageSummaryToPDF = (options: ExportDamageSummaryOptions): v
       r.chronology + (r.impact ? `\n(Dampak: ${r.impact})` : ''),
       r.actionTaken || '-',
       getStatusLabel(r.status).toUpperCase(),
-      `${r.targetDepartment}\nPIC: ${r.technicianName || 'Belum ditugaskan'}`,
-      `${costText}\n${r.repairedDate ? `Selesai: ${r.repairedDate}` : ''}`,
+      `${r.targetDepartment}\nPIC: ${r.technicianName || 'Belum ditugaskan'}${r.repairedDate ? `\nSelesai: ${r.repairedDate}` : ''}`,
     ];
   });
 
@@ -279,14 +269,13 @@ export const exportDamageSummaryToPDF = (options: ExportDamageSummaryOptions): v
       0: { cellWidth: 8, halign: 'center' },
       1: { cellWidth: 20, fontStyle: 'bold', halign: 'center' },
       2: { cellWidth: 18, halign: 'center' },
-      3: { cellWidth: 32, fontStyle: 'bold' },
-      4: { cellWidth: 26 },
+      3: { cellWidth: 34, fontStyle: 'bold' },
+      4: { cellWidth: 28 },
       5: { cellWidth: 28 },
-      6: { cellWidth: 46 },
-      7: { cellWidth: 32 },
-      8: { cellWidth: 22, halign: 'center', fontStyle: 'bold' },
-      9: { cellWidth: 28 },
-      10: { cellWidth: 20, halign: 'right' },
+      6: { cellWidth: 54 },
+      7: { cellWidth: 34 },
+      8: { cellWidth: 24, halign: 'center', fontStyle: 'bold' },
+      9: { cellWidth: 32 },
     },
     didParseCell: (data) => {
       // Color code status column (index 8)
@@ -617,7 +606,6 @@ export const exportDamageWorkOrderToPDF = async (options: ExportDamageWorkOrderO
     body: [
       ['Teknisi PIC / Pelaksana', report.technicianName || 'Tim Maintenance & Engineering Standby'],
       ['Tindakan Perbaikan / Catatan', report.technicianNotes || 'Pemeriksaan awal di lokasi, penggantian komponen atau pengencangan struktur.'],
-      ['Estimasi / Realisasi Biaya', report.costEstimate ? `Rp ${report.costEstimate.toLocaleString('id-ID')}` : 'Ditanggung pemeliharaan rutin internal gedung'],
       ['Tanggal & Jam Penyelesaian', report.repairedDate ? `${report.repairedDate} ${report.repairedTime || ''}` : 'Masih dalam proses pengerjaan'],
     ],
   });
