@@ -128,6 +128,27 @@ export const CeklistAreaView: React.FC = () => {
   const [showAddManualItemModal, setShowAddManualItemModal] = useState(false);
   const [manualItemName, setManualItemName] = useState('');
 
+  // Handle Escape key to dismiss modals
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (showKopModal) setShowKopModal(false);
+        if (showAddLocationModal) setShowAddLocationModal(false);
+        if (showAddManualItemModal) setShowAddManualItemModal(false);
+      }
+    };
+
+    if (showKopModal || showAddLocationModal || showAddManualItemModal) {
+      window.addEventListener('keydown', handleKeyDown);
+      document.body.style.overflow = 'hidden';
+    }
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      document.body.style.overflow = '';
+    };
+  }, [showKopModal, showAddLocationModal, showAddManualItemModal]);
+
   // Synchronize selectedLocationId when active project changes or checklist locations update
   useEffect(() => {
     if (checklistLocations.length > 0) {
@@ -1444,18 +1465,29 @@ export const CeklistAreaView: React.FC = () => {
       {/* MODAL: PENGATURAN KOP SURAT                                  */}
       {/* ============================================================ */}
       {showKopModal && (
-        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-slate-100 space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-              <h3 className="font-bold text-base text-slate-900 flex items-center gap-2">
-                <Settings2 className="w-5 h-5 text-sky-600" />
-                Pengaturan Kop Surat Dokumen
+        <div
+          id="kop-modal-backdrop"
+          onClick={() => setShowKopModal(false)}
+          className="fixed inset-0 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 z-50 overflow-y-auto animate-in fade-in duration-150"
+        >
+          <div
+            id="kop-modal-card"
+            onClick={(e) => e.stopPropagation()}
+            className="bg-white rounded-2xl sm:rounded-3xl max-w-lg w-full p-4 sm:p-6 shadow-2xl border border-slate-200 space-y-4 max-h-[92dvh] overflow-y-auto overscroll-contain my-auto"
+          >
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 gap-2">
+              <h3 className="font-bold text-sm sm:text-base text-slate-900 flex items-center gap-2 truncate">
+                <Settings2 className="w-5 h-5 text-sky-600 shrink-0" />
+                <span className="truncate">Pengaturan Kop Surat Dokumen</span>
               </h3>
               <button
+                id="close-kop-modal-btn"
+                type="button"
                 onClick={() => setShowKopModal(false)}
-                className="text-slate-400 hover:text-slate-600 text-lg leading-none"
+                aria-label="Tutup Pengaturan Kop Surat"
+                className="p-2 rounded-full text-slate-400 hover:text-slate-700 active:text-slate-900 hover:bg-slate-100 min-w-[44px] min-h-[44px] flex items-center justify-center transition-colors shrink-0 cursor-pointer"
               >
-                ✕
+                <X className="w-5 h-5" />
               </button>
             </div>
 
@@ -1575,18 +1607,29 @@ export const CeklistAreaView: React.FC = () => {
 
       {/* MODAL: ADD LOCATION */}
       {showAddLocationModal && (
-        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-100 space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-              <h3 className="font-bold text-base text-slate-900 flex items-center gap-2">
-                <Building2 className="w-5 h-5 text-sky-600" />
-                Tambah Lokasi Ceklist Area
+        <div
+          id="add-location-modal-backdrop"
+          onClick={() => setShowAddLocationModal(false)}
+          className="fixed inset-0 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 z-50 overflow-y-auto animate-in fade-in duration-150"
+        >
+          <div
+            id="add-location-modal-card"
+            onClick={(e) => e.stopPropagation()}
+            className="bg-white rounded-2xl sm:rounded-3xl max-w-md w-full p-4 sm:p-6 shadow-2xl border border-slate-100 space-y-4 max-h-[92dvh] overflow-y-auto overscroll-contain my-auto"
+          >
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 gap-2">
+              <h3 className="font-bold text-sm sm:text-base text-slate-900 flex items-center gap-2 truncate">
+                <Building2 className="w-5 h-5 text-sky-600 shrink-0" />
+                <span className="truncate">Tambah Lokasi Ceklist Area</span>
               </h3>
               <button
+                id="close-add-location-btn"
+                type="button"
                 onClick={() => setShowAddLocationModal(false)}
-                className="text-slate-400 hover:text-slate-600 text-lg leading-none"
+                aria-label="Tutup Tambah Lokasi"
+                className="p-2 rounded-full text-slate-400 hover:text-slate-700 active:text-slate-900 hover:bg-slate-100 min-w-[44px] min-h-[44px] flex items-center justify-center transition-colors shrink-0 cursor-pointer"
               >
-                ✕
+                <X className="w-5 h-5" />
               </button>
             </div>
 
@@ -1648,17 +1691,19 @@ export const CeklistAreaView: React.FC = () => {
                 Lokasi baru ini akan langsung memiliki lembar ceklist 24 jam dengan 11 parameter template resmi.
               </div>
 
-              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+              <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-2 pt-3 border-t border-slate-100">
                 <button
+                  id="cancel-add-location-btn"
                   type="button"
                   onClick={() => setShowAddLocationModal(false)}
-                  className="px-4 py-2 border border-slate-200 rounded-xl text-slate-600 hover:bg-slate-50 font-medium"
+                  className="px-5 py-2.5 border border-slate-200 rounded-xl text-slate-700 bg-slate-100 hover:bg-slate-200 active:bg-slate-300 font-medium min-h-[44px] flex items-center justify-center transition-colors cursor-pointer"
                 >
                   Batal
                 </button>
                 <button
+                  id="submit-add-location-btn"
                   type="submit"
-                  className="px-4 py-2 bg-sky-600 hover:bg-sky-700 text-white rounded-xl font-semibold shadow-xs"
+                  className="px-5 py-2.5 bg-sky-600 hover:bg-sky-700 active:bg-sky-800 text-white rounded-xl font-semibold shadow-xs min-h-[44px] flex items-center justify-center transition-colors cursor-pointer"
                 >
                   Simpan Lokasi
                 </button>
@@ -1670,18 +1715,29 @@ export const CeklistAreaView: React.FC = () => {
 
       {/* MODAL: ADD MANUAL ITEM TO THIS CHECKLIST */}
       {showAddManualItemModal && (
-        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-100 space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-              <h3 className="font-bold text-base text-slate-900 flex items-center gap-2">
-                <Plus className="w-5 h-5 text-sky-600" />
-                Tambah Item Ceklist Manual
+        <div
+          id="add-manual-item-modal-backdrop"
+          onClick={() => setShowAddManualItemModal(false)}
+          className="fixed inset-0 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 z-50 overflow-y-auto animate-in fade-in duration-150"
+        >
+          <div
+            id="add-manual-item-modal-card"
+            onClick={(e) => e.stopPropagation()}
+            className="bg-white rounded-2xl sm:rounded-3xl max-w-md w-full p-4 sm:p-6 shadow-2xl border border-slate-100 space-y-4 max-h-[92dvh] overflow-y-auto overscroll-contain my-auto"
+          >
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 gap-2">
+              <h3 className="font-bold text-sm sm:text-base text-slate-900 flex items-center gap-2 truncate">
+                <Plus className="w-5 h-5 text-sky-600 shrink-0" />
+                <span className="truncate">Tambah Item Ceklist Manual</span>
               </h3>
               <button
+                id="close-add-manual-item-btn"
+                type="button"
                 onClick={() => setShowAddManualItemModal(false)}
-                className="text-slate-400 hover:text-slate-600 text-lg leading-none"
+                aria-label="Tutup Tambah Item Manual"
+                className="p-2 rounded-full text-slate-400 hover:text-slate-700 active:text-slate-900 hover:bg-slate-100 min-w-[44px] min-h-[44px] flex items-center justify-center transition-colors shrink-0 cursor-pointer"
               >
-                ✕
+                <X className="w-5 h-5" />
               </button>
             </div>
 
@@ -1704,17 +1760,19 @@ export const CeklistAreaView: React.FC = () => {
                 Item ini akan langsung ditambahkan ke semua slot 24 jam pada lembar ceklist hari ini untuk lokasi {currentLocation?.name}.
               </div>
 
-              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+              <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-2 pt-3 border-t border-slate-100">
                 <button
+                  id="cancel-add-manual-item-btn"
                   type="button"
                   onClick={() => setShowAddManualItemModal(false)}
-                  className="px-4 py-2 border border-slate-200 rounded-xl text-slate-600 hover:bg-slate-50 font-medium"
+                  className="px-5 py-2.5 border border-slate-200 rounded-xl text-slate-700 bg-slate-100 hover:bg-slate-200 active:bg-slate-300 font-medium min-h-[44px] flex items-center justify-center transition-colors cursor-pointer"
                 >
                   Batal
                 </button>
                 <button
+                  id="submit-add-manual-item-btn"
                   type="submit"
-                  className="px-4 py-2 bg-sky-600 hover:bg-sky-700 text-white rounded-xl font-semibold shadow-xs"
+                  className="px-5 py-2.5 bg-sky-600 hover:bg-sky-700 active:bg-sky-800 text-white rounded-xl font-semibold shadow-xs min-h-[44px] flex items-center justify-center transition-colors cursor-pointer"
                 >
                   Tambahkan Item
                 </button>

@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   MapPin,
   Building2,
@@ -150,6 +150,25 @@ export const AreaCleaningView: React.FC = () => {
       setToastMessage(null);
     }, 3500);
   };
+
+  // Keyboard shortcut: Escape to close modals
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setShowMaterialModal(false);
+        setShowAddModal(false);
+        setShowEditModal(false);
+      }
+    };
+    if (showMaterialModal || showAddModal || showEditModal) {
+      window.addEventListener('keydown', handleKeyDown);
+      document.body.style.overflow = 'hidden';
+    }
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      document.body.style.overflow = '';
+    };
+  }, [showMaterialModal, showAddModal, showEditModal]);
 
   // Distinct Floor List derived from areas
   const existingFloors = useMemo(() => {
@@ -770,29 +789,39 @@ export const AreaCleaningView: React.FC = () => {
 
       {/* MODAL 1: UPDATE MATERIAL YANG DIGUNAKAN */}
       {showMaterialModal && activeAreaForMaterial && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 overflow-y-auto">
-          <div className="bg-white rounded-3xl p-5 sm:p-6 max-w-xl w-full border border-slate-200 shadow-2xl animate-in fade-in zoom-in-95 my-8">
-            <div className="flex items-start justify-between pb-3.5 border-b border-slate-100">
-              <div className="flex items-center gap-2.5">
-                <div className="w-10 h-10 rounded-2xl bg-sky-100 text-sky-700 flex items-center justify-center font-bold">
+        <div
+          id="area-material-modal-backdrop"
+          onClick={() => setShowMaterialModal(false)}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-xs p-2 sm:p-4 overflow-y-auto animate-in fade-in duration-150"
+        >
+          <div
+            id="area-material-modal-card"
+            onClick={(e) => e.stopPropagation()}
+            className="bg-white rounded-2xl sm:rounded-3xl p-4 sm:p-6 max-w-xl w-full max-h-[92dvh] overflow-y-auto border border-slate-200 shadow-2xl overscroll-contain my-auto"
+          >
+            <div className="flex items-start justify-between pb-3.5 border-b border-slate-100 gap-2">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="w-10 h-10 rounded-2xl bg-sky-100 text-sky-700 flex items-center justify-center font-bold shrink-0">
                   <Layers className="w-5 h-5" />
                 </div>
-                <div>
-                  <h3 className="font-extrabold text-slate-900 text-sm sm:text-base">
+                <div className="min-w-0">
+                  <h3 className="font-extrabold text-slate-900 text-sm sm:text-base truncate">
                     Update Material — {activeAreaForMaterial.name}
                   </h3>
-                  <p className="text-[11px] text-slate-500">
+                  <p className="text-[11px] text-slate-500 truncate">
                     {activeAreaForMaterial.floor} • {activeAreaForMaterial.zone || 'Zona Umum'} ({activeAreaForMaterial.code})
                   </p>
                 </div>
               </div>
 
               <button
+                id="close-material-modal-btn"
                 type="button"
                 onClick={() => setShowMaterialModal(false)}
-                className="text-slate-400 hover:text-slate-600 p-1.5 rounded-xl hover:bg-slate-100"
+                aria-label="Tutup Jendela Material"
+                className="text-slate-400 hover:text-slate-700 active:text-slate-900 p-2 rounded-full hover:bg-slate-100 min-w-[44px] min-h-[44px] flex items-center justify-center shrink-0 cursor-pointer transition-colors"
               >
-                <X className="w-4 h-4" />
+                <X className="w-5 h-5" />
               </button>
             </div>
 
@@ -825,7 +854,7 @@ export const AreaCleaningView: React.FC = () => {
                         <button
                           type="button"
                           onClick={() => handleRemoveMaterial(mat)}
-                          className="w-4 h-4 rounded-full hover:bg-rose-100 text-slate-400 hover:text-rose-600 flex items-center justify-center transition-colors"
+                          className="w-4 h-4 rounded-full hover:bg-rose-100 text-slate-400 hover:text-rose-600 flex items-center justify-center transition-colors cursor-pointer"
                           title={`Hapus ${mat}`}
                         >
                           <X className="w-3 h-3" />
@@ -844,7 +873,7 @@ export const AreaCleaningView: React.FC = () => {
                 <div className="flex gap-2">
                   <input
                     type="text"
-                    placeholder="Contoh: trap besi, bordes stainlish, karet railing, kaca..."
+                    placeholder="Contoh: trap besi, bordes stainless, karet railing, kaca..."
                     value={newMaterialInput}
                     onChange={(e) => setNewMaterialInput(e.target.value)}
                     onKeyDown={(e) => {
@@ -858,7 +887,7 @@ export const AreaCleaningView: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => handleAddMaterialToCurrent(newMaterialInput)}
-                    className="px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs shrink-0"
+                    className="px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs shrink-0 cursor-pointer min-h-[44px]"
                   >
                     + Tambah
                   </button>
@@ -897,7 +926,7 @@ export const AreaCleaningView: React.FC = () => {
                                   handleAddMaterialToCurrent(item);
                                 }
                               }}
-                              className={`px-2.5 py-1 rounded-lg text-[11px] font-medium transition-all ${
+                              className={`px-2.5 py-1 rounded-lg text-[11px] font-medium transition-all cursor-pointer min-h-[32px] ${
                                 isAlreadyAdded
                                   ? 'bg-sky-600 text-white font-bold shadow-2xs'
                                   : 'bg-white text-slate-700 border border-slate-200 hover:border-sky-400 hover:bg-sky-50'
@@ -928,17 +957,18 @@ export const AreaCleaningView: React.FC = () => {
               </div>
 
               {/* Modal Actions */}
-              <div className="pt-3 border-t border-slate-100 flex justify-end gap-2.5">
+              <div className="pt-3 border-t border-slate-100 flex flex-col-reverse sm:flex-row justify-end gap-2">
                 <button
+                  id="cancel-material-modal-btn"
                   type="button"
                   onClick={() => setShowMaterialModal(false)}
-                  className="px-4 py-2.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 font-semibold text-xs"
+                  className="px-5 py-2.5 rounded-xl border border-slate-200 text-slate-700 hover:bg-slate-100 active:bg-slate-200 font-semibold text-xs min-h-[44px] flex items-center justify-center cursor-pointer transition-colors"
                 >
                   Batal
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2.5 rounded-xl bg-sky-600 hover:bg-sky-700 text-white font-bold text-xs shadow-xs"
+                  className="px-5 py-2.5 rounded-xl bg-sky-600 hover:bg-sky-700 text-white font-bold text-xs shadow-xs min-h-[44px] flex items-center justify-center cursor-pointer transition-colors"
                 >
                   Simpan Perubahan Material
                 </button>
@@ -950,26 +980,36 @@ export const AreaCleaningView: React.FC = () => {
 
       {/* MODAL 2: TAMBAH AREA / LOKASI KERJA BARU SECARA MANUAL */}
       {showAddModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 overflow-y-auto">
-          <div className="bg-white rounded-3xl p-5 sm:p-6 max-w-lg w-full border border-slate-200 shadow-2xl animate-in fade-in zoom-in-95 my-8">
-            <div className="flex items-center justify-between pb-3.5 border-b border-slate-100">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-xl bg-sky-100 text-sky-700 flex items-center justify-center font-bold">
+        <div
+          id="add-area-modal-backdrop"
+          onClick={() => setShowAddModal(false)}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-xs p-2 sm:p-4 overflow-y-auto animate-in fade-in duration-150"
+        >
+          <div
+            id="add-area-modal-card"
+            onClick={(e) => e.stopPropagation()}
+            className="bg-white rounded-2xl sm:rounded-3xl p-4 sm:p-6 max-w-lg w-full max-h-[92dvh] overflow-y-auto border border-slate-200 shadow-2xl overscroll-contain my-auto"
+          >
+            <div className="flex items-center justify-between pb-3.5 border-b border-slate-100 gap-2">
+              <div className="flex items-center gap-2 min-w-0">
+                <div className="w-8 h-8 rounded-xl bg-sky-100 text-sky-700 flex items-center justify-center font-bold shrink-0">
                   <Plus className="w-4 h-4" />
                 </div>
-                <div>
-                  <h3 className="font-extrabold text-slate-900 text-sm sm:text-base">
+                <div className="min-w-0">
+                  <h3 className="font-extrabold text-slate-900 text-sm sm:text-base truncate">
                     Tambah Lokasi Kerja Baru
                   </h3>
-                  <p className="text-[11px] text-slate-500">
+                  <p className="text-[11px] text-slate-500 truncate">
                     Masukkan detail lokasi kerja dan material permukaan
                   </p>
                 </div>
               </div>
               <button
+                id="close-add-area-modal-btn"
                 type="button"
                 onClick={() => setShowAddModal(false)}
-                className="text-slate-400 hover:text-slate-600 p-1 rounded-xl hover:bg-slate-100"
+                aria-label="Tutup Jendela Tambah Lokasi"
+                className="text-slate-400 hover:text-slate-700 active:text-slate-900 p-2 rounded-full hover:bg-slate-100 min-w-[44px] min-h-[44px] flex items-center justify-center shrink-0 cursor-pointer transition-colors"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -992,7 +1032,7 @@ export const AreaCleaningView: React.FC = () => {
               </div>
 
               {/* Floor Selection (Existing or Custom) */}
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <div className="flex items-center justify-between mb-1">
                     <label className="block font-bold text-slate-800">
@@ -1001,7 +1041,7 @@ export const AreaCleaningView: React.FC = () => {
                     <button
                       type="button"
                       onClick={() => setIsCustomFloor(!isCustomFloor)}
-                      className="text-[10px] text-sky-600 hover:underline font-semibold"
+                      className="text-[10px] text-sky-600 hover:underline font-semibold cursor-pointer"
                     >
                       {isCustomFloor ? 'Pilih dari List' : '+ Ketik Baru'}
                     </button>
@@ -1063,7 +1103,7 @@ export const AreaCleaningView: React.FC = () => {
               </div>
 
               {/* Zone and Code */}
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block font-bold text-slate-800 mb-1">Zona / Sub-Area</label>
                   <input
@@ -1095,13 +1135,13 @@ export const AreaCleaningView: React.FC = () => {
                 </label>
                 <input
                   type="text"
-                  placeholder="Ketik material dipisah koma (misal: trap besi, bordes stainlish, karet railing, kaca)"
+                  placeholder="Ketik material dipisah koma (misal: trap besi, bordes stainless, karet railing, kaca)"
                   value={newAreaMaterialText}
                   onChange={(e) => setNewAreaMaterialText(e.target.value)}
                   className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-sky-500/20"
                 />
                 <p className="text-[10px] text-slate-400 mt-1">
-                  Contoh untuk Eskalator: <em>trap besi, bordes stainlish, karet railing, kaca</em>
+                  Contoh untuk Eskalator: <em>trap besi, bordes stainless, karet railing, kaca</em>
                 </p>
               </div>
 
@@ -1138,17 +1178,18 @@ export const AreaCleaningView: React.FC = () => {
               </div>
 
               {/* Modal Buttons */}
-              <div className="pt-3 border-t border-slate-100 flex justify-end gap-2.5">
+              <div className="pt-3 border-t border-slate-100 flex flex-col-reverse sm:flex-row justify-end gap-2">
                 <button
+                  id="cancel-add-area-modal-btn"
                   type="button"
                   onClick={() => setShowAddModal(false)}
-                  className="px-4 py-2.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 font-semibold text-xs"
+                  className="px-5 py-2.5 rounded-xl border border-slate-200 text-slate-700 hover:bg-slate-100 active:bg-slate-200 font-semibold text-xs min-h-[44px] flex items-center justify-center cursor-pointer transition-colors"
                 >
                   Batal
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2.5 rounded-xl bg-sky-600 hover:bg-sky-700 text-white font-bold text-xs shadow-xs"
+                  className="px-5 py-2.5 rounded-xl bg-sky-600 hover:bg-sky-700 text-white font-bold text-xs shadow-xs min-h-[44px] flex items-center justify-center cursor-pointer transition-colors"
                 >
                   Simpan Lokasi Kerja
                 </button>
@@ -1160,16 +1201,26 @@ export const AreaCleaningView: React.FC = () => {
 
       {/* MODAL 3: EDIT AREA INFO */}
       {showEditModal && activeAreaForEdit && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 overflow-y-auto">
-          <div className="bg-white rounded-3xl p-5 sm:p-6 max-w-md w-full border border-slate-200 shadow-2xl animate-in fade-in zoom-in-95 my-8">
-            <div className="flex items-center justify-between pb-3.5 border-b border-slate-100">
-              <h3 className="font-extrabold text-slate-900 text-sm sm:text-base">
+        <div
+          id="edit-area-modal-backdrop"
+          onClick={() => setShowEditModal(false)}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-xs p-2 sm:p-4 overflow-y-auto animate-in fade-in duration-150"
+        >
+          <div
+            id="edit-area-modal-card"
+            onClick={(e) => e.stopPropagation()}
+            className="bg-white rounded-2xl sm:rounded-3xl p-4 sm:p-6 max-w-md w-full max-h-[92dvh] overflow-y-auto border border-slate-200 shadow-2xl overscroll-contain my-auto"
+          >
+            <div className="flex items-center justify-between pb-3.5 border-b border-slate-100 gap-2">
+              <h3 className="font-extrabold text-slate-900 text-sm sm:text-base truncate">
                 Edit Lokasi Kerja — {activeAreaForEdit.name}
               </h3>
               <button
+                id="close-edit-area-modal-btn"
                 type="button"
                 onClick={() => setShowEditModal(false)}
-                className="text-slate-400 hover:text-slate-600 p-1"
+                aria-label="Tutup Edit Lokasi"
+                className="text-slate-400 hover:text-slate-700 active:text-slate-900 p-2 rounded-full hover:bg-slate-100 min-w-[44px] min-h-[44px] flex items-center justify-center shrink-0 cursor-pointer transition-colors"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -1187,7 +1238,7 @@ export const AreaCleaningView: React.FC = () => {
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block font-bold text-slate-800 mb-1">Lantai</label>
                   <input
@@ -1218,7 +1269,7 @@ export const AreaCleaningView: React.FC = () => {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block font-bold text-slate-800 mb-1">Zona</label>
                   <input
@@ -1249,17 +1300,18 @@ export const AreaCleaningView: React.FC = () => {
                 />
               </div>
 
-              <div className="pt-3 border-t border-slate-100 flex justify-end gap-2.5">
+              <div className="pt-3 border-t border-slate-100 flex flex-col-reverse sm:flex-row justify-end gap-2">
                 <button
+                  id="cancel-edit-area-modal-btn"
                   type="button"
                   onClick={() => setShowEditModal(false)}
-                  className="px-4 py-2 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 font-semibold"
+                  className="px-5 py-2.5 rounded-xl border border-slate-200 text-slate-700 hover:bg-slate-100 active:bg-slate-200 font-semibold text-xs min-h-[44px] flex items-center justify-center cursor-pointer transition-colors"
                 >
                   Batal
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 rounded-xl bg-sky-600 hover:bg-sky-700 text-white font-bold"
+                  className="px-5 py-2.5 rounded-xl bg-sky-600 hover:bg-sky-700 text-white font-bold text-xs min-h-[44px] flex items-center justify-center cursor-pointer transition-colors"
                 >
                   Simpan Perubahan
                 </button>

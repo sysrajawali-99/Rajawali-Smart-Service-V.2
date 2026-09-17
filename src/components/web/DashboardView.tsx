@@ -593,6 +593,7 @@ export const DashboardView: React.FC = () => {
           areaName={previewTask.areaName}
           cleanerName={previewTask.cleanerName}
           photoBefore={previewTask.photoBefore}
+          photoProgress={previewTask.photoProgress}
           photoAfter={previewTask.photoAfter}
           completedTime={previewTask.completedTime}
           remarks={previewTask.remarks}

@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   Clock,
   Users,
@@ -363,6 +363,27 @@ export const ShiftView: React.FC = () => {
 
   // Quick Attendance Dropdown
   const [activeAttendanceCleanerId, setActiveAttendanceCleanerId] = useState<string | null>(null);
+
+  // Keyboard shortcut: Escape to close active modal
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (plottingCleaner) setPlottingCleaner(null);
+        else if (allocationTargetShiftId) setAllocationTargetShiftId(null);
+        else if (showModal) setShowModal(false);
+        else if (deleteConfirmId) setDeleteConfirmId(null);
+        else if (activeAttendanceCleanerId) setActiveAttendanceCleanerId(null);
+      }
+    };
+    if (plottingCleaner || allocationTargetShiftId || showModal || deleteConfirmId || activeAttendanceCleanerId) {
+      window.addEventListener('keydown', handleKeyDown);
+      document.body.style.overflow = 'hidden';
+    }
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      document.body.style.overflow = '';
+    };
+  }, [plottingCleaner, allocationTargetShiftId, showModal, deleteConfirmId, activeAttendanceCleanerId]);
 
   // Form State for Shift (with manual plotting allocations)
   const [formData, setFormData] = useState<ShiftFormState>({
@@ -1392,28 +1413,38 @@ export const ShiftView: React.FC = () => {
         const shiftAllocations = activeShift?.plottingAllocations || [];
 
         return (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 overflow-y-auto">
-            <div className="bg-white rounded-3xl max-w-2xl w-full p-6 shadow-2xl border border-slate-100 animate-in fade-in zoom-in-95 duration-200 max-h-[92vh] overflow-y-auto">
-              <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-9 h-9 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center shadow-2xs">
+          <div
+            id="shift-plotting-modal-backdrop"
+            onClick={() => setPlottingCleaner(null)}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-xs p-2 sm:p-4 overflow-y-auto animate-in fade-in duration-150"
+          >
+            <div
+              id="shift-plotting-modal-card"
+              onClick={(e) => e.stopPropagation()}
+              className="bg-white rounded-2xl sm:rounded-3xl max-w-2xl w-full p-4 sm:p-6 shadow-2xl border border-slate-100 animate-in zoom-in-95 duration-200 max-h-[92dvh] overflow-y-auto overscroll-contain my-auto"
+            >
+              <div className="flex items-center justify-between pb-3 border-b border-slate-100 gap-2">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="w-9 h-9 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center shadow-2xs shrink-0">
                     <MapPin className="w-5 h-5" />
                   </div>
-                  <div>
-                    <h3 className="text-sm font-bold text-slate-900">
+                  <div className="min-w-0">
+                    <h3 className="text-sm font-bold text-slate-900 truncate">
                       Ganti Alokasi Plotingan Lokasi & Tugas Petugas
                     </h3>
-                    <p className="text-[11px] text-slate-500">
+                    <p className="text-[11px] text-slate-500 truncate">
                       Pilih satu atau lebih tugas dari Uraian Tugas & Deskripsi Shift, atau sesuaikan secara manual
                     </p>
                   </div>
                 </div>
                 <button
+                  id="close-shift-plotting-btn"
                   type="button"
                   onClick={() => setPlottingCleaner(null)}
-                  className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-500 cursor-pointer transition-colors"
+                  aria-label="Tutup Plotingan Tugas"
+                  className="p-2 rounded-full text-slate-400 hover:text-slate-700 active:text-slate-900 hover:bg-slate-100 min-w-[44px] min-h-[44px] flex items-center justify-center shrink-0 cursor-pointer transition-colors"
                 >
-                  <X className="w-4 h-4" />
+                  <X className="w-5 h-5" />
                 </button>
               </div>
 
@@ -1663,19 +1694,20 @@ export const ShiftView: React.FC = () => {
                 </div>
 
                 {/* Buttons */}
-                <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+                <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-2 pt-3 border-t border-slate-100">
                   <button
+                    id="cancel-shift-plotting-btn"
                     type="button"
                     onClick={() => setPlottingCleaner(null)}
-                    className="px-4 py-2 border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-semibold rounded-xl cursor-pointer transition-colors"
+                    className="px-5 py-2.5 border border-slate-200 hover:bg-slate-100 active:bg-slate-200 text-slate-700 text-xs font-semibold rounded-xl min-h-[44px] flex items-center justify-center cursor-pointer transition-colors"
                   >
                     Batal
                   </button>
                   <button
                     type="submit"
-                    className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl transition-colors shadow-xs cursor-pointer flex items-center gap-1.5"
+                    className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white text-xs font-bold rounded-xl transition-colors shadow-xs cursor-pointer flex items-center justify-center gap-1.5 min-h-[44px]"
                   >
-                    <Check className="w-3.5 h-3.5" />
+                    <Check className="w-4 h-4" />
                     Simpan Plotingan Baru
                   </button>
                 </div>
@@ -1689,24 +1721,34 @@ export const ShiftView: React.FC = () => {
       {/* MODAL 2: ALOKASI / TAMBAH PETUGAS KE SHIFT                   */}
       {/* ============================================================ */}
       {allocationTargetShiftId && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 overflow-y-auto">
-          <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-slate-100 animate-in fade-in zoom-in-95 duration-200 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-              <div>
-                <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
-                  <UserPlus className="w-4 h-4 text-sky-600" />
-                  Alokasikan Petugas ke {shifts.find((s) => s.id === allocationTargetShiftId)?.name}
+        <div
+          id="allocation-shift-modal-backdrop"
+          onClick={() => setAllocationTargetShiftId(null)}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-xs p-2 sm:p-4 overflow-y-auto animate-in fade-in duration-150"
+        >
+          <div
+            id="allocation-shift-modal-card"
+            onClick={(e) => e.stopPropagation()}
+            className="bg-white rounded-2xl sm:rounded-3xl max-w-lg w-full p-4 sm:p-6 shadow-2xl border border-slate-100 animate-in zoom-in-95 duration-200 max-h-[92dvh] overflow-y-auto overscroll-contain my-auto"
+          >
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 gap-2">
+              <div className="min-w-0">
+                <h3 className="text-sm sm:text-base font-bold text-slate-900 flex items-center gap-2 truncate">
+                  <UserPlus className="w-4 h-4 text-sky-600 shrink-0" />
+                  <span className="truncate">Alokasikan Petugas ke {shifts.find((s) => s.id === allocationTargetShiftId)?.name}</span>
                 </h3>
-                <p className="text-xs text-slate-500 mt-0.5">
+                <p className="text-xs text-slate-500 mt-0.5 truncate">
                   Tugaskan personel yang sudah ada atau daftarkan staf baru ke shift ini
                 </p>
               </div>
               <button
+                id="close-allocation-shift-btn"
                 type="button"
                 onClick={() => setAllocationTargetShiftId(null)}
-                className="w-7 h-7 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-500 cursor-pointer"
+                aria-label="Tutup Alokasi Petugas"
+                className="p-2 rounded-full text-slate-400 hover:text-slate-700 active:text-slate-900 hover:bg-slate-100 min-w-[44px] min-h-[44px] flex items-center justify-center shrink-0 cursor-pointer transition-colors"
               >
-                <X className="w-4 h-4" />
+                <X className="w-5 h-5" />
               </button>
             </div>
 
@@ -1715,7 +1757,7 @@ export const ShiftView: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setAllocationTab('existing')}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                className={`px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer min-h-[40px] flex items-center ${
                   allocationTab === 'existing'
                     ? 'bg-sky-600 text-white shadow-xs'
                     : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
@@ -1726,7 +1768,7 @@ export const ShiftView: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setAllocationTab('new')}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                className={`px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer min-h-[40px] flex items-center ${
                   allocationTab === 'new'
                     ? 'bg-sky-600 text-white shadow-xs'
                     : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
@@ -1831,17 +1873,18 @@ export const ShiftView: React.FC = () => {
                   />
                 </div>
 
-                <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+                <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-2 pt-3 border-t border-slate-100">
                   <button
+                    id="cancel-allocation-shift-btn"
                     type="button"
                     onClick={() => setAllocationTargetShiftId(null)}
-                    className="px-4 py-2 border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-semibold rounded-xl cursor-pointer"
+                    className="px-5 py-2.5 border border-slate-200 hover:bg-slate-100 active:bg-slate-200 text-slate-700 text-xs font-semibold rounded-xl min-h-[44px] flex items-center justify-center cursor-pointer transition-colors"
                   >
                     Batal
                   </button>
                   <button
                     type="submit"
-                    className="px-5 py-2 bg-sky-600 hover:bg-sky-700 text-white text-xs font-bold rounded-xl transition-colors shadow-xs cursor-pointer"
+                    className="px-5 py-2.5 bg-sky-600 hover:bg-sky-700 active:bg-sky-800 text-white text-xs font-bold rounded-xl transition-colors shadow-xs cursor-pointer min-h-[44px] flex items-center justify-center"
                   >
                     Simpan Petugas Baru
                   </button>
@@ -1856,23 +1899,33 @@ export const ShiftView: React.FC = () => {
       {/* MODAL 3: TAMBAH / EDIT SHIFT MANUAL                          */}
       {/* ============================================================ */}
       {showModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 overflow-y-auto">
-          <div className="bg-white rounded-3xl max-w-3xl w-full p-6 shadow-2xl border border-slate-100 animate-in fade-in zoom-in-95 duration-200 max-h-[92vh] overflow-y-auto">
-            <div className="flex items-center justify-between pb-4 border-b border-slate-100">
-              <div>
-                <h3 className="text-base font-bold text-slate-900">
+        <div
+          id="shift-modal-backdrop"
+          onClick={() => setShowModal(false)}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-xs p-2 sm:p-4 overflow-y-auto animate-in fade-in duration-150"
+        >
+          <div
+            id="shift-modal-card"
+            onClick={(e) => e.stopPropagation()}
+            className="bg-white rounded-2xl sm:rounded-3xl max-w-3xl w-full p-4 sm:p-6 shadow-2xl border border-slate-100 animate-in zoom-in-95 duration-200 max-h-[92dvh] overflow-y-auto overscroll-contain my-auto"
+          >
+            <div className="flex items-center justify-between pb-4 border-b border-slate-100 gap-2">
+              <div className="min-w-0">
+                <h3 className="text-sm sm:text-base font-bold text-slate-900 truncate">
                   {editingShiftId ? 'Edit Pengaturan Shift & Alokasi Plotting' : 'Pengaturan Tambah Shift Manual'}
                 </h3>
-                <p className="text-xs text-slate-500 mt-0.5">
+                <p className="text-xs text-slate-500 mt-0.5 truncate">
                   Tentukan jam kerja shift dan atur alokasi plotting petugas pada uraian tugas yang terhubung dengan Roster, Presensi, & Plotingan
                 </p>
               </div>
               <button
+                id="close-shift-modal-btn"
                 type="button"
                 onClick={() => setShowModal(false)}
-                className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-500 transition-colors cursor-pointer"
+                aria-label="Tutup Form Shift"
+                className="p-2 rounded-full text-slate-400 hover:text-slate-700 active:text-slate-900 hover:bg-slate-100 min-w-[44px] min-h-[44px] flex items-center justify-center shrink-0 cursor-pointer transition-colors"
               >
-                <X className="w-4 h-4" />
+                <X className="w-5 h-5" />
               </button>
             </div>
 
@@ -2352,17 +2405,18 @@ export const ShiftView: React.FC = () => {
               </div>
 
               {/* Modal Buttons */}
-              <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-100">
+              <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-2 pt-3 border-t border-slate-100">
                 <button
+                  id="cancel-shift-modal-btn"
                   type="button"
                   onClick={() => setShowModal(false)}
-                  className="px-4 py-2 border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-semibold rounded-xl transition-colors cursor-pointer"
+                  className="px-5 py-2.5 border border-slate-200 hover:bg-slate-100 active:bg-slate-200 text-slate-700 text-xs font-semibold rounded-xl min-h-[44px] flex items-center justify-center cursor-pointer transition-colors"
                 >
                   Batal
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 bg-sky-600 hover:bg-sky-700 text-white text-xs font-bold rounded-xl transition-colors shadow-xs cursor-pointer"
+                  className="px-5 py-2.5 bg-sky-600 hover:bg-sky-700 active:bg-sky-800 text-white text-xs font-bold rounded-xl transition-colors shadow-xs cursor-pointer min-h-[44px] flex items-center justify-center"
                 >
                   {editingShiftId ? 'Simpan Perubahan Shift' : 'Simpan Shift Baru'}
                 </button>
@@ -2376,27 +2430,36 @@ export const ShiftView: React.FC = () => {
       {/* MODAL 4: KONFIRMASI HAPUS SHIFT                              */}
       {/* ============================================================ */}
       {deleteConfirmId && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4">
-          <div className="bg-white rounded-2xl max-w-sm w-full p-5 shadow-xl border border-slate-100 text-center space-y-3">
-            <div className="w-10 h-10 rounded-full bg-rose-50 text-rose-600 flex items-center justify-center mx-auto">
-              <AlertCircle className="w-5 h-5" />
+        <div
+          id="delete-shift-modal-backdrop"
+          onClick={() => setDeleteConfirmId(null)}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-xs p-3 sm:p-4 overflow-y-auto animate-in fade-in duration-150"
+        >
+          <div
+            id="delete-shift-modal-card"
+            onClick={(e) => e.stopPropagation()}
+            className="bg-white rounded-2xl sm:rounded-3xl max-w-sm w-full p-5 shadow-2xl border border-slate-100 text-center space-y-3.5 my-auto animate-in zoom-in-95 duration-150"
+          >
+            <div className="w-11 h-11 rounded-full bg-rose-50 text-rose-600 flex items-center justify-center mx-auto">
+              <AlertCircle className="w-6 h-6" />
             </div>
-            <h4 className="font-bold text-slate-900 text-sm">Hapus Pengaturan Shift?</h4>
-            <p className="text-xs text-slate-500">
+            <h4 className="font-bold text-slate-900 text-sm sm:text-base">Hapus Pengaturan Shift?</h4>
+            <p className="text-xs text-slate-500 leading-relaxed">
               Shift ini akan dihapus dari daftar. Petugas yang ditugaskan ke shift ini akan memerlukan alokasi ulang.
             </p>
-            <div className="flex items-center justify-center gap-2 pt-2">
+            <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-center gap-2 pt-2">
               <button
+                id="cancel-delete-shift-btn"
                 type="button"
                 onClick={() => setDeleteConfirmId(null)}
-                className="px-4 py-2 rounded-xl border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer"
+                className="px-5 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-100 active:bg-slate-200 min-h-[44px] flex items-center justify-center cursor-pointer transition-colors"
               >
                 Batal
               </button>
               <button
                 type="button"
                 onClick={() => handleDeleteShift(deleteConfirmId)}
-                className="px-4 py-2 rounded-xl bg-rose-600 text-xs font-bold text-white hover:bg-rose-700 shadow-xs cursor-pointer"
+                className="px-5 py-2.5 rounded-xl bg-rose-600 text-xs font-bold text-white hover:bg-rose-700 active:bg-rose-800 shadow-xs min-h-[44px] flex items-center justify-center cursor-pointer transition-colors"
               >
                 Ya, Hapus Shift
               </button>

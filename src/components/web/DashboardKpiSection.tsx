@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Target,
   PlayCircle,
@@ -64,6 +64,30 @@ export const DashboardKpiSection: React.FC<DashboardKpiSectionProps> = ({
   const [drillDownStatus, setDrillDownStatus] = useState<WorkStatusFilter | null>(null);
   const [drillDownSearch, setDrillDownSearch] = useState('');
   const [selectedTaskForPhoto, setSelectedTaskForPhoto] = useState<CleaningTask | null>(null);
+
+  // Close drill-down modal or photo modal on Escape key
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (selectedTaskForPhoto) {
+          setSelectedTaskForPhoto(null);
+        } else if (drillDownStatus) {
+          setDrillDownStatus(null);
+          setDrillDownSearch('');
+        }
+      }
+    };
+
+    if (drillDownStatus || selectedTaskForPhoto) {
+      window.addEventListener('keydown', handleKeyDown);
+      document.body.style.overflow = 'hidden';
+    }
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      document.body.style.overflow = '';
+    };
+  }, [drillDownStatus, selectedTaskForPhoto]);
 
   // 1. Perhitungan Siklus Pekerjaan: Direncanakan, Diproses, Diselesaikan
   const totalPlannedTasks = tasks.length || 1;
@@ -833,15 +857,26 @@ export const DashboardKpiSection: React.FC<DashboardKpiSectionProps> = ({
 
       {/* DRILL-DOWN TASK LIST MODAL */}
       {drillDownStatus && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto animate-in fade-in duration-200">
-          <div className="bg-white rounded-2xl max-w-3xl w-full max-h-[85vh] overflow-y-auto shadow-2xl border border-slate-200 flex flex-col">
+        <div
+          id="drilldown-kpi-modal-backdrop"
+          onClick={() => {
+            setDrillDownStatus(null);
+            setDrillDownSearch('');
+          }}
+          className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 overflow-y-auto animate-in fade-in duration-150"
+        >
+          <div
+            id="drilldown-kpi-modal-card"
+            onClick={(e) => e.stopPropagation()}
+            className="bg-white rounded-2xl sm:rounded-3xl max-w-3xl w-full max-h-[92dvh] overflow-y-auto shadow-2xl border border-slate-200 flex flex-col overscroll-contain my-auto"
+          >
             {/* Modal Header */}
-            <div className="sticky top-0 bg-white px-6 py-4 border-b border-slate-200 flex items-center justify-between z-10">
-              <div>
-                <h3 className="text-base sm:text-lg font-bold text-slate-900 flex items-center gap-2">
-                  <span>Daftar Rincian Pekerjaan KPI:</span>
+            <div className="sticky top-0 bg-white/95 backdrop-blur-xs px-4 sm:px-6 py-3.5 sm:py-4 border-b border-slate-200 flex items-center justify-between z-10 gap-2">
+              <div className="min-w-0">
+                <h3 className="text-sm sm:text-base font-bold text-slate-900 flex items-center gap-2 truncate">
+                  <span className="truncate">Daftar Rincian Pekerjaan KPI:</span>
                   <span
-                    className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${
+                    className={`px-2.5 py-0.5 rounded-full text-xs font-bold shrink-0 ${
                       drillDownStatus === 'pending'
                         ? 'bg-slate-100 text-slate-800'
                         : drillDownStatus === 'in_progress'
@@ -852,26 +887,28 @@ export const DashboardKpiSection: React.FC<DashboardKpiSectionProps> = ({
                     }`}
                   >
                     {drillDownStatus === 'pending'
-                      ? 'Direncanakan (Target)'
+                      ? 'Direncanakan'
                       : drillDownStatus === 'in_progress'
-                      ? 'Sedang Diproses / QC'
+                      ? 'Sedang Diproses'
                       : drillDownStatus === 'completed'
-                      ? 'Telah Diselesaikan'
-                      : 'Semua Pekerjaan'}
+                      ? 'Diselesaikan'
+                      : 'Semua'}
                   </span>
                 </h3>
-                <p className="text-xs text-slate-500 mt-0.5">
+                <p className="text-xs text-slate-500 mt-0.5 truncate">
                   Ditemukan {filteredDrillDownTasks.length} pekerjaan sesuai kategori yang dipilih
                 </p>
               </div>
 
               <button
+                id="close-drilldown-kpi-btn"
                 type="button"
                 onClick={() => {
                   setDrillDownStatus(null);
                   setDrillDownSearch('');
                 }}
-                className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
+                aria-label="Tutup Rincian Pekerjaan KPI"
+                className="p-2 text-slate-400 hover:text-slate-700 active:text-slate-900 rounded-full hover:bg-slate-100 min-w-[44px] min-h-[44px] flex items-center justify-center shrink-0 transition-colors cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -1019,17 +1056,18 @@ export const DashboardKpiSection: React.FC<DashboardKpiSectionProps> = ({
             </div>
 
             {/* Modal Footer */}
-            <div className="sticky bottom-0 bg-white px-6 py-3 border-t border-slate-200 flex items-center justify-between">
-              <span className="text-xs text-slate-500">
+            <div className="sticky bottom-0 bg-white/95 backdrop-blur-xs px-4 sm:px-6 py-3 border-t border-slate-200 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5">
+              <span className="text-xs text-slate-500 text-center sm:text-left">
                 Menampilkan data pekerjaan real-time dari proyek aktif.
               </span>
               <button
+                id="close-drilldown-kpi-footer-btn"
                 type="button"
                 onClick={() => {
                   setDrillDownStatus(null);
                   setDrillDownSearch('');
                 }}
-                className="px-4 py-1.5 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
+                className="px-5 py-2 text-xs sm:text-sm font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 active:bg-slate-300 rounded-xl transition-colors min-h-[44px] flex items-center justify-center cursor-pointer"
               >
                 Tutup
               </button>
@@ -1047,6 +1085,7 @@ export const DashboardKpiSection: React.FC<DashboardKpiSectionProps> = ({
           areaName={selectedTaskForPhoto.areaName}
           cleanerName={selectedTaskForPhoto.cleanerName}
           photoBefore={selectedTaskForPhoto.photoBefore}
+          photoProgress={selectedTaskForPhoto.photoProgress}
           photoAfter={selectedTaskForPhoto.photoAfter}
           completedTime={selectedTaskForPhoto.completedTime}
           remarks={selectedTaskForPhoto.remarks}

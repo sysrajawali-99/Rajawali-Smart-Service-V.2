@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import {
   X,
   SlidersHorizontal,
@@ -56,6 +56,23 @@ export const DashboardKpiSettingsModal: React.FC<DashboardKpiSettingsModalProps>
   onChange,
   onReset,
 }) => {
+  // Keyboard shortcut: Escape to close modal
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isOpen) {
+        onClose();
+      }
+    };
+    if (isOpen) {
+      window.addEventListener('keydown', handleKeyDown);
+      document.body.style.overflow = 'hidden';
+    }
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      document.body.style.overflow = '';
+    };
+  }, [isOpen, onClose]);
+
   if (!isOpen) return null;
 
   const toggleItem = (key: keyof DashboardKpiVisibilityConfig) => {
@@ -187,27 +204,37 @@ export const DashboardKpiSettingsModal: React.FC<DashboardKpiSettingsModalProps>
   const totalCount = Object.keys(config).length;
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto animate-in fade-in duration-200">
-      <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-2xl border border-slate-200 flex flex-col">
+    <div
+      id="dashboard-kpi-modal-backdrop"
+      onClick={onClose}
+      className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 overflow-y-auto animate-in fade-in duration-200"
+    >
+      <div
+        id="dashboard-kpi-modal-card"
+        onClick={(e) => e.stopPropagation()}
+        className="bg-white rounded-2xl sm:rounded-3xl max-w-2xl w-full max-h-[92dvh] overflow-hidden shadow-2xl border border-slate-200 flex flex-col overscroll-contain my-auto"
+      >
         {/* Header */}
-        <div className="sticky top-0 bg-white px-6 py-4 border-b border-slate-200 flex items-center justify-between z-10">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-blue-50 text-blue-600 rounded-xl border border-blue-100">
+        <div className="sticky top-0 bg-white px-4 sm:px-6 py-3.5 sm:py-4 border-b border-slate-200 flex items-center justify-between z-10 gap-2 shrink-0">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="p-2 bg-blue-50 text-blue-600 rounded-xl border border-blue-100 shrink-0">
               <SlidersHorizontal className="w-5 h-5" />
             </div>
-            <div>
-              <h2 className="text-base sm:text-lg font-bold text-slate-900">
-                Pengaturan Tampilan KPI & Widget Dashboard
+            <div className="min-w-0">
+              <h2 className="text-sm sm:text-base font-bold text-slate-900 truncate">
+                Pengaturan Tampilan KPI & Widget
               </h2>
-              <p className="text-xs text-slate-500">
-                Pilih widget metrik mana yang ingin ditampilkan atau disembunyikan di dashboard Anda
+              <p className="text-xs text-slate-500 truncate">
+                Pilih widget metrik mana yang ingin ditampilkan di dashboard
               </p>
             </div>
           </div>
           <button
+            id="close-kpi-modal-btn"
+            type="button"
             onClick={onClose}
-            className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 transition-colors"
-            title="Tutup"
+            aria-label="Tutup Pengaturan KPI"
+            className="p-2 text-slate-400 hover:text-slate-700 active:text-slate-900 rounded-full hover:bg-slate-100 min-w-[44px] min-h-[44px] flex items-center justify-center shrink-0 cursor-pointer transition-colors"
           >
             <X className="w-5 h-5" />
           </button>
@@ -331,13 +358,15 @@ export const DashboardKpiSettingsModal: React.FC<DashboardKpiSettingsModalProps>
         </div>
 
         {/* Footer */}
-        <div className="sticky bottom-0 bg-white px-6 py-3.5 border-t border-slate-200 flex items-center justify-between gap-3">
-          <span className="text-xs text-slate-500">
+        <div className="sticky bottom-0 bg-white px-4 sm:px-6 py-3 border-t border-slate-200 flex flex-col-reverse sm:flex-row sm:items-center justify-between gap-3 shrink-0">
+          <span className="text-xs text-slate-500 text-center sm:text-left">
             Pilihan disimpan secara otomatis ke browser Anda.
           </span>
           <button
+            id="apply-kpi-settings-btn"
+            type="button"
             onClick={onClose}
-            className="px-5 py-2 text-xs sm:text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 active:bg-blue-800 rounded-xl shadow-xs transition-colors"
+            className="w-full sm:w-auto px-5 py-2.5 text-xs sm:text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 active:bg-blue-800 rounded-xl shadow-xs min-h-[44px] flex items-center justify-center cursor-pointer transition-colors"
           >
             Selesai & Terapkan
           </button>

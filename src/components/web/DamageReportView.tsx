@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Wrench,
   AlertTriangle,
@@ -30,6 +30,7 @@ import {
   ExternalLink,
   ChevronRight,
   Info,
+  ZoomIn,
 } from 'lucide-react';
 import { useCleaning } from '../../context/CleaningContext';
 import {
@@ -70,6 +71,35 @@ export const DamageReportView: React.FC = () => {
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [selectedReport, setSelectedReport] = useState<FacilityDamageReport | null>(null);
   const [isExportingPDF, setIsExportingPDF] = useState(false);
+  const [previewPhoto, setPreviewPhoto] = useState<{ url: string; title: string } | null>(null);
+
+  // Close modals on Escape key
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (previewPhoto) {
+          setPreviewPhoto(null);
+        } else if (showDetailModal) {
+          setShowDetailModal(false);
+        } else if (showResolveModal) {
+          setShowResolveModal(false);
+        } else if (showAddModal) {
+          setShowAddModal(false);
+        }
+      }
+    };
+
+    const isAnyOpen = showAddModal || showResolveModal || showDetailModal || !!previewPhoto;
+    if (isAnyOpen) {
+      window.addEventListener('keydown', handleKeyDown);
+      document.body.style.overflow = 'hidden';
+    }
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      document.body.style.overflow = '';
+    };
+  }, [showAddModal, showResolveModal, showDetailModal, previewPhoto]);
 
   // New Report Form State
   const [newReport, setNewReport] = useState<{
@@ -980,26 +1010,37 @@ export const DamageReportView: React.FC = () => {
       {/* MODAL 1: BUAT LAPORAN KERUSAKAN BARU */}
       {/* ========================================================================= */}
       {showAddModal && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
-          <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-2xl border border-slate-200">
+        <div
+          id="damage-add-modal-backdrop"
+          onClick={() => setShowAddModal(false)}
+          className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 overflow-y-auto animate-in fade-in duration-150"
+        >
+          <div
+            id="damage-add-modal-card"
+            onClick={(e) => e.stopPropagation()}
+            className="bg-white rounded-2xl sm:rounded-3xl max-w-2xl w-full max-h-[94dvh] overflow-y-auto shadow-2xl border border-slate-200 overscroll-contain flex flex-col"
+          >
             {/* Modal Header */}
-            <div className="sticky top-0 bg-white px-6 py-4 border-b border-slate-200 flex items-center justify-between z-10">
-              <div className="flex items-center gap-2.5">
-                <div className="p-2 bg-blue-50 text-blue-600 rounded-lg">
+            <div className="sticky top-0 bg-white/95 backdrop-blur-xs px-4 sm:px-6 py-4 border-b border-slate-200 flex items-center justify-between z-10 shrink-0">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="p-2 bg-blue-50 text-blue-600 rounded-xl shrink-0">
                   <Plus className="w-5 h-5" />
                 </div>
-                <div>
-                  <h2 className="text-lg font-bold text-slate-900">
-                    Buat Laporan Kerusakan Barang / Fasilitas
+                <div className="min-w-0">
+                  <h2 className="text-base sm:text-lg font-bold text-slate-900 leading-snug">
+                    Buat Laporan Kerusakan Fasilitas
                   </h2>
-                  <p className="text-xs text-slate-500">
-                    Catat kerusakan fisik gedung untuk ditindaklanjuti oleh Engineering / Maintenance
+                  <p className="text-xs text-slate-500 truncate">
+                    Catat kerusakan fisik untuk ditindaklanjuti Maintenance
                   </p>
                 </div>
               </div>
               <button
+                id="close-add-damage-btn"
+                type="button"
                 onClick={() => setShowAddModal(false)}
-                className="p-2 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100"
+                aria-label="Tutup Form Laporan Kerusakan"
+                className="p-2 rounded-full text-slate-500 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 active:bg-slate-300 transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center shrink-0 cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -1311,17 +1352,18 @@ export const DamageReportView: React.FC = () => {
               </div>
 
               {/* Submit Buttons */}
-              <div className="pt-4 border-t border-slate-200 flex items-center justify-end gap-2.5">
+              <div className="pt-4 border-t border-slate-200 flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-2.5">
                 <button
+                  id="cancel-add-damage-btn"
                   type="button"
                   onClick={() => setShowAddModal(false)}
-                  className="px-4 py-2 text-sm font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
+                  className="px-5 py-2.5 text-xs sm:text-sm font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 active:bg-slate-300 rounded-xl transition-colors min-h-[44px] flex items-center justify-center cursor-pointer"
                 >
                   Batal
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 active:bg-blue-800 rounded-lg shadow-sm transition-colors"
+                  className="px-6 py-2.5 text-xs sm:text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 active:bg-blue-800 rounded-xl shadow-xs transition-colors min-h-[44px] flex items-center justify-center cursor-pointer"
                 >
                   Simpan Laporan & Cetak Tiket
                 </button>
@@ -1335,25 +1377,36 @@ export const DamageReportView: React.FC = () => {
       {/* MODAL 2: UPDATE STATUS & SELESAIKAN PERBAIKAN */}
       {/* ========================================================================= */}
       {showResolveModal && selectedReport && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
-          <div className="bg-white rounded-2xl max-w-lg w-full shadow-2xl border border-slate-200">
-            <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div className="p-2 bg-amber-50 text-amber-600 rounded-lg">
+        <div
+          id="damage-resolve-modal-backdrop"
+          onClick={() => setShowResolveModal(false)}
+          className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 overflow-y-auto animate-in fade-in duration-150"
+        >
+          <div
+            id="damage-resolve-modal-card"
+            onClick={(e) => e.stopPropagation()}
+            className="bg-white rounded-2xl sm:rounded-3xl max-w-lg w-full shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[94dvh]"
+          >
+            <div className="p-4 sm:px-6 sm:py-4 border-b border-slate-200 flex items-center justify-between bg-amber-50/50 shrink-0">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="p-2 bg-amber-100 text-amber-700 rounded-xl shrink-0">
                   <Edit3 className="w-5 h-5" />
                 </div>
-                <div>
-                  <h3 className="text-base font-bold text-slate-900">
+                <div className="min-w-0">
+                  <h3 className="text-sm sm:text-base font-bold text-slate-900 leading-snug">
                     Update Penanganan & Perbaikan
                   </h3>
-                  <p className="text-xs text-slate-500 font-mono">
+                  <p className="text-xs text-slate-500 font-mono truncate">
                     Tiket: {selectedReport.ticketNo} • {selectedReport.itemName}
                   </p>
                 </div>
               </div>
               <button
+                id="close-resolve-damage-btn"
+                type="button"
                 onClick={() => setShowResolveModal(false)}
-                className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg"
+                aria-label="Tutup Form Update"
+                className="p-2 rounded-full text-slate-500 hover:text-slate-900 bg-amber-100/70 hover:bg-amber-200 active:bg-amber-300 transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center shrink-0 cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -1469,17 +1522,18 @@ export const DamageReportView: React.FC = () => {
                 </div>
               )}
 
-              <div className="pt-4 border-t border-slate-200 flex items-center justify-end gap-2.5">
+              <div className="pt-4 border-t border-slate-200 flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-2.5">
                 <button
+                  id="cancel-resolve-damage-btn"
                   type="button"
                   onClick={() => setShowResolveModal(false)}
-                  className="px-4 py-2 text-sm font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg"
+                  className="px-5 py-2.5 text-xs sm:text-sm font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 active:bg-slate-300 rounded-xl min-h-[44px] flex items-center justify-center cursor-pointer transition-colors"
                 >
                   Batal
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg"
+                  className="px-6 py-2.5 text-xs sm:text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 active:bg-blue-800 rounded-xl min-h-[44px] flex items-center justify-center cursor-pointer transition-colors shadow-xs"
                 >
                   Simpan Perubahan
                 </button>
@@ -1493,35 +1547,46 @@ export const DamageReportView: React.FC = () => {
       {/* MODAL 3: DETAIL LENGKAP & PREVIEW DOKUMEN */}
       {/* ========================================================================= */}
       {showDetailModal && selectedReport && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
-          <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[92vh] overflow-y-auto shadow-2xl border border-slate-200">
+        <div
+          id="damage-detail-modal-backdrop"
+          onClick={() => setShowDetailModal(false)}
+          className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 overflow-y-auto animate-in fade-in duration-150"
+        >
+          <div
+            id="damage-detail-modal-card"
+            onClick={(e) => e.stopPropagation()}
+            className="bg-white rounded-2xl sm:rounded-3xl max-w-2xl w-full max-h-[94dvh] overflow-y-auto shadow-2xl border border-slate-200 overscroll-contain flex flex-col"
+          >
             {/* Header */}
-            <div className="sticky top-0 bg-white px-6 py-4 border-b border-slate-200 flex items-center justify-between z-10">
-              <div className="flex items-center gap-3">
-                <span className="text-sm font-mono font-bold text-blue-700 bg-blue-50 px-2.5 py-1 rounded-md border border-blue-200">
+            <div className="sticky top-0 bg-white/95 backdrop-blur-xs px-4 sm:px-6 py-3.5 sm:py-4 border-b border-slate-200 flex items-center justify-between z-10 shrink-0">
+              <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+                <span className="text-xs sm:text-sm font-mono font-bold text-blue-700 bg-blue-50 px-2 sm:px-2.5 py-1 rounded-md border border-blue-200 shrink-0">
                   {selectedReport.ticketNo}
                 </span>
-                <div>
-                  <h3 className="text-base font-bold text-slate-900">
+                <div className="min-w-0">
+                  <h3 className="text-sm sm:text-base font-bold text-slate-900 truncate">
                     {selectedReport.itemName}
                   </h3>
-                  <div className="text-xs text-slate-500">
+                  <div className="text-xs text-slate-500 truncate">
                     {selectedReport.locationName} • {selectedReport.floor}
                   </div>
                 </div>
               </div>
               <button
+                id="close-detail-damage-btn"
+                type="button"
                 onClick={() => setShowDetailModal(false)}
-                className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg"
+                aria-label="Tutup Detail Kerusakan"
+                className="p-2 rounded-full text-slate-500 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 active:bg-slate-300 transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center shrink-0 cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <div className="p-6 space-y-5">
+            <div className="p-4 sm:p-6 space-y-4 sm:space-y-5">
               {/* Status and Badges */}
               <div className="flex flex-wrap items-center justify-between gap-2 bg-slate-50 p-3 rounded-xl border border-slate-200">
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   {getStatusBadge(selectedReport.status)}
                   {getSeverityBadge(selectedReport.damageLevel)}
                 </div>
@@ -1531,20 +1596,41 @@ export const DamageReportView: React.FC = () => {
               </div>
 
               {/* Photos comparison */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                 <div className="border border-rose-200 rounded-xl overflow-hidden bg-rose-50/20">
                   <div className="bg-rose-600 text-white text-xs font-bold py-1.5 px-3 flex items-center justify-between">
-                    <span>Foto Bukti Kerusakan (Before)</span>
+                    <span>Foto Kerusakan (Before)</span>
                     <span className="text-[10px] font-normal">{selectedReport.reportDate}</span>
                   </div>
-                  <div className="h-44 bg-slate-100 flex items-center justify-center">
+                  <div className="relative h-48 bg-slate-100 flex items-center justify-center group overflow-hidden">
                     {selectedReport.photoBefore ? (
-                      <img
-                        src={selectedReport.photoBefore}
-                        alt="Foto Sebelum"
-                        className="w-full h-full object-cover"
-                        referrerPolicy="no-referrer"
-                      />
+                      <>
+                        <img
+                          src={selectedReport.photoBefore}
+                          alt="Foto Sebelum"
+                          className="w-full h-full object-cover cursor-pointer transition-transform duration-200 group-hover:scale-105"
+                          onClick={() =>
+                            setPreviewPhoto({
+                              url: selectedReport.photoBefore,
+                              title: `Bukti Kerusakan: ${selectedReport.itemName} (${selectedReport.ticketNo})`,
+                            })
+                          }
+                          referrerPolicy="no-referrer"
+                        />
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setPreviewPhoto({
+                              url: selectedReport.photoBefore,
+                              title: `Bukti Kerusakan: ${selectedReport.itemName} (${selectedReport.ticketNo})`,
+                            })
+                          }
+                          className="absolute bottom-2 right-2 bg-black/65 hover:bg-black/85 text-white p-2 rounded-lg text-xs font-medium backdrop-blur-xs flex items-center gap-1.5 min-w-[36px] min-h-[36px] justify-center transition-colors"
+                        >
+                          <ZoomIn className="w-3.5 h-3.5" />
+                          <span className="text-[11px]">Perbesar</span>
+                        </button>
+                      </>
                     ) : (
                       <span className="text-xs text-slate-400">Tidak ada lampiran foto</span>
                     )}
@@ -1558,14 +1644,35 @@ export const DamageReportView: React.FC = () => {
                       {selectedReport.repairedDate || 'Dalam Proses'}
                     </span>
                   </div>
-                  <div className="h-44 bg-slate-100 flex items-center justify-center">
+                  <div className="relative h-48 bg-slate-100 flex items-center justify-center group overflow-hidden">
                     {selectedReport.photoAfter ? (
-                      <img
-                        src={selectedReport.photoAfter}
-                        alt="Foto Sesudah"
-                        className="w-full h-full object-cover"
-                        referrerPolicy="no-referrer"
-                      />
+                      <>
+                        <img
+                          src={selectedReport.photoAfter}
+                          alt="Foto Sesudah"
+                          className="w-full h-full object-cover cursor-pointer transition-transform duration-200 group-hover:scale-105"
+                          onClick={() =>
+                            setPreviewPhoto({
+                              url: selectedReport.photoAfter!,
+                              title: `Hasil Perbaikan: ${selectedReport.itemName} (${selectedReport.ticketNo})`,
+                            })
+                          }
+                          referrerPolicy="no-referrer"
+                        />
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setPreviewPhoto({
+                              url: selectedReport.photoAfter!,
+                              title: `Hasil Perbaikan: ${selectedReport.itemName} (${selectedReport.ticketNo})`,
+                            })
+                          }
+                          className="absolute bottom-2 right-2 bg-black/65 hover:bg-black/85 text-white p-2 rounded-lg text-xs font-medium backdrop-blur-xs flex items-center gap-1.5 min-w-[36px] min-h-[36px] justify-center transition-colors"
+                        >
+                          <ZoomIn className="w-3.5 h-3.5" />
+                          <span className="text-[11px]">Perbesar</span>
+                        </button>
+                      </>
                     ) : (
                       <div className="text-center p-3">
                         <Clock className="w-6 h-6 text-amber-500 mx-auto mb-1" />
@@ -1582,44 +1689,44 @@ export const DamageReportView: React.FC = () => {
 
               {/* Data Table */}
               <div className="border border-slate-200 rounded-xl overflow-hidden text-xs divide-y divide-slate-200">
-                <div className="grid grid-cols-3 p-3 bg-white">
+                <div className="grid grid-cols-1 sm:grid-cols-3 p-3 bg-white gap-1 sm:gap-0">
                   <span className="font-semibold text-slate-500">Kronologi Kerusakan</span>
-                  <span className="col-span-2 text-slate-800 font-medium">{selectedReport.chronology}</span>
+                  <span className="sm:col-span-2 text-slate-800 font-medium">{selectedReport.chronology}</span>
                 </div>
-                <div className="grid grid-cols-3 p-3 bg-slate-50">
+                <div className="grid grid-cols-1 sm:grid-cols-3 p-3 bg-slate-50 gap-1 sm:gap-0">
                   <span className="font-semibold text-slate-500">Dampak Operasional</span>
-                  <span className="col-span-2 text-slate-800">{selectedReport.impact || '-'}</span>
+                  <span className="sm:col-span-2 text-slate-800">{selectedReport.impact || '-'}</span>
                 </div>
-                <div className="grid grid-cols-3 p-3 bg-white">
+                <div className="grid grid-cols-1 sm:grid-cols-3 p-3 bg-white gap-1 sm:gap-0">
                   <span className="font-semibold text-slate-500">Tindakan Awal Petugas</span>
-                  <span className="col-span-2 text-slate-800">{selectedReport.actionTaken || '-'}</span>
+                  <span className="sm:col-span-2 text-slate-800">{selectedReport.actionTaken || '-'}</span>
                 </div>
-                <div className="grid grid-cols-3 p-3 bg-slate-50">
+                <div className="grid grid-cols-1 sm:grid-cols-3 p-3 bg-slate-50 gap-1 sm:gap-0">
                   <span className="font-semibold text-slate-500">Departemen Tujuan</span>
-                  <span className="col-span-2 text-slate-800 font-semibold">{selectedReport.targetDepartment}</span>
+                  <span className="sm:col-span-2 text-slate-800 font-semibold">{selectedReport.targetDepartment}</span>
                 </div>
-                <div className="grid grid-cols-3 p-3 bg-white">
+                <div className="grid grid-cols-1 sm:grid-cols-3 p-3 bg-white gap-1 sm:gap-0">
                   <span className="font-semibold text-slate-500">Pelapor / Kontak</span>
-                  <span className="col-span-2 text-slate-800">
+                  <span className="sm:col-span-2 text-slate-800">
                     {selectedReport.reporterName} ({selectedReport.reporterPhone || '-'})
                   </span>
                 </div>
-                <div className="grid grid-cols-3 p-3 bg-slate-50">
+                <div className="grid grid-cols-1 sm:grid-cols-3 p-3 bg-slate-50 gap-1 sm:gap-0">
                   <span className="font-semibold text-slate-500">Teknisi Penanggung Jawab</span>
-                  <span className="col-span-2 text-slate-800 font-semibold">
+                  <span className="sm:col-span-2 text-slate-800 font-semibold">
                     {selectedReport.technicianName || 'Belum ditugaskan'}
                   </span>
                 </div>
                 {selectedReport.technicianNotes && (
-                  <div className="grid grid-cols-3 p-3 bg-white">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 p-3 bg-white gap-1 sm:gap-0">
                     <span className="font-semibold text-slate-500">Catatan Perbaikan</span>
-                    <span className="col-span-2 text-slate-800">{selectedReport.technicianNotes}</span>
+                    <span className="sm:col-span-2 text-slate-800">{selectedReport.technicianNotes}</span>
                   </div>
                 )}
                 {selectedReport.costEstimate && (
-                  <div className="grid grid-cols-3 p-3 bg-emerald-50/50">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 p-3 bg-emerald-50/50 gap-1 sm:gap-0">
                     <span className="font-semibold text-emerald-800">Realisasi / Estimasi Biaya</span>
-                    <span className="col-span-2 font-bold text-emerald-900 text-sm">
+                    <span className="sm:col-span-2 font-bold text-emerald-900 text-sm">
                       Rp {selectedReport.costEstimate.toLocaleString('id-ID')}
                     </span>
                   </div>
@@ -1627,12 +1734,12 @@ export const DamageReportView: React.FC = () => {
               </div>
 
               {/* Bottom Actions */}
-              <div className="pt-3 border-t border-slate-200 flex items-center justify-between gap-3">
+              <div className="pt-3 border-t border-slate-200 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5">
                 <button
                   type="button"
                   onClick={() => handleExportSinglePDF(selectedReport)}
                   disabled={isExportingPDF}
-                  className="inline-flex items-center gap-2 px-4 py-2 text-xs sm:text-sm font-semibold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-lg transition-colors"
+                  className="inline-flex items-center justify-center gap-2 px-4 py-2.5 text-xs sm:text-sm font-semibold text-rose-700 bg-rose-50 hover:bg-rose-100 active:bg-rose-200 border border-rose-200 rounded-xl transition-colors min-h-[44px]"
                 >
                   <FileDown className="w-4 h-4" />
                   <span>Download Berita Acara PDF</span>
@@ -1645,14 +1752,15 @@ export const DamageReportView: React.FC = () => {
                       setShowDetailModal(false);
                       handleOpenResolveModal(selectedReport);
                     }}
-                    className="px-4 py-2 text-xs sm:text-sm font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-lg transition-colors"
+                    className="flex-1 sm:flex-initial px-4 py-2.5 text-xs sm:text-sm font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 active:bg-blue-200 border border-blue-200 rounded-xl transition-colors min-h-[44px]"
                   >
                     Update Status
                   </button>
                   <button
+                    id="close-detail-modal-footer-btn"
                     type="button"
                     onClick={() => setShowDetailModal(false)}
-                    className="px-4 py-2 text-xs sm:text-sm font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg"
+                    className="flex-1 sm:flex-initial px-5 py-2.5 text-xs sm:text-sm font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 active:bg-slate-300 rounded-xl transition-colors min-h-[44px]"
                   >
                     Tutup
                   </button>
@@ -1660,6 +1768,43 @@ export const DamageReportView: React.FC = () => {
               </div>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* FULLSCREEN PHOTO PREVIEW LIGHTBOX */}
+      {previewPhoto && (
+        <div
+          id="damage-photo-lightbox"
+          onClick={() => setPreviewPhoto(null)}
+          className="fixed inset-0 z-60 bg-black/90 backdrop-blur-md flex flex-col items-center justify-center p-3 sm:p-6 animate-in fade-in duration-200"
+        >
+          <div className="w-full max-w-3xl flex items-center justify-between text-white mb-3">
+            <span className="text-xs sm:text-sm font-medium truncate max-w-[80%]">
+              {previewPhoto.title}
+            </span>
+            <button
+              type="button"
+              onClick={() => setPreviewPhoto(null)}
+              aria-label="Tutup Foto"
+              className="p-2 rounded-full bg-white/20 hover:bg-white/30 text-white min-w-[44px] min-h-[44px] flex items-center justify-center cursor-pointer transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="max-w-3xl max-h-[80vh] w-full flex items-center justify-center rounded-2xl overflow-hidden bg-black/50 border border-white/10"
+          >
+            <img
+              src={previewPhoto.url}
+              alt={previewPhoto.title}
+              className="max-h-[80vh] max-w-full object-contain"
+              referrerPolicy="no-referrer"
+            />
+          </div>
+          <p className="text-xs text-white/60 mt-3 text-center">
+            Sentuh area di luar foto atau tekan tombol silang/Esc untuk menutup
+          </p>
         </div>
       )}
     </div>

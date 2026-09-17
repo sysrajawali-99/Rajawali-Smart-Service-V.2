@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   FileText,
   Download,
@@ -56,6 +56,29 @@ export const LaporanReportView: React.FC = () => {
   // Add tasks from history modal
   const [showAddFromHistoryModal, setShowAddFromHistoryModal] = useState<boolean>(false);
   const [selectedTaskIdsToAdd, setSelectedTaskIdsToAdd] = useState<string[]>([]);
+
+  // Close modal on Escape key
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (previewTask) {
+          setPreviewTask(null);
+        } else if (showAddFromHistoryModal) {
+          setShowAddFromHistoryModal(false);
+        }
+      }
+    };
+
+    if (showAddFromHistoryModal || previewTask) {
+      window.addEventListener('keydown', handleKeyDown);
+      document.body.style.overflow = 'hidden';
+    }
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      document.body.style.overflow = '';
+    };
+  }, [showAddFromHistoryModal, previewTask]);
 
   // Inline editing of work description
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
@@ -798,20 +821,31 @@ export const LaporanReportView: React.FC = () => {
 
       {/* Modal: Select Tasks From Month's History To Add to Monthly Report */}
       {showAddFromHistoryModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4">
-          <div className="bg-white rounded-2xl p-5 max-w-xl w-full border border-slate-200 shadow-2xl space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-              <div>
-                <h4 className="font-bold text-slate-900 text-sm">
+        <div
+          id="history-candidate-modal-backdrop"
+          onClick={() => setShowAddFromHistoryModal(false)}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-xs p-2 sm:p-4 overflow-y-auto animate-in fade-in duration-150"
+        >
+          <div
+            id="history-candidate-modal-card"
+            onClick={(e) => e.stopPropagation()}
+            className="bg-white rounded-2xl sm:rounded-3xl p-4 sm:p-6 max-w-xl w-full border border-slate-200 shadow-2xl space-y-4 max-h-[92dvh] overflow-y-auto overscroll-contain my-auto"
+          >
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 gap-2">
+              <div className="min-w-0">
+                <h4 className="font-bold text-slate-900 text-sm sm:text-base truncate">
                   Pilih Pekerjaan dari Historis Bulan Ini
                 </h4>
-                <p className="text-[11px] text-slate-500">
+                <p className="text-[11px] sm:text-xs text-slate-500 truncate">
                   Pindahkan pekerjaan yang selesai ke Laporan Bulanan ({getMonthLabel(selectedMonth)})
                 </p>
               </div>
               <button
+                id="close-history-candidate-btn"
+                type="button"
                 onClick={() => setShowAddFromHistoryModal(false)}
-                className="text-slate-400 hover:text-slate-700"
+                aria-label="Tutup Pilihan Historis"
+                className="p-2 rounded-full text-slate-400 hover:text-slate-700 active:text-slate-900 hover:bg-slate-100 transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center shrink-0 cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -822,7 +856,7 @@ export const LaporanReportView: React.FC = () => {
                 Semua pekerjaan selesai sudah dimasukkan ke laporan bulanan!
               </div>
             ) : (
-              <div className="max-h-72 overflow-y-auto space-y-2 pr-1">
+              <div className="max-h-72 overflow-y-auto space-y-2 pr-1 overscroll-contain">
                 {candidateHistoryTasks.map((t) => {
                   const isSelected = selectedTaskIdsToAdd.includes(t.id);
                   return (
@@ -840,7 +874,7 @@ export const LaporanReportView: React.FC = () => {
                           type="checkbox"
                           checked={isSelected}
                           onChange={() => {}}
-                          className="mt-0.5 accent-sky-600 rounded"
+                          className="mt-0.5 accent-sky-600 rounded w-4 h-4"
                         />
                         <div>
                           <div className="flex items-center gap-2">
@@ -856,7 +890,7 @@ export const LaporanReportView: React.FC = () => {
                       </div>
 
                       {/* Photo indicator */}
-                      <div className="flex items-center gap-1">
+                      <div className="flex items-center gap-1 shrink-0">
                         {t.photoBefore && (
                           <span className="text-[9px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 font-medium">
                             3 Foto
@@ -872,25 +906,29 @@ export const LaporanReportView: React.FC = () => {
               </div>
             )}
 
-            <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-xs">
-              <span className="text-slate-500">
+            <div className="pt-3 border-t border-slate-100 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 text-xs">
+              <span className="text-slate-500 text-center sm:text-left">
                 Dipilih: <strong>{selectedTaskIdsToAdd.length}</strong> pekerjaan
               </span>
 
               <div className="flex items-center gap-2">
                 <button
+                  id="cancel-history-candidate-btn"
+                  type="button"
                   onClick={() => setShowAddFromHistoryModal(false)}
-                  className="px-3.5 py-2 rounded-xl border border-slate-200 text-slate-700 hover:bg-slate-50"
+                  className="flex-1 sm:flex-initial px-4 py-2.5 rounded-xl border border-slate-200 text-slate-700 bg-slate-100 hover:bg-slate-200 active:bg-slate-300 font-semibold min-h-[44px] flex items-center justify-center transition-colors cursor-pointer"
                 >
                   Batal
                 </button>
                 <button
+                  id="submit-history-candidate-btn"
+                  type="button"
                   disabled={selectedTaskIdsToAdd.length === 0}
                   onClick={handleAddCandidatesToReport}
-                  className="px-4 py-2 rounded-xl bg-sky-600 hover:bg-sky-700 disabled:opacity-50 text-white font-semibold flex items-center gap-1.5"
+                  className="flex-1 sm:flex-initial px-4 py-2.5 rounded-xl bg-sky-600 hover:bg-sky-700 active:bg-sky-800 disabled:opacity-50 text-white font-semibold flex items-center justify-center gap-1.5 min-h-[44px] transition-colors cursor-pointer"
                 >
                   <Check className="w-4 h-4" />
-                  <span>Pindahkan ke Laporan Bulanan</span>
+                  <span>Pindahkan ke Laporan</span>
                 </button>
               </div>
             </div>

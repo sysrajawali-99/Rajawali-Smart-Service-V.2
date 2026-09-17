@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   Users,
   Plus,
@@ -147,6 +147,26 @@ export const PetugasView: React.FC = () => {
     setNotificationMsg(msg);
     setTimeout(() => setNotificationMsg(null), 3500);
   };
+
+  // Keyboard shortcut: Escape to close active modal
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (showCleanerModal) setShowCleanerModal(false);
+        else if (deleteCleanerId) setDeleteCleanerId(null);
+        else if (plottingCleaner) setPlottingCleaner(null);
+        else if (activeCellPicker) setActiveCellPicker(null);
+      }
+    };
+    if (showCleanerModal || deleteCleanerId || plottingCleaner || activeCellPicker) {
+      window.addEventListener('keydown', handleKeyDown);
+      document.body.style.overflow = 'hidden';
+    }
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      document.body.style.overflow = '';
+    };
+  }, [showCleanerModal, deleteCleanerId, plottingCleaner, activeCellPicker]);
 
   // Filtered cleaners
   const filteredCleaners = useMemo(() => {
@@ -1280,23 +1300,33 @@ export const PetugasView: React.FC = () => {
 
       {/* Modal Tambah / Edit Petugas (Hanya Nama Petugas & Shift) */}
       {showCleanerModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4">
-          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-100 animate-in fade-in zoom-in-95 duration-200">
-            <div className="flex items-center justify-between pb-4 border-b border-slate-100">
-              <div>
-                <h3 className="text-base font-bold text-slate-900">
+        <div
+          id="cleaner-modal-backdrop"
+          onClick={() => setShowCleanerModal(false)}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-xs p-2 sm:p-4 overflow-y-auto animate-in fade-in duration-150"
+        >
+          <div
+            id="cleaner-modal-card"
+            onClick={(e) => e.stopPropagation()}
+            className="bg-white rounded-2xl sm:rounded-3xl max-w-md w-full p-4 sm:p-6 shadow-2xl border border-slate-100 animate-in zoom-in-95 duration-200 max-h-[92dvh] overflow-y-auto overscroll-contain my-auto"
+          >
+            <div className="flex items-center justify-between pb-4 border-b border-slate-100 gap-2">
+              <div className="min-w-0">
+                <h3 className="text-sm sm:text-base font-bold text-slate-900 truncate">
                   {editingCleanerId ? 'Edit Data Petugas & Shift' : 'Tambah Petugas Baru'}
                 </h3>
-                <p className="text-xs text-slate-500 mt-0.5">
+                <p className="text-xs text-slate-500 mt-0.5 truncate">
                   Tentukan nama petugas dan shift operasional yang ditugaskan
                 </p>
               </div>
               <button
+                id="close-cleaner-modal-btn"
                 type="button"
                 onClick={() => setShowCleanerModal(false)}
-                className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-500 transition-colors"
+                aria-label="Tutup Form Petugas"
+                className="p-2 rounded-full text-slate-400 hover:text-slate-700 active:text-slate-900 hover:bg-slate-100 min-w-[44px] min-h-[44px] flex items-center justify-center shrink-0 cursor-pointer transition-colors"
               >
-                <X className="w-4 h-4" />
+                <X className="w-5 h-5" />
               </button>
             </div>
 
@@ -1408,17 +1438,18 @@ export const PetugasView: React.FC = () => {
               </div>
 
               {/* Action Buttons */}
-              <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-100">
+              <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-2 pt-3 border-t border-slate-100">
                 <button
+                  id="cancel-cleaner-modal-btn"
                   type="button"
                   onClick={() => setShowCleanerModal(false)}
-                  className="px-4 py-2 border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-semibold rounded-xl transition-colors"
+                  className="px-5 py-2.5 border border-slate-200 hover:bg-slate-100 active:bg-slate-200 text-slate-700 text-xs font-semibold rounded-xl min-h-[44px] flex items-center justify-center cursor-pointer transition-colors"
                 >
                   Batal
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 bg-sky-600 hover:bg-sky-700 text-white text-xs font-bold rounded-xl transition-colors shadow-xs"
+                  className="px-5 py-2.5 bg-sky-600 hover:bg-sky-700 text-white text-xs font-bold rounded-xl shadow-xs min-h-[44px] flex items-center justify-center cursor-pointer transition-colors"
                 >
                   {editingCleanerId ? 'Simpan Perubahan' : 'Tambahkan Petugas'}
                 </button>
@@ -1430,27 +1461,36 @@ export const PetugasView: React.FC = () => {
 
       {/* Delete Confirmation Modal */}
       {deleteCleanerId && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4">
-          <div className="bg-white rounded-2xl max-w-sm w-full p-5 shadow-xl border border-slate-100 text-center space-y-3">
-            <div className="w-10 h-10 rounded-full bg-rose-50 text-rose-600 flex items-center justify-center mx-auto">
-              <AlertCircle className="w-5 h-5" />
+        <div
+          id="delete-cleaner-modal-backdrop"
+          onClick={() => setDeleteCleanerId(null)}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-xs p-3 sm:p-4 overflow-y-auto animate-in fade-in duration-150"
+        >
+          <div
+            id="delete-cleaner-modal-card"
+            onClick={(e) => e.stopPropagation()}
+            className="bg-white rounded-2xl sm:rounded-3xl max-w-sm w-full p-5 shadow-2xl border border-slate-100 text-center space-y-3.5 my-auto animate-in zoom-in-95 duration-150"
+          >
+            <div className="w-11 h-11 rounded-full bg-rose-50 text-rose-600 flex items-center justify-center mx-auto">
+              <AlertCircle className="w-6 h-6" />
             </div>
-            <h4 className="font-bold text-slate-900 text-sm">Hapus Data Petugas?</h4>
-            <p className="text-xs text-slate-500">
+            <h4 className="font-bold text-slate-900 text-sm sm:text-base">Hapus Data Petugas?</h4>
+            <p className="text-xs text-slate-500 leading-relaxed">
               Petugas ini dan rekap kehadirannya akan dihapus dari sistem. Tindakan ini tidak dapat dibatalkan.
             </p>
-            <div className="flex items-center justify-center gap-2 pt-2">
+            <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-center gap-2 pt-2">
               <button
+                id="cancel-delete-cleaner-btn"
                 type="button"
                 onClick={() => setDeleteCleanerId(null)}
-                className="px-4 py-2 rounded-xl border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                className="px-5 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-100 active:bg-slate-200 min-h-[44px] flex items-center justify-center cursor-pointer transition-colors"
               >
                 Batal
               </button>
               <button
                 type="button"
                 onClick={handleConfirmDelete}
-                className="px-4 py-2 rounded-xl bg-rose-600 text-xs font-bold text-white hover:bg-rose-700 shadow-xs"
+                className="px-5 py-2.5 rounded-xl bg-rose-600 text-xs font-bold text-white hover:bg-rose-700 active:bg-rose-800 shadow-xs min-h-[44px] flex items-center justify-center cursor-pointer transition-colors"
               >
                 Ya, Hapus Petugas
               </button>
@@ -1467,29 +1507,39 @@ export const PetugasView: React.FC = () => {
         const shiftAllocations = activeShift?.plottingAllocations || [];
 
         return (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 overflow-y-auto">
-            <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-slate-100 animate-in fade-in zoom-in-95 duration-200 max-h-[92vh] overflow-y-auto">
-              <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-9 h-9 rounded-xl bg-sky-50 text-sky-600 flex items-center justify-center">
+          <div
+            id="plotting-modal-backdrop"
+            onClick={() => setPlottingCleaner(null)}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-xs p-2 sm:p-4 overflow-y-auto animate-in fade-in duration-150"
+          >
+            <div
+              id="plotting-modal-card"
+              onClick={(e) => e.stopPropagation()}
+              className="bg-white rounded-2xl sm:rounded-3xl max-w-lg w-full p-4 sm:p-6 shadow-2xl border border-slate-100 animate-in zoom-in-95 duration-200 max-h-[92dvh] overflow-y-auto overscroll-contain my-auto"
+            >
+              <div className="flex items-center justify-between pb-3 border-b border-slate-100 gap-2">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="w-9 h-9 rounded-xl bg-sky-50 text-sky-600 flex items-center justify-center shrink-0">
                     <MapPin className="w-5 h-5" />
                   </div>
-                  <div>
-                    <h3 className="text-sm font-bold text-slate-900">
+                  <div className="min-w-0">
+                    <h3 className="text-sm font-bold text-slate-900 truncate">
                       Ganti Alokasi Plotingan Tugas
                     </h3>
-                    <p className="text-xs text-slate-500">
+                    <p className="text-xs text-slate-500 truncate">
                       Petugas: <span className="font-bold text-slate-800">{plottingCleaner.name}</span>
                     </p>
                   </div>
                 </div>
 
                 <button
+                  id="close-plotting-modal-btn"
                   type="button"
                   onClick={() => setPlottingCleaner(null)}
-                  className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-500 transition-colors cursor-pointer"
+                  aria-label="Tutup Plotingan Tugas"
+                  className="p-2 rounded-full text-slate-400 hover:text-slate-700 active:text-slate-900 hover:bg-slate-100 min-w-[44px] min-h-[44px] flex items-center justify-center shrink-0 cursor-pointer transition-colors"
                 >
-                  <X className="w-4 h-4" />
+                  <X className="w-5 h-5" />
                 </button>
               </div>
 
@@ -1646,19 +1696,20 @@ export const PetugasView: React.FC = () => {
                 </div>
 
                 {/* Action Buttons */}
-                <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-100">
+                <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-2 pt-3 border-t border-slate-100">
                   <button
+                    id="cancel-plotting-modal-btn"
                     type="button"
                     onClick={() => setPlottingCleaner(null)}
-                    className="px-4 py-2 border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-semibold rounded-xl transition-colors cursor-pointer"
+                    className="px-5 py-2.5 border border-slate-200 hover:bg-slate-100 active:bg-slate-200 text-slate-700 text-xs font-semibold rounded-xl min-h-[44px] flex items-center justify-center cursor-pointer transition-colors"
                   >
                     Batal
                   </button>
                   <button
                     type="submit"
-                    className="px-5 py-2 bg-sky-600 hover:bg-sky-700 text-white text-xs font-bold rounded-xl transition-colors shadow-xs flex items-center gap-1.5 cursor-pointer"
+                    className="px-5 py-2.5 bg-sky-600 hover:bg-sky-700 text-white text-xs font-bold rounded-xl shadow-xs flex items-center justify-center gap-1.5 min-h-[44px] cursor-pointer transition-colors"
                   >
-                    <Check className="w-3.5 h-3.5" />
+                    <Check className="w-4 h-4" />
                     Simpan Plotingan
                   </button>
                 </div>

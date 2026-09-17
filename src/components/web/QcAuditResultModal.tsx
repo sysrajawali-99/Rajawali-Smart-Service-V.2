@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   X,
   Copy,
@@ -11,6 +11,7 @@ import {
   User,
   MapPin,
   Camera,
+  ZoomIn,
 } from 'lucide-react';
 import { QCInspection } from '../../types';
 import { evaluateQcSuccessRating } from '../../utils/qcJobsAggregation';
@@ -27,6 +28,29 @@ export const QcAuditResultModal: React.FC<QcAuditResultModalProps> = ({
   inspection,
 }) => {
   const [copied, setCopied] = useState(false);
+  const [zoomedPhoto, setZoomedPhoto] = useState<{ url: string; title: string } | null>(null);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (zoomedPhoto) {
+          setZoomedPhoto(null);
+        } else {
+          onClose();
+        }
+      }
+    };
+
+    if (isOpen) {
+      window.addEventListener('keydown', handleKeyDown);
+      document.body.style.overflow = 'hidden';
+    }
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      document.body.style.overflow = '';
+    };
+  }, [isOpen, onClose, zoomedPhoto]);
 
   if (!isOpen || !inspection) return null;
 
@@ -81,63 +105,84 @@ export const QcAuditResultModal: React.FC<QcAuditResultModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto animate-in fade-in duration-150">
-      <div className="bg-white rounded-2xl max-w-2xl w-full shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[90vh]">
-        {/* Modal Topbar */}
-        <div className="px-5 py-4 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <span className="p-1.5 bg-blue-100 text-blue-700 rounded-lg">
-              <ShieldCheck className="w-5 h-5" />
-            </span>
-            <div>
-              <h3 className="font-bold text-slate-900 text-sm sm:text-base">
-                Laporan Resmi Evaluasi QC Audit
-              </h3>
-              <p className="text-xs text-slate-500">
-                {inspection.areaName} • Auditor: {inspection.inspectorName}
-              </p>
+    <div
+      id="qc-modal-backdrop"
+      onClick={onClose}
+      className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 overflow-y-auto animate-in fade-in duration-150"
+    >
+      <div
+        id="qc-modal-card"
+        onClick={(e) => e.stopPropagation()}
+        className="bg-white rounded-2xl sm:rounded-3xl max-w-2xl w-full shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[94dvh] animate-in zoom-in-95 duration-150"
+      >
+        {/* Modal Topbar: Fully responsive for mobile phones */}
+        <div className="p-3.5 sm:p-5 border-b border-slate-200 bg-slate-50/90 flex flex-col gap-2.5 shrink-0">
+          <div className="flex items-start justify-between gap-2.5">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <span className="p-2 bg-blue-100 text-blue-700 rounded-xl shrink-0">
+                <ShieldCheck className="w-5 h-5" />
+              </span>
+              <div className="min-w-0">
+                <h3 className="font-bold text-slate-900 text-sm sm:text-base leading-snug">
+                  Laporan Resmi Evaluasi QC Audit
+                </h3>
+                <p className="text-xs text-slate-500 truncate">
+                  {inspection.areaName} • Auditor: {inspection.inspectorName}
+                </p>
+              </div>
             </div>
-          </div>
 
-          <div className="flex items-center gap-2">
+            {/* Prominent, touch-friendly close button */}
             <button
-              type="button"
-              onClick={handleCopy}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 transition-colors cursor-pointer"
-              title="Salin tabel format Markdown"
-            >
-              {copied ? (
-                <>
-                  <Check className="w-3.5 h-3.5 text-emerald-600" />
-                  <span className="text-emerald-700">Tersalin!</span>
-                </>
-              ) : (
-                <>
-                  <Copy className="w-3.5 h-3.5 text-slate-500" />
-                  <span>Salin Markdown</span>
-                </>
-              )}
-            </button>
-            <button
-              type="button"
-              onClick={handlePrint}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 transition-colors cursor-pointer"
-            >
-              <Printer className="w-3.5 h-3.5 text-slate-500" />
-              <span>Cetak</span>
-            </button>
-            <button
+              id="close-qc-modal-btn"
               type="button"
               onClick={onClose}
-              className="p-1.5 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-200 transition-colors cursor-pointer"
+              aria-label="Tutup Laporan QC"
+              className="p-2 rounded-full text-slate-500 hover:text-slate-900 bg-slate-200/80 hover:bg-slate-300 active:bg-slate-400 transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center shrink-0 cursor-pointer shadow-2xs"
             >
               <X className="w-5 h-5" />
             </button>
           </div>
+
+          {/* Action Row: Copy Markdown & Print */}
+          <div className="flex items-center justify-between gap-2 pt-1 border-t border-slate-200/60">
+            <span className="text-[11px] text-slate-600 font-mono">
+              Skor Mutu: <strong className="text-blue-700 font-bold">{inspection.score}/100</strong>
+            </span>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleCopy}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 transition-colors cursor-pointer min-h-[36px]"
+                title="Salin tabel format Markdown"
+              >
+                {copied ? (
+                  <>
+                    <Check className="w-3.5 h-3.5 text-emerald-600" />
+                    <span className="text-emerald-700 font-bold">Tersalin!</span>
+                  </>
+                ) : (
+                  <>
+                    <Copy className="w-3.5 h-3.5 text-slate-500" />
+                    <span>Salin Markdown</span>
+                  </>
+                )}
+              </button>
+              <button
+                type="button"
+                onClick={handlePrint}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 transition-colors cursor-pointer min-h-[36px]"
+              >
+                <Printer className="w-3.5 h-3.5 text-slate-500" />
+                <span>Cetak</span>
+              </button>
+            </div>
+          </div>
         </div>
 
         {/* Modal Body: Output table */}
-        <div className="p-5 sm:p-6 overflow-y-auto space-y-5 print:p-0">
+        <div className="p-3.5 sm:p-6 overflow-y-auto space-y-5 print:p-0 overscroll-contain flex-1">
           {/* Metadata row */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs bg-slate-50 p-3 rounded-xl border border-slate-200">
             <div>
@@ -302,17 +347,26 @@ export const QcAuditResultModal: React.FC<QcAuditResultModalProps> = ({
                   Terverifikasi Tim QC
                 </span>
               </h5>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                <div className="rounded-xl overflow-hidden border border-slate-200 bg-slate-50 flex flex-col">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                <div
+                  onClick={() => setZoomedPhoto({
+                    url: inspection.photoBefore || 'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?w=600&auto=format&fit=crop&q=80',
+                    title: '1. SEBELUM (Kondisi Awal / Masalah)'
+                  })}
+                  className="rounded-xl overflow-hidden border border-slate-200 bg-slate-50 flex flex-col cursor-pointer group hover:border-blue-300 transition-colors"
+                >
                   <div className="h-32 bg-slate-100 overflow-hidden relative">
                     <img
                       src={inspection.photoBefore || 'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?w=600&auto=format&fit=crop&q=80'}
                       alt="Sebelum Pengerjaan"
-                      className="w-full h-full object-cover"
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
                       referrerPolicy="no-referrer"
                     />
                     <span className="absolute top-1.5 left-1.5 bg-rose-600/90 text-white text-[9px] font-bold px-1.5 py-0.5 rounded shadow-xs">
                       1. SEBELUM
+                    </span>
+                    <span className="absolute bottom-1 right-1 bg-black/60 text-white p-1 rounded-md text-[9px] opacity-0 group-hover:opacity-100 transition-opacity">
+                      <ZoomIn className="w-3 h-3" />
                     </span>
                   </div>
                   <div className="p-1.5 text-center text-[10px] font-medium text-slate-600 bg-white border-t border-slate-100">
@@ -320,16 +374,25 @@ export const QcAuditResultModal: React.FC<QcAuditResultModalProps> = ({
                   </div>
                 </div>
 
-                <div className="rounded-xl overflow-hidden border border-slate-200 bg-slate-50 flex flex-col">
+                <div
+                  onClick={() => setZoomedPhoto({
+                    url: inspection.photoProgress || 'https://images.unsplash.com/photo-1581578731548-c64695cc6952?w=600&auto=format&fit=crop&q=80',
+                    title: '2. PROSES (Eksekusi SOP & Treatment)'
+                  })}
+                  className="rounded-xl overflow-hidden border border-slate-200 bg-slate-50 flex flex-col cursor-pointer group hover:border-blue-300 transition-colors"
+                >
                   <div className="h-32 bg-slate-100 overflow-hidden relative">
                     <img
                       src={inspection.photoProgress || 'https://images.unsplash.com/photo-1581578731548-c64695cc6952?w=600&auto=format&fit=crop&q=80'}
                       alt="Saat Proses Pengerjaan"
-                      className="w-full h-full object-cover"
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
                       referrerPolicy="no-referrer"
                     />
                     <span className="absolute top-1.5 left-1.5 bg-amber-500/90 text-white text-[9px] font-bold px-1.5 py-0.5 rounded shadow-xs">
                       2. PROSES
+                    </span>
+                    <span className="absolute bottom-1 right-1 bg-black/60 text-white p-1 rounded-md text-[9px] opacity-0 group-hover:opacity-100 transition-opacity">
+                      <ZoomIn className="w-3 h-3" />
                     </span>
                   </div>
                   <div className="p-1.5 text-center text-[10px] font-medium text-slate-600 bg-white border-t border-slate-100">
@@ -337,16 +400,25 @@ export const QcAuditResultModal: React.FC<QcAuditResultModalProps> = ({
                   </div>
                 </div>
 
-                <div className="rounded-xl overflow-hidden border border-slate-200 bg-slate-50 flex flex-col">
+                <div
+                  onClick={() => setZoomedPhoto({
+                    url: inspection.photoAfter || inspection.photoProof || 'https://images.unsplash.com/photo-1620626011761-996317b8d101?w=600&auto=format&fit=crop&q=80',
+                    title: '3. SESUDAH (Hasil Akhir Standar QC)'
+                  })}
+                  className="rounded-xl overflow-hidden border border-slate-200 bg-slate-50 flex flex-col cursor-pointer group hover:border-blue-300 transition-colors"
+                >
                   <div className="h-32 bg-slate-100 overflow-hidden relative">
                     <img
                       src={inspection.photoAfter || inspection.photoProof || 'https://images.unsplash.com/photo-1620626011761-996317b8d101?w=600&auto=format&fit=crop&q=80'}
                       alt="Sesudah Pengerjaan Selesai"
-                      className="w-full h-full object-cover"
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
                       referrerPolicy="no-referrer"
                     />
                     <span className="absolute top-1.5 left-1.5 bg-emerald-600/90 text-white text-[9px] font-bold px-1.5 py-0.5 rounded shadow-xs">
                       3. SESUDAH
+                    </span>
+                    <span className="absolute bottom-1 right-1 bg-black/60 text-white p-1 rounded-md text-[9px] opacity-0 group-hover:opacity-100 transition-opacity">
+                      <ZoomIn className="w-3 h-3" />
                     </span>
                   </div>
                   <div className="p-1.5 text-center text-[10px] font-medium text-slate-600 bg-white border-t border-slate-100">
@@ -358,18 +430,63 @@ export const QcAuditResultModal: React.FC<QcAuditResultModalProps> = ({
           )}
         </div>
 
-        {/* Modal Bottom Footer */}
-        <div className="px-5 py-3 border-t border-slate-200 bg-slate-50 flex items-center justify-between text-xs text-slate-500">
-          <span>Verifikasi resmi Auditor QC bersertifikat fasilitas.</span>
+        {/* Modal Bottom Footer: Touch-friendly */}
+        <div className="p-3 sm:p-4 border-t border-slate-200 bg-slate-50 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 shrink-0 text-xs text-slate-500">
+          <span className="text-center sm:text-left">Verifikasi resmi Auditor QC bersertifikat fasilitas.</span>
           <button
+            id="dismiss-qc-modal-btn"
             type="button"
             onClick={onClose}
-            className="px-4 py-1.5 bg-slate-800 hover:bg-slate-900 text-white font-semibold rounded-lg transition-colors cursor-pointer"
+            className="w-full sm:w-auto px-6 py-2.5 bg-slate-900 hover:bg-black active:bg-slate-800 text-white font-bold rounded-xl transition-colors cursor-pointer min-h-[44px] flex items-center justify-center"
           >
             Tutup
           </button>
         </div>
       </div>
+
+      {/* Photo Preview Lightbox */}
+      {zoomedPhoto && (
+        <div
+          id="qc-zoomed-photo-modal"
+          onClick={() => setZoomedPhoto(null)}
+          className="fixed inset-0 z-60 bg-black/90 backdrop-blur-md flex flex-col items-center justify-between p-3 sm:p-6"
+        >
+          <div className="w-full max-w-3xl flex items-center justify-between text-white pb-3">
+            <h4 className="text-sm sm:text-base font-bold text-white">{zoomedPhoto.title}</h4>
+            <button
+              id="close-qc-zoomed-photo-btn"
+              type="button"
+              onClick={() => setZoomedPhoto(null)}
+              className="p-2 rounded-full bg-white/20 hover:bg-white/30 text-white min-w-[44px] min-h-[44px] flex items-center justify-center cursor-pointer transition-colors"
+              aria-label="Tutup Perbesaran"
+            >
+              <X className="w-6 h-6" />
+            </button>
+          </div>
+
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="flex-1 max-w-3xl w-full flex items-center justify-center overflow-hidden p-2"
+          >
+            <img
+              src={zoomedPhoto.url}
+              alt={zoomedPhoto.title}
+              className="max-w-full max-h-[80dvh] object-contain rounded-xl shadow-2xl"
+              referrerPolicy="no-referrer"
+            />
+          </div>
+
+          <div className="w-full max-w-3xl pt-3 text-right">
+            <button
+              type="button"
+              onClick={() => setZoomedPhoto(null)}
+              className="px-5 py-2.5 bg-white/20 hover:bg-white/30 text-white font-semibold rounded-xl min-h-[44px] cursor-pointer"
+            >
+              Tutup Perbesaran
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

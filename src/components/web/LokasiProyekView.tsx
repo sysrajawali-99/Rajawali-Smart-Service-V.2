@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Building2,
   Plus,
@@ -13,6 +13,7 @@ import {
   UserCheck,
   Search,
   Filter,
+  X,
 } from 'lucide-react';
 import { useCleaning } from '../../context/CleaningContext';
 import { ProjectLocation } from '../../types';
@@ -47,6 +48,23 @@ export const LokasiProyekView: React.FC = () => {
 
   // User assignment tab state
   const [activeSubTab, setActiveSubTab] = useState<'projects' | 'user_access'>('projects');
+
+  // Keyboard shortcut: Escape to close modal
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && showAddModal) {
+        setShowAddModal(false);
+      }
+    };
+    if (showAddModal) {
+      window.addEventListener('keydown', handleKeyDown);
+      document.body.style.overflow = 'hidden';
+    }
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      document.body.style.overflow = '';
+    };
+  }, [showAddModal]);
 
   const filteredProjects = projects.filter(
     (p) =>
@@ -426,23 +444,34 @@ export const LokasiProyekView: React.FC = () => {
 
       {/* Modal Add / Edit Project */}
       {showAddModal && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-slate-100 space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-              <h3 className="font-bold text-base text-slate-900 flex items-center gap-2">
-                <Building2 className="w-5 h-5 text-sky-600" />
-                {editingProject ? 'Edit Lokasi Proyek' : 'Tambah Lokasi Proyek Baru'}
+        <div
+          id="project-modal-backdrop"
+          onClick={() => setShowAddModal(false)}
+          className="fixed inset-0 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 z-50 overflow-y-auto animate-in fade-in duration-150"
+        >
+          <div
+            id="project-modal-card"
+            onClick={(e) => e.stopPropagation()}
+            className="bg-white rounded-2xl sm:rounded-3xl max-w-lg w-full p-4 sm:p-6 shadow-2xl border border-slate-100 space-y-4 max-h-[92dvh] overflow-y-auto overscroll-contain my-auto"
+          >
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 gap-2">
+              <h3 className="font-bold text-sm sm:text-base text-slate-900 flex items-center gap-2 truncate">
+                <Building2 className="w-5 h-5 text-sky-600 shrink-0" />
+                <span className="truncate">{editingProject ? 'Edit Lokasi Proyek' : 'Tambah Lokasi Proyek Baru'}</span>
               </h3>
               <button
+                id="close-project-modal-btn"
+                type="button"
                 onClick={() => setShowAddModal(false)}
-                className="text-slate-400 hover:text-slate-600 text-lg leading-none"
+                aria-label="Tutup Jendela Lokasi Proyek"
+                className="text-slate-400 hover:text-slate-700 active:text-slate-900 p-2 rounded-full hover:bg-slate-100 min-w-[44px] min-h-[44px] flex items-center justify-center shrink-0 cursor-pointer transition-colors"
               >
-                ✕
+                <X className="w-5 h-5" />
               </button>
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-3.5 text-xs">
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block font-semibold text-slate-700 mb-1">Kode Proyek</label>
                   <input
@@ -474,7 +503,7 @@ export const LokasiProyekView: React.FC = () => {
                   required
                   value={formName}
                   onChange={(e) => setFormName(e.target.value)}
-                  className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-sky-500"
+                  className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-sky-500 font-semibold"
                   placeholder="Contoh: Menara BCA Grand Indonesia"
                 />
               </div>
@@ -491,7 +520,7 @@ export const LokasiProyekView: React.FC = () => {
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block font-semibold text-slate-700 mb-1">Total Lantai Gedung</label>
                   <input
@@ -527,17 +556,18 @@ export const LokasiProyekView: React.FC = () => {
                 />
               </div>
 
-              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+              <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-2 pt-3 border-t border-slate-100">
                 <button
+                  id="cancel-project-modal-btn"
                   type="button"
                   onClick={() => setShowAddModal(false)}
-                  className="px-4 py-2 border border-slate-200 rounded-xl text-slate-600 hover:bg-slate-50 font-medium"
+                  className="px-5 py-2.5 border border-slate-200 rounded-xl text-slate-700 hover:bg-slate-100 active:bg-slate-200 font-semibold min-h-[44px] flex items-center justify-center cursor-pointer transition-colors"
                 >
                   Batal
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 bg-sky-600 hover:bg-sky-700 text-white rounded-xl font-semibold shadow-xs"
+                  className="px-5 py-2.5 bg-sky-600 hover:bg-sky-700 text-white rounded-xl font-bold shadow-xs min-h-[44px] flex items-center justify-center cursor-pointer transition-colors"
                 >
                   {editingProject ? 'Simpan Perubahan' : 'Buat Lokasi Proyek'}
                 </button>
