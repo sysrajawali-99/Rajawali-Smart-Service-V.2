@@ -15,9 +15,22 @@ import {
   Trash2,
   Building2,
   Lock,
+  SlidersHorizontal,
+  RotateCcw,
+  Sparkles,
+  BarChart3,
+  Award,
+  FileCheck2,
+  Wrench,
+  Activity,
+  CheckCircle2,
+  LayoutDashboard,
+  Eye,
+  EyeOff,
+  ArrowRight,
 } from 'lucide-react';
 import { useCleaning } from '../../context/CleaningContext';
-import { ChecklistLocationCategory } from '../../types';
+import { ChecklistLocationCategory, DashboardKpiVisibilityConfig } from '../../types';
 
 export const PengaturanView: React.FC = () => {
   const {
@@ -27,6 +40,10 @@ export const PengaturanView: React.FC = () => {
     addChecklistTemplate,
     deleteChecklistTemplate,
     setActiveTab,
+    kpiConfig,
+    updateKpiConfig,
+    resetKpiConfig,
+    toggleKpiWidget,
   } = useCleaning();
 
   const [deadlineAlertMins, setDeadlineAlertMins] = useState(15);
@@ -59,6 +76,134 @@ export const PengaturanView: React.FC = () => {
     setIsSaved(true);
     setTimeout(() => setIsSaved(false), 3000);
   };
+
+  // KPI widget section metadata for configuration
+  const kpiSections: {
+    key: keyof DashboardKpiVisibilityConfig;
+    title: string;
+    description: string;
+    category: 'KPI Kinerja' | 'Operasional & Area' | 'Aktivitas';
+    icon: React.ComponentType<{ className?: string }>;
+    badge?: string;
+  }[] = [
+    {
+      key: 'kpiWorkLifecycle',
+      title: 'KPI Siklus Pekerjaan (Rencana, Proses, Selesai)',
+      description: 'Menampilkan ringkasan volume tugas yang direncanakan, sedang dikerjakan/QC, telah selesai, dan persentase ketercapaian target harian.',
+      category: 'KPI Kinerja',
+      icon: BarChart3,
+      badge: 'Utama',
+    },
+    {
+      key: 'kpiQualityScore',
+      title: 'KPI Nilai Kualitas & Audit QC (Skor Mutu)',
+      description: 'Menampilkan rata-rata skor kualitas kebersihan (0-100), predikat mutu (Grade A/B/C), persentase kelulusan QC, dan rating per kriteria kebersihan.',
+      category: 'KPI Kinerja',
+      icon: Award,
+      badge: 'Prioritas',
+    },
+    {
+      key: 'kpiSummaryCards',
+      title: 'Kartu Metrik Cepat (4 Indikator Utama)',
+      description: 'Kartu metrik atas: Tingkat Kebersihan Area %, Petugas On-Duty, Lolos QC Inspeksi %, dan Tiket Komplain Aktif.',
+      category: 'KPI Kinerja',
+      icon: Sparkles,
+    },
+    {
+      key: 'kpiChecklistCompliance',
+      title: 'KPI Kepatuhan Ceklist 24 Jam & Kontrol Berkala',
+      description: 'Metrik kepatuhan pengisian ceklist berkala 24 jam (00.00-24.00), slot jam bersih vs temuan isu, dan kepatuhan SOP.',
+      category: 'KPI Kinerja',
+      icon: FileCheck2,
+    },
+    {
+      key: 'kpiDamageReports',
+      title: 'KPI Laporan Kerusakan Barang / Fasilitas',
+      description: 'Statistik tiket kerusakan fasilitas gedung, tingkat kritis/urgent, progres penanganan teknisi, dan estimasi biaya perbaikan.',
+      category: 'KPI Kinerja',
+      icon: Wrench,
+    },
+    {
+      key: 'areaRealtimeStatus',
+      title: 'Status Pembersihan Area per Lantai',
+      description: 'Peta kartu kondisi kebersihan per zona lantai (Bersih, Sedang Dikerjakan, Perlu Pembersihan, Diinspeksi).',
+      category: 'Operasional & Area',
+      icon: Layers,
+    },
+    {
+      key: 'quickActions',
+      title: 'Panel Aksi Cepat Operasional',
+      description: 'Tombol pintas pengawas untuk catat komplain cepat, mulai QC audit, jadwal shift, dan buka ceklist 24 jam.',
+      category: 'Operasional & Area',
+      icon: Clock,
+    },
+    {
+      key: 'checklist24QuickView',
+      title: 'Ringkasan Ceklist Area Hari Ini',
+      description: 'Daftar lokasi ceklist toilet & koridor hari ini dengan indikator jumlah jam bersih dan jumlah isu terdeteksi.',
+      category: 'Operasional & Area',
+      icon: CheckCircle2,
+    },
+    {
+      key: 'liveActivityFeed',
+      title: 'Live Feed Aktivitas & Foto Before-After',
+      description: 'Galeri dokumentasi pengerjaan pembersihan real-time dengan verifikasi foto sebelum vs sesudah terwatermark.',
+      category: 'Aktivitas',
+      icon: Activity,
+    },
+  ];
+
+  const handleSelectAllKpi = (visible: boolean) => {
+    const updated: DashboardKpiVisibilityConfig = {
+      kpiSummaryCards: visible,
+      kpiWorkLifecycle: visible,
+      kpiQualityScore: visible,
+      kpiChecklistCompliance: visible,
+      kpiDamageReports: visible,
+      areaRealtimeStatus: visible,
+      quickActions: visible,
+      checklist24QuickView: visible,
+      liveActivityFeed: visible,
+    };
+    updateKpiConfig(updated);
+    setIsSaved(true);
+    setTimeout(() => setIsSaved(false), 2500);
+  };
+
+  const handlePresetFocusKpi = () => {
+    updateKpiConfig({
+      kpiSummaryCards: true,
+      kpiWorkLifecycle: true,
+      kpiQualityScore: true,
+      kpiChecklistCompliance: true,
+      kpiDamageReports: true,
+      areaRealtimeStatus: false,
+      quickActions: false,
+      checklist24QuickView: false,
+      liveActivityFeed: false,
+    });
+    setIsSaved(true);
+    setTimeout(() => setIsSaved(false), 2500);
+  };
+
+  const handlePresetCompact = () => {
+    updateKpiConfig({
+      kpiSummaryCards: true,
+      kpiWorkLifecycle: true,
+      kpiQualityScore: true,
+      kpiChecklistCompliance: false,
+      kpiDamageReports: false,
+      areaRealtimeStatus: false,
+      quickActions: false,
+      checklist24QuickView: false,
+      liveActivityFeed: false,
+    });
+    setIsSaved(true);
+    setTimeout(() => setIsSaved(false), 2500);
+  };
+
+  const activeWidgetsCount = Object.values(kpiConfig).filter(Boolean).length;
+  const totalWidgetsCount = Object.keys(kpiConfig).length;
 
   const rolesMatrix = [
     {
@@ -162,16 +307,214 @@ export const PengaturanView: React.FC = () => {
             Pengaturan Sistem & Master Data
           </h2>
           <p className="text-xs text-slate-500 mt-0.5">
-            Konfigurasi master data item ceklist kebersihan, aturan notifikasi batas waktu, dan hak akses proyek
+            Konfigurasi master data item ceklist, pengaturan tampilan KPI dashboard, aturan notifikasi, dan hak akses
           </p>
         </div>
 
-        {isSaved && (
-          <div className="px-3 py-1.5 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-semibold flex items-center gap-1.5 animate-in fade-in">
-            <Check className="w-4 h-4 text-emerald-600" />
-            <span>Perubahan Berhasil Disimpan!</span>
+        <div className="flex items-center gap-2">
+          {isSaved && (
+            <div className="px-3 py-1.5 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-semibold flex items-center gap-1.5 animate-in fade-in">
+              <Check className="w-4 h-4 text-emerald-600" />
+              <span>Pengaturan Berhasil Disimpan!</span>
+            </div>
+          )}
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('dashboard')}
+            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs transition-colors shadow-xs"
+          >
+            <LayoutDashboard className="w-3.5 h-3.5" />
+            <span>Lihat Hasil di Dashboard →</span>
+          </button>
+        </div>
+      </div>
+
+      {/* SECTION: Pengaturan Tampilan KPI & Widget Dashboard (Dipindahkan dari Dashboard) */}
+      <div
+        id="section-kpi-settings"
+        className="p-5 sm:p-6 rounded-2xl bg-white border border-blue-200/80 shadow-xs space-y-5 relative overflow-hidden"
+      >
+        <div className="absolute top-0 right-0 w-48 h-48 bg-blue-50/50 rounded-full blur-2xl -mr-16 -mt-16 pointer-events-none" />
+
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-slate-100 relative">
+          <div className="flex items-start gap-3">
+            <div className="w-10 h-10 rounded-xl bg-blue-600 text-white flex items-center justify-center font-bold shadow-xs shrink-0">
+              <SlidersHorizontal className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="font-bold text-slate-900 text-sm sm:text-base">
+                  Pengaturan Tampilan KPI & Widget Dashboard
+                </h3>
+                <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-800">
+                  {activeWidgetsCount} dari {totalWidgetsCount} Widget Aktif
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 mt-0.5 max-w-2xl">
+                Tentukan metrik, diagram, kartu operasional, dan feed aktivitas apa saja yang ditampilkan pada layar utama Dashboard.
+                Semua perubahan langsung tersimpan dan dapat disesuaikan kembali sewaktu-waktu.
+              </p>
+            </div>
+          </div>
+
+          {/* Quick Preset Buttons */}
+          <div className="flex flex-wrap items-center gap-1.5 shrink-0">
+            <span className="text-slate-400 text-[11px] mr-1 hidden lg:inline">Preset:</span>
+            <button
+              type="button"
+              onClick={() => handleSelectAllKpi(true)}
+              className="px-2.5 py-1.5 font-semibold text-xs text-blue-700 hover:text-blue-800 hover:bg-blue-100/70 bg-blue-50 rounded-xl border border-blue-200 transition-colors cursor-pointer"
+              title="Aktifkan seluruh widget KPI di dashboard"
+            >
+              Aktifkan Semua
+            </button>
+            <button
+              type="button"
+              onClick={handlePresetFocusKpi}
+              className="px-2.5 py-1.5 font-semibold text-xs text-amber-800 hover:text-amber-900 hover:bg-amber-100/70 bg-amber-50 rounded-xl border border-amber-200 transition-colors cursor-pointer"
+              title="Fokus hanya pada kartu KPI kinerja & mutu"
+            >
+              🎯 Fokus KPI Kinerja
+            </button>
+            <button
+              type="button"
+              onClick={handlePresetCompact}
+              className="px-2.5 py-1.5 font-semibold text-xs text-slate-700 hover:text-slate-900 hover:bg-slate-100 bg-white rounded-xl border border-slate-200 transition-colors cursor-pointer"
+              title="Tampilkan hanya ringkasan siklus kerja & skor kualitas"
+            >
+              ⚡ Ringkas
+            </button>
+            <button
+              type="button"
+              onClick={() => handleSelectAllKpi(false)}
+              className="px-2.5 py-1.5 font-semibold text-xs text-slate-600 hover:text-slate-800 hover:bg-slate-100 bg-slate-50 rounded-xl border border-slate-200 transition-colors cursor-pointer"
+              title="Sembunyikan semua widget (Dashboard bersih)"
+            >
+              Kosongkan Dashboard
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                resetKpiConfig();
+                setIsSaved(true);
+                setTimeout(() => setIsSaved(false), 2500);
+              }}
+              className="inline-flex items-center gap-1 px-2.5 py-1.5 font-semibold text-xs text-slate-600 hover:text-slate-800 hover:bg-slate-100 bg-white rounded-xl border border-slate-200 transition-colors cursor-pointer"
+              title="Reset ke kondisi awal default"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              <span>Reset</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Status explanation notice if 0 widgets active */}
+        {activeWidgetsCount === 0 && (
+          <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <EyeOff className="w-4 h-4 text-amber-600 shrink-0" />
+              <span>
+                <strong>Dashboard saat ini dalam kondisi kosong</strong>. Aktifkan sakelar widget di bawah untuk mulai menampilkan data yang diinginkan di dashboard.
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => handleSelectAllKpi(true)}
+              className="px-3 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded-lg font-bold text-xs shrink-0 transition-colors"
+            >
+              Tampilkan Semua
+            </button>
           </div>
         )}
+
+        {/* List of KPI Widgets to Toggle */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
+          {kpiSections.map((section) => {
+            const Icon = section.icon;
+            const isVisible = kpiConfig[section.key];
+
+            return (
+              <div
+                key={section.key}
+                onClick={() => {
+                  toggleKpiWidget(section.key);
+                  setIsSaved(true);
+                  setTimeout(() => setIsSaved(false), 2000);
+                }}
+                className={`p-4 rounded-xl border transition-all cursor-pointer flex flex-col justify-between select-none ${
+                  isVisible
+                    ? 'bg-blue-50/40 border-blue-200 hover:bg-blue-50/70 shadow-2xs'
+                    : 'bg-slate-50/60 border-slate-200 hover:border-slate-300 opacity-70'
+                }`}
+              >
+                <div className="space-y-2">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div
+                        className={`p-2 rounded-xl shrink-0 transition-colors ${
+                          isVisible ? 'bg-blue-600 text-white shadow-xs' : 'bg-slate-200 text-slate-500'
+                        }`}
+                      >
+                        <Icon className="w-4 h-4" />
+                      </div>
+                      <div className="min-w-0">
+                        <span className="text-[10px] font-bold text-slate-400 block uppercase tracking-wider">
+                          {section.category}
+                        </span>
+                        <h4
+                          className={`text-xs font-bold leading-tight line-clamp-1 ${
+                            isVisible ? 'text-slate-900' : 'text-slate-600'
+                          }`}
+                        >
+                          {section.title}
+                        </h4>
+                      </div>
+                    </div>
+
+                    {/* Switch Toggle */}
+                    <div className="shrink-0 pt-0.5">
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={isVisible}
+                        className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-hidden ${
+                          isVisible ? 'bg-blue-600' : 'bg-slate-300'
+                        }`}
+                      >
+                        <span
+                          className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ease-in-out ${
+                            isVisible ? 'translate-x-4' : 'translate-x-0'
+                          }`}
+                        />
+                      </button>
+                    </div>
+                  </div>
+
+                  <p className="text-[11px] text-slate-500 line-clamp-2 leading-relaxed">
+                    {section.description}
+                  </p>
+                </div>
+
+                <div className="mt-3 pt-2 border-t border-slate-100 flex items-center justify-between text-[11px]">
+                  <span
+                    className={`font-semibold flex items-center gap-1 ${
+                      isVisible ? 'text-blue-700' : 'text-slate-400'
+                    }`}
+                  >
+                    {isVisible ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
+                    {isVisible ? 'Tampil di Dashboard' : 'Disembunyikan'}
+                  </span>
+                  {section.badge && (
+                    <span className="text-[10px] font-bold px-1.5 py-0.2 bg-blue-100 text-blue-800 rounded">
+                      {section.badge}
+                    </span>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
       </div>
 
       {/* Section 1: Master Data Item Ceklist Kebersihan Area */}

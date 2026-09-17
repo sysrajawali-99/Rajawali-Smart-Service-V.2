@@ -16,15 +16,14 @@ import {
   Building2,
   SlidersHorizontal,
   Calendar,
+  Layers,
+  Settings,
+  PlusCircle,
+  BarChart3,
 } from 'lucide-react';
 import { useCleaning } from '../../context/CleaningContext';
 import { BeforeAfterModal } from '../modals/BeforeAfterModal';
 import { NewComplaintModal } from '../modals/NewComplaintModal';
-import {
-  DashboardKpiSettingsModal,
-  DEFAULT_KPI_VISIBILITY,
-  DashboardKpiVisibilityConfig,
-} from './DashboardKpiSettingsModal';
 import { DashboardKpiSection } from './DashboardKpiSection';
 
 export const DashboardView: React.FC = () => {
@@ -39,47 +38,11 @@ export const DashboardView: React.FC = () => {
     dailyChecklists,
     setActiveTab,
     setSelectedTaskId,
+    kpiConfig,
   } = useCleaning();
 
   const [previewTask, setPreviewTask] = useState<any | null>(null);
   const [showComplaintModal, setShowComplaintModal] = useState(false);
-  const [showSettingsModal, setShowSettingsModal] = useState(false);
-
-  // Load KPI visibility configuration with persistent localStorage
-  const [kpiConfig, setKpiConfig] = useState<DashboardKpiVisibilityConfig>(() => {
-    try {
-      const saved = localStorage.getItem('sco_dashboard_kpi_config');
-      if (saved) {
-        return { ...DEFAULT_KPI_VISIBILITY, ...JSON.parse(saved) };
-      }
-    } catch (e) {
-      console.error('Failed to load dashboard KPI config:', e);
-    }
-    return DEFAULT_KPI_VISIBILITY;
-  });
-
-  const handleUpdateKpiConfig = (newConfig: DashboardKpiVisibilityConfig) => {
-    setKpiConfig(newConfig);
-    try {
-      localStorage.setItem('sco_dashboard_kpi_config', JSON.stringify(newConfig));
-    } catch (e) {
-      console.error('Failed to save dashboard KPI config:', e);
-    }
-  };
-
-  const handleResetKpiConfig = () => {
-    setKpiConfig(DEFAULT_KPI_VISIBILITY);
-    try {
-      localStorage.removeItem('sco_dashboard_kpi_config');
-    } catch (e) {
-      console.error('Failed to reset dashboard KPI config:', e);
-    }
-  };
-
-  const handleToggleWidget = (key: keyof DashboardKpiVisibilityConfig) => {
-    const updated = { ...kpiConfig, [key]: !kpiConfig[key] };
-    handleUpdateKpiConfig(updated);
-  };
 
   // Statistics calculation
   const totalAreas = areas.length;
@@ -100,7 +63,6 @@ export const DashboardView: React.FC = () => {
   const inProgressTasks = tasks.filter((t) => t.status === 'in_progress');
 
   const activeWidgetsCount = Object.values(kpiConfig).filter(Boolean).length;
-  const totalWidgetsCount = Object.keys(kpiConfig).length;
 
   return (
     <div className="p-4 sm:p-6 space-y-6 max-w-7xl mx-auto">
@@ -125,26 +87,36 @@ export const DashboardView: React.FC = () => {
             </p>
           </div>
         </div>
-
-        {/* Settings button to control which KPI widgets are shown or hidden */}
-        <div className="flex items-center gap-2">
-          <button
-            id="btn-kpi-settings"
-            onClick={() => setShowSettingsModal(true)}
-            className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-3.5 py-2 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-700 hover:text-slate-900 border border-slate-300 font-semibold text-xs shadow-xs transition-all cursor-pointer"
-            title="Atur widget dan KPI yang ditampilkan di dashboard"
-          >
-            <SlidersHorizontal className="w-3.5 h-3.5 text-blue-600" />
-            <span>Pengaturan Tampilan KPI</span>
-            <span className="text-[10px] bg-blue-100 text-blue-800 font-bold px-1.5 py-0.2 rounded-full">
-              {activeWidgetsCount}/{totalWidgetsCount}
-            </span>
-          </button>
-        </div>
       </div>
 
-      {/* Top Banner Alert if Urgent Complaints exist */}
-      {urgentComplaints.length > 0 && (
+      {/* When no KPI widgets are active: Empty Dashboard State according to user request */}
+      {activeWidgetsCount === 0 && (
+        <div className="p-8 sm:p-12 rounded-3xl bg-white border border-slate-200 shadow-xs text-center space-y-4 max-w-2xl mx-auto my-6">
+          <div className="w-16 h-16 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center mx-auto shadow-xs border border-blue-100">
+            <SlidersHorizontal className="w-8 h-8" />
+          </div>
+          <div className="space-y-1.5">
+            <h3 className="text-base sm:text-lg font-bold text-slate-900">
+              Dashboard Saat Ini Belum Dikonfigurasi
+            </h3>
+            <p className="text-xs sm:text-sm text-slate-500 max-w-md mx-auto leading-relaxed">
+              Semua data dan widget pada dashboard telah dikosongkan. Anda dapat mengatur dan memilih tampilan KPI yang ingin dimunculkan melalui menu <strong>Pengaturan & Master Data</strong>.
+            </p>
+          </div>
+          <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-3">
+            <button
+              onClick={() => setActiveTab('pengaturan')}
+              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs sm:text-sm shadow-xs transition-colors cursor-pointer"
+            >
+              <Settings className="w-4 h-4" />
+              <span>Buka Menu Pengaturan & Master Data</span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Top Banner Alert if Urgent Complaints exist and dashboard is configured */}
+      {activeWidgetsCount > 0 && urgentComplaints.length > 0 && (
         <div className="p-3.5 rounded-2xl bg-rose-50 border border-rose-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-xl bg-rose-100 text-rose-600 flex items-center justify-center shrink-0">
@@ -176,8 +148,6 @@ export const DashboardView: React.FC = () => {
         kpiConfig.kpiDamageReports) && (
         <DashboardKpiSection
           visibility={kpiConfig}
-          onOpenSettings={() => setShowSettingsModal(true)}
-          onToggleVisibility={handleToggleWidget}
         />
       )}
 
@@ -604,15 +574,6 @@ export const DashboardView: React.FC = () => {
       <NewComplaintModal
         isOpen={showComplaintModal}
         onClose={() => setShowComplaintModal(false)}
-      />
-
-      {/* Dashboard KPI Visibility Customizer Modal */}
-      <DashboardKpiSettingsModal
-        isOpen={showSettingsModal}
-        onClose={() => setShowSettingsModal(false)}
-        config={kpiConfig}
-        onChange={handleUpdateKpiConfig}
-        onReset={handleResetKpiConfig}
       />
     </div>
   );

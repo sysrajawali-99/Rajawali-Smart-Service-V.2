@@ -191,6 +191,19 @@ export interface QCInspection {
   evaluatedInputSummary?: string;
 }
 
+export interface ComplaintExtensionRequest {
+  id: string;
+  requestedHours: number; // Durasi waktu tambahan dalam hitungan jam
+  reason: string; // Alasan pengajuan tambahan waktu
+  requestedBy: string; // Nama pemohon / petugas yang sedang menangani
+  requestedAt: string; // Waktu pengajuan
+  status: 'pending' | 'approved' | 'rejected';
+  revisedHours?: number; // Durasi revisi yang disetujui pembuat tiket (dalam jam)
+  reviewedBy?: string; // Pembuat tiket / pihak yang meninjau
+  reviewedAt?: string;
+  reviewNotes?: string;
+}
+
 export interface Complaint {
   id: string;
   projectId?: string;
@@ -205,14 +218,19 @@ export interface Complaint {
   priority: PriorityLevel;
   status: 'open' | 'in_progress' | 'resolved';
   createdAt: string;
+  startedAt?: string;
   resolvedAt?: string;
   assignedCleanerId?: string;
   assignedCleanerName?: string;
   photoBefore?: string;
+  photoProgress?: string;
   photoResolved?: string;
   resolutionNotes?: string;
-  slaMinutes: number;
-  slaDeadline: string;
+  slaHours: number; // Durasi SLA dalam hitungan jam
+  slaMinutes: number; // Durasi SLA dalam hitungan menit
+  slaDeadline: string; // Teks representasi deadline
+  deadlineTimestamp: number; // Unix epoch milliseconds untuk penghitungan Countdown waktu nyata
+  extensionRequest?: ComplaintExtensionRequest;
 }
 
 export interface ProjectLocation {
@@ -399,4 +417,28 @@ export interface FacilityDamageReport {
   createdAt?: string;
   updatedAt?: string;
 }
+
+export interface DashboardKpiVisibilityConfig {
+  kpiSummaryCards: boolean; // Kartu Ringkasan Metrik Utama (4 Kartu)
+  kpiWorkLifecycle: boolean; // KPI Status Pekerjaan (Direncanakan, Diproses, Diselesaikan)
+  kpiQualityScore: boolean; // KPI Nilai Kualitas & Audit QC (Skor 0-100, Grade Kualitas)
+  kpiChecklistCompliance: boolean; // KPI Kepatuhan Ceklist 24 Jam & Pemantauan SLA
+  kpiDamageReports: boolean; // KPI Kerusakan Fasilitas & Pemeliharaan Aset
+  areaRealtimeStatus: boolean; // Pemantauan Status Kebersihan Area per Lantai
+  quickActions: boolean; // Panel Aksi Cepat Operasional
+  checklist24QuickView: boolean; // Widget Ringkasan Ceklist 24 Jam
+  liveActivityFeed: boolean; // Live Feed Aktivitas & Dokumentasi Before-After
+}
+
+export const DEFAULT_KPI_VISIBILITY_OFF: DashboardKpiVisibilityConfig = {
+  kpiSummaryCards: false,
+  kpiWorkLifecycle: false,
+  kpiQualityScore: false,
+  kpiChecklistCompliance: false,
+  kpiDamageReports: false,
+  areaRealtimeStatus: false,
+  quickActions: false,
+  checklist24QuickView: false,
+  liveActivityFeed: false,
+};
 

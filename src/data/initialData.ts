@@ -1113,11 +1113,14 @@ export const INITIAL_COMPLAINTS: Complaint[] = [
     priority: 'high',
     status: 'in_progress',
     createdAt: 'Hari ini, 10:15 WIB',
+    startedAt: 'Hari ini, 10:20 WIB',
     assignedCleanerId: 'cln-1',
     assignedCleanerName: 'Asep Supriyadi',
     photoBefore: 'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?w=600&auto=format&fit=crop&q=80',
-    slaMinutes: 30,
-    slaDeadline: '10:45 WIB',
+    slaHours: 2,
+    slaMinutes: 120,
+    slaDeadline: '12:15 WIB',
+    deadlineTimestamp: Date.now() + 55 * 60 * 1000, // 55 menit tersisa
   },
   {
     id: 'cmp-02',
@@ -1132,14 +1135,18 @@ export const INITIAL_COMPLAINTS: Complaint[] = [
     priority: 'urgent',
     status: 'resolved',
     createdAt: 'Hari ini, 07:45 WIB',
+    startedAt: 'Hari ini, 07:48 WIB',
     resolvedAt: 'Hari ini, 07:58 WIB',
     assignedCleanerId: 'cln-1',
     assignedCleanerName: 'Asep Supriyadi',
     photoBefore: 'https://images.unsplash.com/photo-1517256064527-09c73fc73e38?w=600&auto=format&fit=crop&q=80',
+    photoProgress: 'https://images.unsplash.com/photo-1581578731548-c64695cc6952?w=600&auto=format&fit=crop&q=80',
     photoResolved: 'https://images.unsplash.com/photo-1497366811353-6870744d04b2?w=600&auto=format&fit=crop&q=80',
     resolutionNotes: 'Sudah dipel dengan floor neutralizer, dipasang wet floor sign, dan dipastikan kering dalam 10 menit.',
-    slaMinutes: 15,
-    slaDeadline: '08:00 WIB',
+    slaHours: 1,
+    slaMinutes: 60,
+    slaDeadline: '08:45 WIB',
+    deadlineTimestamp: Date.now() - 3600 * 1000,
   },
   {
     id: 'cmp-03',
@@ -1156,8 +1163,10 @@ export const INITIAL_COMPLAINTS: Complaint[] = [
     createdAt: 'Hari ini, 08:10 WIB',
     assignedCleanerId: 'cln-4',
     assignedCleanerName: 'Rian Hidayat',
-    slaMinutes: 60,
-    slaDeadline: '09:10 WIB',
+    slaHours: 4,
+    slaMinutes: 240,
+    slaDeadline: '12:10 WIB',
+    deadlineTimestamp: Date.now() + 110 * 60 * 1000, // 110 menit tersisa
   }
 ];
 

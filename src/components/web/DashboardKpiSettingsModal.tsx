@@ -29,6 +29,7 @@ export interface DashboardKpiVisibilityConfig {
   liveActivityFeed: boolean; // Live Feed Aktivitas & Dokumentasi Before-After
 }
 
+export { DEFAULT_KPI_VISIBILITY_OFF } from '../../types';
 export const DEFAULT_KPI_VISIBILITY: DashboardKpiVisibilityConfig = {
   kpiSummaryCards: true,
   kpiWorkLifecycle: true,

@@ -9,6 +9,8 @@ import {
   CleaningTask,
   QCInspection,
   Complaint,
+  ComplaintExtensionRequest,
+  PriorityLevel,
   AppNotification,
   TaskChecklistItem,
   SupplyUsage,
@@ -25,6 +27,8 @@ import {
   AttendanceStatusCode,
   FacilityDamageReport,
   DamageReportStatus,
+  DashboardKpiVisibilityConfig,
+  DEFAULT_KPI_VISIBILITY_OFF,
 } from '../types';
 import { calculateShiftDuration } from '../utils/shiftUtils';
 import { normalizeFrequencyCode, getNextProgramDayStatus } from '../utils/mcpUtils';
@@ -234,13 +238,23 @@ interface CleaningContextType {
       areaId: string;
       category: string;
       description: string;
-      priority: 'low' | 'medium' | 'high' | 'urgent';
+      priority: PriorityLevel;
+      slaHours: number;
       photoBefore?: string;
     }
+  ) => void;
+  startHandlingComplaint: (complaintId: string) => void;
+  requestComplaintExtension: (complaintId: string, hours: number, reason: string) => void;
+  respondToComplaintExtension: (
+    complaintId: string,
+    action: 'approve' | 'revise' | 'reject',
+    revisedHours?: number,
+    reviewNotes?: string
   ) => void;
   resolveComplaint: (
     complaintId: string,
     resolutionNotes: string,
+    photoProgress?: string,
     photoResolved?: string
   ) => void;
   addArea: (newArea: Omit<Area, 'id'>) => void;
@@ -259,6 +273,12 @@ interface CleaningContextType {
   clearAllNotifications: () => void;
   triggerDeadlinePushNotification: () => void;
   resetToInitialData: () => void;
+
+  // Dashboard KPI Visibility Settings (Dapat dikonfigurasi melalui Pengaturan & Master Data)
+  kpiConfig: DashboardKpiVisibilityConfig;
+  updateKpiConfig: (newConfig: DashboardKpiVisibilityConfig) => void;
+  resetKpiConfig: () => void;
+  toggleKpiWidget: (key: keyof DashboardKpiVisibilityConfig) => void;
 }
 
 const CleaningContext = createContext<CleaningContextType | undefined>(undefined);
@@ -274,6 +294,42 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const [activeCleanerId, setActiveCleanerId] = useState<string>('cln-1');
   const [activeTab, setActiveTab] = useState<string>('dashboard');
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>('task-101');
+
+  // Dashboard KPI Visibility Configuration (Semua widget dinonaktifkan secara default sesuai instruksi user, dikonfigurasi melalui Pengaturan & Master Data)
+  const [kpiConfig, setKpiConfig] = useState<DashboardKpiVisibilityConfig>(() => {
+    try {
+      const saved = localStorage.getItem('sco_dashboard_kpi_config');
+      if (saved) {
+        return { ...DEFAULT_KPI_VISIBILITY_OFF, ...JSON.parse(saved) };
+      }
+    } catch (e) {
+      console.error('Failed to load dashboard KPI config:', e);
+    }
+    return DEFAULT_KPI_VISIBILITY_OFF;
+  });
+
+  const updateKpiConfig = (newConfig: DashboardKpiVisibilityConfig) => {
+    setKpiConfig(newConfig);
+    try {
+      localStorage.setItem('sco_dashboard_kpi_config', JSON.stringify(newConfig));
+    } catch (e) {
+      console.error('Failed to save dashboard KPI config:', e);
+    }
+  };
+
+  const resetKpiConfig = () => {
+    setKpiConfig(DEFAULT_KPI_VISIBILITY_OFF);
+    try {
+      localStorage.setItem('sco_dashboard_kpi_config', JSON.stringify(DEFAULT_KPI_VISIBILITY_OFF));
+    } catch (e) {
+      console.error('Failed to reset dashboard KPI config:', e);
+    }
+  };
+
+  const toggleKpiWidget = (key: keyof DashboardKpiVisibilityConfig) => {
+    const updated = { ...kpiConfig, [key]: !kpiConfig[key] };
+    updateKpiConfig(updated);
+  };
 
   // 2. Offline Mode & Auto Sync Management
   const [isOnline, setIsOnlineState] = useState<boolean>(() => {
@@ -1403,14 +1459,17 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     areaId: string;
     category: string;
     description: string;
-    priority: 'low' | 'medium' | 'high' | 'urgent';
+    priority: PriorityLevel;
+    slaHours: number;
     photoBefore?: string;
   }) => {
     const area = areas.find((a) => a.id === payload.areaId);
     const nowStr = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB';
-    const slaMins = payload.priority === 'urgent' ? 30 : payload.priority === 'high' ? 60 : 120;
+    const hours = payload.slaHours && payload.slaHours > 0 ? payload.slaHours : 1;
+    const slaMins = Math.round(hours * 60);
+    const deadlineMs = Date.now() + hours * 3600 * 1000;
     const deadlineStr =
-      new Date(Date.now() + slaMins * 60000).toLocaleTimeString('id-ID', {
+      new Date(deadlineMs).toLocaleTimeString('id-ID', {
         hour: '2-digit',
         minute: '2-digit',
       }) + ' WIB';
@@ -1430,8 +1489,10 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       status: 'open',
       createdAt: `Hari ini, ${nowStr}`,
       photoBefore: payload.photoBefore,
+      slaHours: hours,
       slaMinutes: slaMins,
       slaDeadline: deadlineStr,
+      deadlineTimestamp: deadlineMs,
       assignedCleanerId: area?.cleanerId,
       assignedCleanerName: area?.cleanerName,
     };
@@ -1441,7 +1502,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     const notif: AppNotification = {
       id: `notif-${Date.now()}`,
       title: '🚨 Komplain Baru Diterima!',
-      message: `${payload.reporterName} melaporkan: "${payload.category}" di ${area?.name}. SLA penanganan ${slaMins} menit.`,
+      message: `${payload.reporterName} melaporkan: "${payload.category}" di ${area?.name}. SLA penanganan: ${hours} Jam (${slaMins} menit).`,
       timestamp: nowStr,
       type: 'urgent',
       targetRole: ['admin', 'supervisor', 'petugas'],
@@ -1451,9 +1512,206 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setNotifications((prev) => [notif, ...prev]);
   };
 
+  const startHandlingComplaint = (complaintId: string) => {
+    const nowStr = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB';
+    let targetTicket: Complaint | undefined;
+
+    setComplaints((prev) =>
+      prev.map((c) => {
+        if (c.id === complaintId) {
+          targetTicket = {
+            ...c,
+            status: 'in_progress',
+            startedAt: `Hari ini, ${nowStr}`,
+          };
+          return targetTicket;
+        }
+        return c;
+      })
+    );
+
+    if (targetTicket) {
+      const notif: AppNotification = {
+        id: `notif-${Date.now()}`,
+        title: '⚙️ Komplain Sedang Ditangani',
+        message: `Petugas (${targetTicket.assignedCleanerName || 'Tim Kebersihan'}) mulai menangani tiket ${targetTicket.ticketNumber} di ${targetTicket.areaName}.`,
+        timestamp: nowStr,
+        type: 'info',
+        targetRole: ['admin', 'supervisor', 'petugas', 'klien'],
+        read: false,
+        projectId: targetTicket.projectId || safeActiveProjectId,
+      };
+      setNotifications((prev) => [notif, ...prev]);
+    }
+  };
+
+  const requestComplaintExtension = (
+    complaintId: string,
+    hours: number,
+    reason: string
+  ) => {
+    const nowStr = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB';
+    let updatedTicket: Complaint | undefined;
+
+    setComplaints((prev) =>
+      prev.map((c) => {
+        if (c.id === complaintId) {
+          const req: ComplaintExtensionRequest = {
+            id: `ext-${Date.now()}`,
+            requestedHours: hours,
+            reason: reason.trim(),
+            requestedBy: activeCleaner?.name || (userRole === 'petugas' ? 'Petugas Lapangan' : 'Tim Operasional'),
+            requestedAt: `Hari ini, ${nowStr}`,
+            status: 'pending',
+          };
+          updatedTicket = {
+            ...c,
+            extensionRequest: req,
+          };
+          return updatedTicket;
+        }
+        return c;
+      })
+    );
+
+    if (updatedTicket) {
+      const notif: AppNotification = {
+        id: `notif-${Date.now()}`,
+        title: '⏳ Pengajuan Tambahan Waktu Penanganan!',
+        message: `Petugas mengajukan tambahan waktu ${hours} Jam untuk tiket ${updatedTicket.ticketNumber} (${updatedTicket.areaName}). Alasan: "${reason}". Silakan verifikasi pengajuan ini.`,
+        timestamp: nowStr,
+        type: 'warning',
+        targetRole: ['admin', 'supervisor', 'klien'],
+        read: false,
+        projectId: updatedTicket.projectId || safeActiveProjectId,
+      };
+      setNotifications((prev) => [notif, ...prev]);
+    }
+  };
+
+  const respondToComplaintExtension = (
+    complaintId: string,
+    action: 'approve' | 'revise' | 'reject',
+    revisedHours?: number,
+    reviewNotes?: string
+  ) => {
+    const nowStr = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB';
+    const reviewerName =
+      currentUser?.name || (userRole === 'klien' ? 'Pembuat Tiket (Klien)' : 'Pengawas/Admin');
+
+    let ticketAfter: Complaint | undefined;
+
+    setComplaints((prev) =>
+      prev.map((c) => {
+        if (c.id !== complaintId || !c.extensionRequest) return c;
+
+        const currentReq = c.extensionRequest;
+
+        if (action === 'approve') {
+          const addHours = currentReq.requestedHours;
+          const currentDeadline = c.deadlineTimestamp && c.deadlineTimestamp > 0 ? c.deadlineTimestamp : Date.now();
+          const newDeadline = currentDeadline + addHours * 3600 * 1000;
+          const newHours = (c.slaHours || 1) + addHours;
+          const newDeadlineStr = new Date(newDeadline).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB';
+
+          ticketAfter = {
+            ...c,
+            deadlineTimestamp: newDeadline,
+            slaHours: newHours,
+            slaMinutes: newHours * 60,
+            slaDeadline: newDeadlineStr,
+            extensionRequest: {
+              ...currentReq,
+              status: 'approved',
+              reviewedBy: reviewerName,
+              reviewedAt: `Hari ini, ${nowStr}`,
+              reviewNotes: reviewNotes || 'Tambahan waktu disetujui sesuai permohonan.',
+            },
+          };
+          return ticketAfter;
+        }
+
+        if (action === 'revise') {
+          const addHours = revisedHours && revisedHours > 0 ? revisedHours : 1;
+          const currentDeadline = c.deadlineTimestamp && c.deadlineTimestamp > 0 ? c.deadlineTimestamp : Date.now();
+          const newDeadline = currentDeadline + addHours * 3600 * 1000;
+          const newHours = (c.slaHours || 1) + addHours;
+          const newDeadlineStr = new Date(newDeadline).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB';
+
+          ticketAfter = {
+            ...c,
+            deadlineTimestamp: newDeadline,
+            slaHours: newHours,
+            slaMinutes: newHours * 60,
+            slaDeadline: newDeadlineStr,
+            extensionRequest: {
+              ...currentReq,
+              status: 'approved',
+              revisedHours: addHours,
+              reviewedBy: reviewerName,
+              reviewedAt: `Hari ini, ${nowStr}`,
+              reviewNotes: reviewNotes || `Durasi disesuaikan menjadi +${addHours} Jam.`,
+            },
+          };
+          return ticketAfter;
+        }
+
+        if (action === 'reject') {
+          ticketAfter = {
+            ...c,
+            extensionRequest: {
+              ...currentReq,
+              status: 'rejected',
+              reviewedBy: reviewerName,
+              reviewedAt: `Hari ini, ${nowStr}`,
+              reviewNotes: reviewNotes || 'Pengajuan perpanjangan waktu ditolak. Harap selesaikan sesuai batas waktu.',
+            },
+          };
+          return ticketAfter;
+        }
+
+        return c;
+      })
+    );
+
+    if (ticketAfter) {
+      let notifTitle = '';
+      let notifMsg = '';
+      let notifType: 'success' | 'info' | 'urgent' = 'info';
+
+      if (action === 'approve') {
+        notifTitle = '✅ Tambahan Waktu Disetujui!';
+        notifMsg = `Pengajuan tambahan waktu ${ticketAfter.extensionRequest?.requestedHours} Jam untuk tiket ${ticketAfter.ticketNumber} telah disetujui oleh ${reviewerName}. Deadline: ${ticketAfter.slaDeadline}.`;
+        notifType = 'success';
+      } else if (action === 'revise') {
+        notifTitle = '📝 Tambahan Waktu Direvisi & Disetujui!';
+        notifMsg = `Durasi tambahan waktu untuk tiket ${ticketAfter.ticketNumber} direvisi menjadi +${ticketAfter.extensionRequest?.revisedHours} Jam oleh ${reviewerName}. Deadline: ${ticketAfter.slaDeadline}.`;
+        notifType = 'info';
+      } else {
+        notifTitle = '❌ Tambahan Waktu Ditolak!';
+        notifMsg = `Pengajuan tambahan waktu tiket ${ticketAfter.ticketNumber} ditolak oleh ${reviewerName}. Catatan: "${reviewNotes || 'Selesaikan secepatnya'}".`;
+        notifType = 'urgent';
+      }
+
+      // Notifikasi masuk kepada penerima keluhan (petugas lapangan / tim operasional)
+      const notif: AppNotification = {
+        id: `notif-${Date.now()}`,
+        title: notifTitle,
+        message: notifMsg,
+        timestamp: nowStr,
+        type: notifType,
+        targetRole: ['petugas', 'supervisor', 'admin'],
+        read: false,
+        projectId: ticketAfter.projectId || safeActiveProjectId,
+      };
+      setNotifications((prev) => [notif, ...prev]);
+    }
+  };
+
   const resolveComplaint = (
     complaintId: string,
     resolutionNotes: string,
+    photoProgress?: string,
     photoResolved?: string
   ) => {
     const nowStr = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB';
@@ -1465,13 +1723,38 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
               status: 'resolved',
               resolvedAt: `Hari ini, ${nowStr}`,
               resolutionNotes,
+              photoProgress: photoProgress || c.photoProgress,
               photoResolved:
                 photoResolved ||
+                c.photoResolved ||
                 'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?w=500&auto=format&fit=crop&q=80',
             }
           : c
       )
     );
+
+    const targetComplaint = complaints.find((c) => c.id === complaintId);
+    const notif: AppNotification = {
+      id: `notif-${Date.now()}`,
+      title: '✅ Komplain Berhasil Ditangani!',
+      message: `Tiket ${targetComplaint?.ticketNumber || complaintId} di ${targetComplaint?.areaName || 'lokasi'} telah diselesaikan. Keterangan: "${resolutionNotes}"`,
+      timestamp: nowStr,
+      type: 'success',
+      targetRole: ['admin', 'supervisor', 'petugas', 'klien'],
+      read: false,
+      projectId: targetComplaint?.projectId || safeActiveProjectId,
+    };
+    setNotifications((prev) => [notif, ...prev]);
+
+    try {
+      confetti({
+        particleCount: 70,
+        spread: 70,
+        origin: { y: 0.6 },
+      });
+    } catch {
+      // ignore
+    }
   };
 
   // Facility Damage Reports (Laporan Kerusakan Barang / Fasilitas)
@@ -1743,6 +2026,8 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setNotifications(INITIAL_NOTIFICATIONS);
     setMasterPrograms(INITIAL_MASTER_PROGRAMS);
     setDamageReports(INITIAL_DAMAGE_REPORTS);
+    setKpiConfig(DEFAULT_KPI_VISIBILITY_OFF);
+    localStorage.setItem('sco_dashboard_kpi_config', JSON.stringify(DEFAULT_KPI_VISIBILITY_OFF));
     setUserRole('admin');
     setViewMode('web');
   };
@@ -1856,6 +2141,9 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         submitTaskCompletion,
         submitQCInspection,
         submitNewComplaint,
+        startHandlingComplaint,
+        requestComplaintExtension,
+        respondToComplaintExtension,
         resolveComplaint,
         addArea,
         updateArea,
@@ -1873,6 +2161,12 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         clearAllNotifications,
         triggerDeadlinePushNotification,
         resetToInitialData,
+
+        // Dashboard KPI Config
+        kpiConfig,
+        updateKpiConfig,
+        resetKpiConfig,
+        toggleKpiWidget,
       }}
     >
       {children}

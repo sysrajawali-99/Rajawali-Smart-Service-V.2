@@ -71,13 +71,13 @@ const MainLayout: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col font-sans text-slate-900 antialiased selection:bg-sky-500 selection:text-white">
+    <div className="h-screen flex flex-col bg-slate-50 font-sans text-slate-900 antialiased selection:bg-sky-500 selection:text-white overflow-hidden">
       <Header />
 
       {/* Unified responsive multi-device layout (PC, Laptop, Tablet, Smartphone) */}
-      <div className="flex-1 flex overflow-hidden relative">
+      <div className="flex-1 flex overflow-hidden relative min-h-0">
         <Sidebar />
-        <main className="flex-1 overflow-y-auto bg-slate-50 min-h-[calc(100vh-61px)]">
+        <main className="flex-1 overflow-y-auto bg-slate-50 min-h-0">
           <div className="max-w-7xl mx-auto w-full p-3 sm:p-5 md:p-6 lg:p-8">
             {renderActiveWebView()}
           </div>

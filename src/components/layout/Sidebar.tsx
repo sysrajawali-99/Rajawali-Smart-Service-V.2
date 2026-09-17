@@ -203,19 +203,19 @@ export const Sidebar: React.FC = () => {
 
   return (
     <>
-      {/* Mobile/Tablet Backdrop Overlay */}
+      {/* Mobile/Tablet Backdrop Overlay - strictly below header (top-16) */}
       {mobileMenuOpen && (
         <div
           onClick={() => setMobileMenuOpen(false)}
-          className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs z-40 lg:hidden transition-opacity"
+          className="fixed inset-0 top-16 bg-slate-900/50 backdrop-blur-xs z-30 lg:hidden transition-opacity"
           aria-hidden="true"
         />
       )}
 
-      {/* Responsive Sidebar Drawer */}
+      {/* Responsive Sidebar Drawer - always below header (top-16 on mobile/tablet, and flex child under header on lg) */}
       <aside
         id="app-sidebar"
-        className={`fixed inset-y-0 left-0 z-50 lg:static w-72 lg:w-64 bg-white border-r border-slate-200 flex flex-col shrink-0 h-full overflow-y-auto transition-transform duration-300 ease-in-out shadow-2xl lg:shadow-none ${
+        className={`fixed top-16 bottom-0 left-0 z-30 lg:static lg:top-0 w-72 lg:w-64 bg-white border-r border-slate-200 flex flex-col shrink-0 h-[calc(100vh-4rem)] lg:h-full overflow-y-auto transition-transform duration-300 ease-in-out shadow-2xl lg:shadow-none ${
           mobileMenuOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
         }`}
       >
@@ -414,7 +414,7 @@ export const Sidebar: React.FC = () => {
         </nav>
 
         {/* User Profile Card Footer */}
-        <div className="p-3 border-t border-slate-100 bg-slate-50/70">
+        <div className="p-3 border-t border-slate-100 bg-slate-50/70 mt-auto shrink-0">
           <div className="p-2.5 rounded-xl bg-white border border-slate-200 shadow-2xs flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-full bg-slate-800 text-white flex items-center justify-center font-bold text-xs uppercase shrink-0">
               {userRole.slice(0, 2)}

@@ -18,9 +18,7 @@ import {
   Wrench,
   Camera,
   Star,
-  SlidersHorizontal,
   Eye,
-  Filter,
   X,
   Calendar,
   Search,
@@ -34,8 +32,6 @@ import { BeforeAfterModal } from '../modals/BeforeAfterModal';
 
 interface DashboardKpiSectionProps {
   visibility: DashboardKpiVisibilityConfig;
-  onOpenSettings: () => void;
-  onToggleVisibility?: (key: keyof DashboardKpiVisibilityConfig) => void;
 }
 
 type WorkStatusFilter = 'all' | 'pending' | 'in_progress' | 'completed';
@@ -43,8 +39,6 @@ type ScopeFilter = 'all' | 'daily' | 'mcp' | 'checklist';
 
 export const DashboardKpiSection: React.FC<DashboardKpiSectionProps> = ({
   visibility,
-  onOpenSettings,
-  onToggleVisibility,
 }) => {
   const {
     tasks,
@@ -238,89 +232,6 @@ export const DashboardKpiSection: React.FC<DashboardKpiSectionProps> = ({
 
   return (
     <div className="space-y-6">
-      {/* QUICK TOGGLE TOOLBAR & KPI CONTROLS */}
-      <div className="p-3.5 sm:p-4 rounded-2xl bg-white border border-slate-200 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-3">
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5 mr-1">
-            <Filter className="w-3.5 h-3.5 text-blue-600" />
-            Tampilan Cepat KPI:
-          </span>
-
-          {/* Quick toggle chips */}
-          {onToggleVisibility && (
-            <div className="flex items-center gap-1.5 flex-wrap">
-              <button
-                type="button"
-                onClick={() => onToggleVisibility('kpiWorkLifecycle')}
-                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold border transition-all cursor-pointer ${
-                  visibility.kpiWorkLifecycle
-                    ? 'bg-blue-50 text-blue-800 border-blue-200 shadow-2xs'
-                    : 'bg-slate-50 text-slate-400 border-slate-200 line-through'
-                }`}
-                title="Klik untuk tampilkan/sembunyikan KPI Siklus Pekerjaan"
-              >
-                <Target className="w-3 h-3 text-blue-600" />
-                <span>Siklus Pekerjaan</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => onToggleVisibility('kpiQualityScore')}
-                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold border transition-all cursor-pointer ${
-                  visibility.kpiQualityScore
-                    ? 'bg-amber-50 text-amber-800 border-amber-200 shadow-2xs'
-                    : 'bg-slate-50 text-slate-400 border-slate-200 line-through'
-                }`}
-                title="Klik untuk tampilkan/sembunyikan KPI Nilai Kualitas Mutu"
-              >
-                <Award className="w-3 h-3 text-amber-600" />
-                <span>Nilai Kualitas</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => onToggleVisibility('kpiChecklistCompliance')}
-                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold border transition-all cursor-pointer ${
-                  visibility.kpiChecklistCompliance
-                    ? 'bg-emerald-50 text-emerald-800 border-emerald-200 shadow-2xs'
-                    : 'bg-slate-50 text-slate-400 border-slate-200 line-through'
-                }`}
-                title="Klik untuk tampilkan/sembunyikan KPI Ceklist 24 Jam"
-              >
-                <FileCheck2 className="w-3 h-3 text-emerald-600" />
-                <span>Ceklist 24 Jam</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => onToggleVisibility('kpiDamageReports')}
-                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold border transition-all cursor-pointer ${
-                  visibility.kpiDamageReports
-                    ? 'bg-rose-50 text-rose-800 border-rose-200 shadow-2xs'
-                    : 'bg-slate-50 text-slate-400 border-slate-200 line-through'
-                }`}
-                title="Klik untuk tampilkan/sembunyikan KPI Kerusakan Fasilitas"
-              >
-                <Wrench className="w-3 h-3 text-rose-600" />
-                <span>Kerusakan</span>
-              </button>
-            </div>
-          )}
-        </div>
-
-        {/* Action to open full settings modal */}
-        <div className="flex items-center gap-2 shrink-0">
-          <button
-            onClick={onOpenSettings}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-700 font-semibold text-xs border border-blue-200 transition-colors shadow-2xs cursor-pointer"
-            title="Buka menu lengkap pengaturan KPI"
-          >
-            <SlidersHorizontal className="w-3.5 h-3.5 text-blue-600" />
-            <span>Menu Pengaturan Tampilan KPI</span>
-          </button>
-        </div>
-      </div>
-
       {/* 1. KPI SIKLUS PEKERJAAN: DIRENCANAKAN, DIPROSES, DISELESAIKAN */}
       {visibility.kpiWorkLifecycle && (
         <div className="p-5 sm:p-6 rounded-2xl bg-white border border-slate-200 shadow-xs space-y-5">
