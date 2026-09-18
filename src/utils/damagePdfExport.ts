@@ -1,7 +1,7 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { FacilityDamageReport, ProjectLocation } from '../types';
-import { getProjectKop, DEFAULT_HOSPITAL_KOP, KopSuratConfig } from './pdfExport';
+import { getProjectKop, DEFAULT_HOSPITAL_KOP, KopSuratConfig, drawKopSurat } from './pdfExport';
 
 // Helper to convert an image url to base64 data URL
 export const loadImageAsDataUrl = async (url: string, timeoutMs: number = 3000): Promise<string | null> => {
@@ -101,32 +101,7 @@ const drawOfficialKop = (
   pageWidth: number,
   marginX: number
 ): number => {
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(9.5);
-  doc.setTextColor(20, 50, 90);
-  doc.text(kop.institutionLine1, pageWidth / 2, 11, { align: 'center' });
-
-  doc.setFontSize(8.5);
-  doc.text(kop.institutionLine2, pageWidth / 2, 15, { align: 'center' });
-
-  doc.setFontSize(11);
-  doc.setTextColor(10, 40, 80);
-  doc.text(kop.facilityName, pageWidth / 2, 19.5, { align: 'center' });
-
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(7);
-  doc.setTextColor(70, 70, 70);
-  doc.text(kop.addressLine1, pageWidth / 2, 23.5, { align: 'center' });
-  doc.text(kop.contactLine, pageWidth / 2, 27, { align: 'center' });
-
-  // Double horizontal rule under Kop
-  doc.setDrawColor(20, 40, 80);
-  doc.setLineWidth(0.7);
-  doc.line(marginX, 30, pageWidth - marginX, 30);
-  doc.setLineWidth(0.2);
-  doc.line(marginX, 31, pageWidth - marginX, 31);
-
-  return 34; // Next Y coordinate
+  return drawKopSurat(doc, kop, pageWidth, marginX, 8);
 };
 
 // =========================================================================

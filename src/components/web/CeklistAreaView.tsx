@@ -97,6 +97,7 @@ export const CeklistAreaView: React.FC = () => {
     syncOfflineData,
     isSyncing,
     shifts,
+    companyProfile,
   } = useCleaning();
 
   const [selectedDate, setSelectedDate] = useState('2026-09-13');
@@ -113,10 +114,31 @@ export const CeklistAreaView: React.FC = () => {
   const [expandedHour, setExpandedHour] = useState<number | null>(new Date().getHours());
   const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
 
-  // Kop Surat selection (RSUP / Kemenkes vs Active Project)
+  // Kop Surat selection (Custom Kop vs Active Project)
   const [kopType, setKopType] = useState<'hospital' | 'project'>('hospital');
   const [showKopModal, setShowKopModal] = useState(false);
-  const [customKop, setCustomKop] = useState<KopSuratConfig>(DEFAULT_HOSPITAL_KOP);
+  const [customKop, setCustomKop] = useState<KopSuratConfig>(() => ({
+    institutionLine1: companyProfile.companyName,
+    institutionLine2: companyProfile.documentHeaderTitle,
+    facilityName: 'SISTEM OPERASIONAL CLEANING SERVICE & FASILITAS',
+    addressLine1: `${companyProfile.address}, ${companyProfile.city}`,
+    contactLine: `Hotline: ${companyProfile.phone} | Email: ${companyProfile.email} | Web: ${companyProfile.website}`,
+    logoUrl: companyProfile.logoUrl || '',
+    companyName: companyProfile.companyName,
+  }));
+
+  // Keep customKop in sync if companyProfile changes
+  useEffect(() => {
+    setCustomKop((prev) => ({
+      ...prev,
+      institutionLine1: companyProfile.companyName || prev.institutionLine1,
+      institutionLine2: companyProfile.documentHeaderTitle || prev.institutionLine2,
+      logoUrl: companyProfile.logoUrl || prev.logoUrl,
+      addressLine1: `${companyProfile.address}, ${companyProfile.city}`,
+      contactLine: `Hotline: ${companyProfile.phone} | Email: ${companyProfile.email} | Web: ${companyProfile.website}`,
+      companyName: companyProfile.companyName,
+    }));
+  }, [companyProfile]);
 
   // Modal states
   const [showAddLocationModal, setShowAddLocationModal] = useState(false);
@@ -175,7 +197,7 @@ export const CeklistAreaView: React.FC = () => {
     : null;
 
   // Active Kop Surat object
-  const activeKop = kopType === 'hospital' ? customKop : getProjectKop(activeProject);
+  const activeKop = kopType === 'hospital' ? customKop : getProjectKop(activeProject, companyProfile);
 
   // Helper date formatter (DD/MM/YYYY) with optional day offset
   const computeDateFormatted = (dateInput: string, offsetDays = 0): string => {

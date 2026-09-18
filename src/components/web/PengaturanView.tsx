@@ -32,6 +32,8 @@ import {
 import { useCleaning } from '../../context/CleaningContext';
 import { ChecklistLocationCategory, DashboardKpiVisibilityConfig } from '../../types';
 import { UserManagementSection } from './UserManagementSection';
+import { CompanyProfileSettingsSection } from './CompanyProfileSettingsSection';
+import { SuperAdminBulkDeleteSection } from './SuperAdminBulkDeleteSection';
 
 export const PengaturanView: React.FC = () => {
   const {
@@ -255,6 +257,9 @@ export const PengaturanView: React.FC = () => {
           </button>
         </div>
       </div>
+
+      {/* SECTION: Profil Perusahaan, Logo & Kop Surat Resmi (PDF & Login) */}
+      <CompanyProfileSettingsSection />
 
       {/* SECTION: Pengaturan Tampilan KPI & Widget Dashboard (Dipindahkan dari Dashboard) */}
       <div
@@ -846,6 +851,9 @@ export const PengaturanView: React.FC = () => {
           </button>
         </div>
       </form>
+
+      {/* SECTION: Hapus Data Masal per Sub-Menu (Khusus Super Admin) */}
+      <SuperAdminBulkDeleteSection />
     </div>
   );
 };

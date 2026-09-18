@@ -30,6 +30,8 @@ import {
   DamageReportStatus,
   DashboardKpiVisibilityConfig,
   DEFAULT_KPI_VISIBILITY_OFF,
+  CompanyProfile,
+  DEFAULT_COMPANY_PROFILE,
 } from '../types';
 import { calculateShiftDuration } from '../utils/shiftUtils';
 import { normalizeFrequencyCode, getNextProgramDayStatus } from '../utils/mcpUtils';
@@ -303,6 +305,17 @@ interface CleaningContextType {
   // Delete helpers
   deleteSchedule: (id: string) => void;
   deleteComplaint: (id: string) => void;
+
+  // Pengaturan Data Perusahaan & Kop Surat Dokumen PDF
+  companyProfile: CompanyProfile;
+  updateCompanyProfile: (updates: Partial<CompanyProfile>) => void;
+  resetCompanyProfile: () => void;
+
+  // Hapus Data Masal per Sub Menu (Khusus Super Admin)
+  bulkDeleteSubmenuData: (
+    submenuKey: string,
+    scope: 'active_project' | 'all'
+  ) => { count: number; label: string };
 }
 
 const CleaningContext = createContext<CleaningContextType | undefined>(undefined);
@@ -353,6 +366,40 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const toggleKpiWidget = (key: keyof DashboardKpiVisibilityConfig) => {
     const updated = { ...kpiConfig, [key]: !kpiConfig[key] };
     updateKpiConfig(updated);
+  };
+
+  // Pengaturan Data Perusahaan & Kop Surat Laporan PDF / Login Page
+  const [companyProfile, setCompanyProfile] = useState<CompanyProfile>(() => {
+    try {
+      const saved = localStorage.getItem('sco_company_profile');
+      if (saved) {
+        return { ...DEFAULT_COMPANY_PROFILE, ...JSON.parse(saved) };
+      }
+    } catch (e) {
+      console.error('Failed to load company profile:', e);
+    }
+    return DEFAULT_COMPANY_PROFILE;
+  });
+
+  const updateCompanyProfile = (updates: Partial<CompanyProfile>) => {
+    setCompanyProfile((prev) => {
+      const updated = { ...prev, ...updates };
+      try {
+        localStorage.setItem('sco_company_profile', JSON.stringify(updated));
+      } catch (e) {
+        console.error('Failed to save company profile:', e);
+      }
+      return updated;
+    });
+  };
+
+  const resetCompanyProfile = () => {
+    setCompanyProfile(DEFAULT_COMPANY_PROFILE);
+    try {
+      localStorage.setItem('sco_company_profile', JSON.stringify(DEFAULT_COMPANY_PROFILE));
+    } catch (e) {
+      console.error('Failed to reset company profile:', e);
+    }
   };
 
   // 2. Offline Mode & Auto Sync Management
@@ -2295,9 +2342,247 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setViewMode('web');
   };
 
+  // Hapus Data Masal per Sub Menu (Khusus Super Admin)
+  const bulkDeleteSubmenuData = (
+    submenuKey: string,
+    scope: 'active_project' | 'all'
+  ): { count: number; label: string } => {
+    let deletedCount = 0;
+    let label = '';
+    const targetProjId = activeProject?.id || 'proj-1';
+
+    switch (submenuKey) {
+      case 'all_operational': {
+        label = 'Seluruh Data Operasional & Aktivitas';
+        if (scope === 'active_project') {
+          const cCount = dailyChecklists.filter((d) => d.projectId === targetProjId).length;
+          const aCount = areas.filter((a) => !a.projectId || a.projectId === targetProjId).length;
+          const tCount = tasks.filter((t) => !t.projectId || t.projectId === targetProjId).length;
+          const iCount = inspections.filter((i) => !i.projectId || i.projectId === targetProjId).length;
+          const dCount = damageReports.filter((d) => !d.projectId || d.projectId === targetProjId).length;
+          const compCount = complaints.filter((c) => !c.projectId || c.projectId === targetProjId).length;
+          const mCount = masterPrograms.filter((m) => m.projectId === targetProjId).length;
+          deletedCount = cCount + aCount + tCount + iCount + dCount + compCount + mCount;
+          setDailyChecklists((prev) => prev.filter((d) => d.projectId !== targetProjId));
+          setAreas((prev) => prev.filter((a) => a.projectId && a.projectId !== targetProjId));
+          setTasks((prev) => prev.filter((t) => t.projectId && t.projectId !== targetProjId));
+          setInspections((prev) => prev.filter((i) => i.projectId && i.projectId !== targetProjId));
+          setDamageReports((prev) => prev.filter((d) => d.projectId && d.projectId !== targetProjId));
+          setComplaints((prev) => prev.filter((c) => c.projectId && c.projectId !== targetProjId));
+          setMasterPrograms((prev) => prev.filter((m) => m.projectId !== targetProjId));
+        } else {
+          deletedCount =
+            dailyChecklists.length +
+            areas.length +
+            tasks.length +
+            inspections.length +
+            damageReports.length +
+            complaints.length +
+            masterPrograms.length;
+          setDailyChecklists([]);
+          setAreas([]);
+          setTasks([]);
+          setInspections([]);
+          setDamageReports([]);
+          setComplaints([]);
+          setMasterPrograms([]);
+        }
+        break;
+      }
+      case 'ceklist': {
+        label = 'Ceklist Area (24 Jam)';
+        if (scope === 'active_project') {
+          const matched = dailyChecklists.filter((d) => d.projectId === targetProjId);
+          deletedCount = matched.length;
+          setDailyChecklists((prev) => prev.filter((d) => d.projectId !== targetProjId));
+        } else {
+          deletedCount = dailyChecklists.length;
+          setDailyChecklists([]);
+        }
+        break;
+      }
+      case 'area': {
+        label = 'Master Area Cleaning';
+        if (scope === 'active_project') {
+          const matched = areas.filter((a) => !a.projectId || a.projectId === targetProjId);
+          deletedCount = matched.length;
+          setAreas((prev) => prev.filter((a) => a.projectId && a.projectId !== targetProjId));
+        } else {
+          deletedCount = areas.length;
+          setAreas([]);
+        }
+        break;
+      }
+      case 'activity': {
+        label = 'Cleaning Activity & Riwayat Tugas';
+        if (scope === 'active_project') {
+          const matched = tasks.filter((t) => !t.projectId || t.projectId === targetProjId);
+          deletedCount = matched.length;
+          setTasks((prev) => prev.filter((t) => t.projectId && t.projectId !== targetProjId));
+        } else {
+          deletedCount = tasks.length;
+          setTasks([]);
+        }
+        break;
+      }
+      case 'inspeksi': {
+        label = 'Inspeksi & QC Control';
+        if (scope === 'active_project') {
+          const matched = inspections.filter((i) => !i.projectId || i.projectId === targetProjId);
+          deletedCount = matched.length;
+          setInspections((prev) => prev.filter((i) => i.projectId && i.projectId !== targetProjId));
+        } else {
+          deletedCount = inspections.length;
+          setInspections([]);
+        }
+        break;
+      }
+      case 'petugas': {
+        label = 'Data Petugas Lapangan';
+        if (scope === 'active_project') {
+          const matched = cleaners.filter((c) => !c.projectId || c.projectId === targetProjId);
+          deletedCount = matched.length;
+          setCleaners((prev) => prev.filter((c) => c.projectId && c.projectId !== targetProjId));
+        } else {
+          deletedCount = cleaners.length;
+          setCleaners([]);
+        }
+        break;
+      }
+      case 'petugas_presensi': {
+        label = 'Riwayat Presensi Petugas (1-31)';
+        deletedCount = cleaners.length;
+        setCleaners((prev) =>
+          prev.map((c) => ({
+            ...c,
+            attendance: {},
+            attendanceByMonth: {},
+            tasksCompletedToday: 0,
+            isClockedIn: false,
+            clockInTime: undefined,
+          }))
+        );
+        break;
+      }
+      case 'shift': {
+        label = 'Shift & Plotingan Kerja';
+        deletedCount = shifts.length;
+        setShifts([]);
+        break;
+      }
+      case 'jadwal': {
+        label = 'Jadwal Cleaning';
+        if (scope === 'active_project') {
+          const matched = schedules.filter((s) => !s.projectId || s.projectId === targetProjId);
+          deletedCount = matched.length;
+          setSchedules((prev) => prev.filter((s) => s.projectId && s.projectId !== targetProjId));
+        } else {
+          deletedCount = schedules.length;
+          setSchedules([]);
+        }
+        break;
+      }
+      case 'kerusakan': {
+        label = 'Laporan Kerusakan Fasilitas';
+        if (scope === 'active_project') {
+          const matched = damageReports.filter((d) => !d.projectId || d.projectId === targetProjId);
+          deletedCount = matched.length;
+          setDamageReports((prev) => prev.filter((d) => d.projectId && d.projectId !== targetProjId));
+        } else {
+          deletedCount = damageReports.length;
+          setDamageReports([]);
+        }
+        break;
+      }
+      case 'daily-activity': {
+        label = 'Daily Activity Reports';
+        if (scope === 'active_project') {
+          const matched = tasks.filter(
+            (t) => (!t.projectId || t.projectId === targetProjId) && t.status === 'completed'
+          );
+          deletedCount = matched.length;
+          setTasks((prev) =>
+            prev.filter(
+              (t) => !((!t.projectId || t.projectId === targetProjId) && t.status === 'completed')
+            )
+          );
+        } else {
+          const matched = tasks.filter((t) => t.status === 'completed');
+          deletedCount = matched.length;
+          setTasks((prev) => prev.filter((t) => t.status !== 'completed'));
+        }
+        break;
+      }
+      case 'monthly-activity': {
+        label = 'Arsip Pekerjaan Laporan Bulanan';
+        const matched = tasks.filter((t) => t.exportedToMonthlyReport);
+        deletedCount = matched.length;
+        setTasks((prev) =>
+          prev.map((t) => ({
+            ...t,
+            exportedToMonthlyReport: false,
+            monthlyOrderNo: undefined,
+            monthlyReportExportDate: undefined,
+          }))
+        );
+        break;
+      }
+      case 'master-program': {
+        label = 'Master Cleaning Program (MCP)';
+        if (scope === 'active_project') {
+          const matched = masterPrograms.filter((m) => m.projectId === targetProjId);
+          deletedCount = matched.length;
+          setMasterPrograms((prev) => prev.filter((m) => m.projectId !== targetProjId));
+        } else {
+          deletedCount = masterPrograms.length;
+          setMasterPrograms([]);
+        }
+        break;
+      }
+      case 'complaint': {
+        label = 'Laporan Komplain & Tiket';
+        if (scope === 'active_project') {
+          const matched = complaints.filter((c) => !c.projectId || c.projectId === targetProjId);
+          deletedCount = matched.length;
+          setComplaints((prev) => prev.filter((c) => c.projectId && c.projectId !== targetProjId));
+        } else {
+          deletedCount = complaints.length;
+          setComplaints([]);
+        }
+        break;
+      }
+      case 'notifikasi': {
+        label = 'Notifikasi Sistem';
+        deletedCount = notifications.length;
+        setNotifications([]);
+        break;
+      }
+      default:
+        label = submenuKey;
+    }
+
+    // Push notification audit trail for Super Admin
+    const auditNotif: AppNotification = {
+      id: `audit-${Date.now()}`,
+      title: `🗑️ Hapus Massal Sub-Menu: ${label}`,
+      message: `Super Admin telah menghapus ${deletedCount} data pada sub-menu "${label}" (${scope === 'active_project' ? 'Proyek Aktif' : 'Semua Proyek'}).`,
+      timestamp: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB',
+      type: 'warning',
+      targetRole: ['admin'],
+      read: false,
+    };
+    setNotifications((prev) => [auditNotif, ...prev]);
+
+    return { count: deletedCount, label };
+  };
+
   return (
     <CleaningContext.Provider
       value={{
+        companyProfile,
+        updateCompanyProfile,
+        resetCompanyProfile,
+        bulkDeleteSubmenuData,
         userRole,
         setUserRole,
         viewMode,

@@ -6,8 +6,6 @@ import {
   CheckCircle2,
   AlertTriangle,
   Clock,
-  RotateCcw,
-  RotateCw,
   LogOut,
   ShieldCheck,
   Building2,
@@ -27,7 +25,6 @@ export const Header: React.FC = () => {
     dismissNotification,
     clearAllNotifications,
     triggerDeadlinePushNotification,
-    resetToInitialData,
     activeProject,
     setActiveProjectId,
     allowedProjects,
@@ -39,8 +36,6 @@ export const Header: React.FC = () => {
     toggleMobileMenu,
     currentUser,
     logout,
-    reloadSystemData,
-    isReloading,
   } = useCleaning();
 
   const [showNotifDropdown, setShowNotifDropdown] = useState(false);
@@ -452,36 +447,6 @@ export const Header: React.FC = () => {
               </div>
             )}
           </div>
-
-          {/* Active System Reload Feature (Next to Notifications) */}
-          <button
-            id="header-reload-btn"
-            onClick={reloadSystemData}
-            disabled={isReloading}
-            className={`p-2 rounded-lg text-slate-600 hover:text-sky-700 hover:bg-sky-50 active:bg-sky-100 transition-all cursor-pointer flex items-center justify-center shrink-0 ${
-              isReloading ? 'text-sky-600 bg-sky-50' : ''
-            }`}
-            title="Muat Ulang Data Sistem (Reload Data)"
-            aria-label="Muat Ulang Data Sistem"
-          >
-            <RotateCw
-              className={`w-4 h-4 sm:w-4.5 sm:h-4.5 transition-transform ${
-                isReloading ? 'animate-spin text-sky-600' : ''
-              }`}
-            />
-          </button>
-
-          {/* Reset App State (Only for Admin) */}
-          {userRole === 'admin' && (
-            <button
-              onClick={resetToInitialData}
-              className="p-2 rounded-lg text-slate-400 hover:text-rose-700 hover:bg-rose-50 transition-colors cursor-pointer flex items-center justify-center shrink-0"
-              title="Reset Data ke Default Awal (Super Admin Only)"
-              aria-label="Reset Data ke Default Awal"
-            >
-              <RotateCcw className="w-4 h-4" />
-            </button>
-          )}
         </div>
       </div>
     </header>

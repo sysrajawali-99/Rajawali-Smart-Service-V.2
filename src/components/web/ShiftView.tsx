@@ -2,6 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import {
   Clock,
   Users,
+  User,
   Plus,
   Edit2,
   Trash2,
@@ -698,7 +699,7 @@ export const ShiftView: React.FC = () => {
       phone: '0812-3456-7890',
       shiftId: targetShift.id,
       shiftName: targetShift.name,
-      photoUrl: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80',
+      photoUrl: '',
       assignedAreas: ['area-1'],
       status: 'active',
       rating: 5.0,
@@ -1273,11 +1274,9 @@ export const ShiftView: React.FC = () => {
                           {/* Row 1: Profile & Attendance Status Badge */}
                           <div className="flex items-center justify-between gap-2">
                             <div className="flex items-center gap-2.5 min-w-0">
-                              <img
-                                src={cleaner.photoUrl}
-                                alt={cleaner.name}
-                                className="w-9 h-9 rounded-xl object-cover ring-1 ring-slate-200 shrink-0"
-                              />
+                              <div className="w-8 h-8 rounded-xl bg-slate-100 text-slate-600 border border-slate-200 flex items-center justify-center shrink-0">
+                                <User className="w-4 h-4 text-slate-500" />
+                              </div>
                               <div className="min-w-0">
                                 <h5 className="font-bold text-slate-900 text-xs truncate">{cleaner.name}</h5>
                                 <span className="text-[10px] text-slate-400 block font-mono">{cleaner.nik}</span>
@@ -1452,11 +1451,9 @@ export const ShiftView: React.FC = () => {
                 {/* Petugas Info Card */}
                 <div className="p-3.5 rounded-2xl bg-slate-50/90 border border-slate-200/80 flex items-center justify-between flex-wrap gap-3">
                   <div className="flex items-center gap-3">
-                    <img
-                      src={plottingCleaner.photoUrl}
-                      alt={plottingCleaner.name}
-                      className="w-11 h-11 rounded-2xl object-cover ring-2 ring-white shadow-2xs"
-                    />
+                    <div className="w-10 h-10 rounded-2xl bg-sky-100 text-sky-700 border border-sky-200 flex items-center justify-center shrink-0">
+                      <User className="w-5 h-5 text-sky-600" />
+                    </div>
                     <div>
                       <div className="flex items-center gap-2">
                         <h4 className="font-bold text-slate-900 text-sm">{plottingCleaner.name}</h4>
@@ -1798,11 +1795,9 @@ export const ShiftView: React.FC = () => {
                         }`}
                       >
                         <div className="flex items-center gap-2.5 min-w-0">
-                          <img
-                            src={cleaner.photoUrl}
-                            alt={cleaner.name}
-                            className="w-8 h-8 rounded-xl object-cover shrink-0"
-                          />
+                          <div className="w-8 h-8 rounded-xl bg-slate-100 text-slate-600 border border-slate-200 flex items-center justify-center shrink-0">
+                            <User className="w-4 h-4 text-slate-500" />
+                          </div>
                           <div className="min-w-0">
                             <span className="font-bold text-slate-900 block truncate">{cleaner.name}</span>
                             <span className="text-[10px] text-slate-400 block">

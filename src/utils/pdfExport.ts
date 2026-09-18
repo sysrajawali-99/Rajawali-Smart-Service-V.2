@@ -1,6 +1,14 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { DailyAreaChecklist, ChecklistLocation, ProjectLocation, CleaningTask, MasterCleaningProgramItem } from '../types';
+import {
+  DailyAreaChecklist,
+  ChecklistLocation,
+  ProjectLocation,
+  CleaningTask,
+  MasterCleaningProgramItem,
+  CompanyProfile,
+  DEFAULT_COMPANY_PROFILE,
+} from '../types';
 
 export interface KopSuratConfig {
   institutionLine1: string;
@@ -8,24 +16,121 @@ export interface KopSuratConfig {
   facilityName: string;
   addressLine1: string;
   contactLine: string;
+  logoUrl?: string;
+  companyName?: string;
 }
 
 export const DEFAULT_HOSPITAL_KOP: KopSuratConfig = {
-  institutionLine1: 'KEMENTERIAN KESEHATAN REPUBLIK INDONESIA',
-  institutionLine2: 'DIREKTORAT JENDERAL PELAYANAN KESEHATAN',
-  facilityName: 'RSUP Dr. MOHAMMAD HOESIN PALEMBANG',
-  addressLine1: 'Jl. Jend. Sudirman Km. 3,5 Palembang 30126',
-  contactLine: 'Telp. (0711) 354088 Faksimile : (0711) 351318 Web : www.rsmh.co.id Email : rsmhplg@yahoo.com',
+  institutionLine1: DEFAULT_COMPANY_PROFILE.companyName,
+  institutionLine2: DEFAULT_COMPANY_PROFILE.documentHeaderTitle,
+  facilityName: 'SISTEM OPERASIONAL CLEANING SERVICE & FASILITAS',
+  addressLine1: `${DEFAULT_COMPANY_PROFILE.address}, ${DEFAULT_COMPANY_PROFILE.city}`,
+  contactLine: `Hotline: ${DEFAULT_COMPANY_PROFILE.phone} | Email: ${DEFAULT_COMPANY_PROFILE.email} | Web: ${DEFAULT_COMPANY_PROFILE.website}`,
+  logoUrl: '',
 };
 
-export const getProjectKop = (project: ProjectLocation): KopSuratConfig => {
+export const getProjectKop = (
+  project?: ProjectLocation,
+  companyProfile?: CompanyProfile
+): KopSuratConfig => {
+  const profile = companyProfile || DEFAULT_COMPANY_PROFILE;
+  const compName = profile.companyName?.trim() || 'PT RAJAWALI TALENTA INDONESIA';
+  const subTitle = profile.documentHeaderTitle?.trim() || 'MANAJEMEN OPERASIONAL KEBERSIHAN & FASILITAS GEDUNG';
+  const clientTag = project?.clientName ? ` • KLIEN: ${project.clientName.toUpperCase()}` : '';
+  const facility = project?.name ? project.name.toUpperCase() : 'LOKASI OPERASIONAL GEDUNG';
+  const address = project?.address
+    ? `${project.address}, ${project.city}`
+    : `${profile.address}, ${profile.city}`;
+  const phone = profile.phone || '021-5558901 / 0812-3456-7890';
+  const email = profile.email || 'rajawalitalentaindonesia@gmail.com';
+  const website = profile.website || 'www.rajawali-smart.co.id';
+  const manager = project?.managerName ? `Facility Management: ${project.managerName} | ` : '';
+
   return {
-    institutionLine1: 'PT RAJAWALI TALENTA INDONESIA',
-    institutionLine2: `MANAJEMEN OPERASIONAL KEBERSIHAN & FASILITAS GEDUNG • KLIEN: ${project.clientName.toUpperCase()}`,
-    facilityName: project.name.toUpperCase(),
-    addressLine1: `${project.address}, ${project.city}`,
-    contactLine: `Facility Management: ${project.managerName} | Gedung ${project.totalFloors} Lantai | Email: rajawalitalentaindonesia@gmail.com`,
+    institutionLine1: compName,
+    institutionLine2: `${subTitle}${clientTag}`,
+    facilityName: facility,
+    addressLine1: address,
+    contactLine: `${manager}Hotline: ${phone} | Email: ${email} | Web: ${website}`,
+    logoUrl: profile.logoUrl || '',
+    companyName: compName,
   };
+};
+
+export const drawKopSurat = (
+  doc: jsPDF,
+  kop: KopSuratConfig,
+  pageWidth: number,
+  marginX: number,
+  topY: number = 9
+): number => {
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(10.5);
+  doc.setTextColor(20, 50, 95);
+  doc.text(kop.institutionLine1 || 'PT RAJAWALI TALENTA INDONESIA', pageWidth / 2, topY + 2.5, {
+    align: 'center',
+  });
+
+  doc.setFontSize(8.5);
+  doc.setTextColor(30, 60, 110);
+  doc.text(
+    kop.institutionLine2 || 'MANAJEMEN OPERASIONAL KEBERSIHAN & FASILITAS GEDUNG',
+    pageWidth / 2,
+    topY + 6.8,
+    { align: 'center' }
+  );
+
+  doc.setFontSize(11);
+  doc.setTextColor(15, 35, 75);
+  doc.text(kop.facilityName || 'LOKASI OPERASIONAL GEDUNG', pageWidth / 2, topY + 11.5, {
+    align: 'center',
+  });
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(7.5);
+  doc.setTextColor(70, 75, 85);
+  doc.text(kop.addressLine1 || '', pageWidth / 2, topY + 15.5, { align: 'center' });
+  doc.text(kop.contactLine || '', pageWidth / 2, topY + 19, { align: 'center' });
+
+  // Render Left Logo (Custom uploaded logo or professional corporate badge)
+  if (kop.logoUrl && kop.logoUrl.startsWith('data:image')) {
+    try {
+      const format = kop.logoUrl.includes('image/png') ? 'PNG' : 'JPEG';
+      doc.addImage(kop.logoUrl, format, marginX + 2, topY, 19, 19);
+    } catch (e) {
+      console.warn('Failed to add logo image to PDF Kop:', e);
+      doc.setFillColor(14, 116, 144);
+      doc.roundedRect(marginX + 2, topY, 16, 16, 2, 2, 'F');
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(8);
+      doc.setTextColor(255, 255, 255);
+      doc.text((kop.institutionLine1 || 'RTI').slice(0, 3).toUpperCase(), marginX + 10, topY + 9, {
+        align: 'center',
+      });
+    }
+  } else {
+    // Professional company seal
+    doc.setFillColor(14, 116, 144);
+    doc.roundedRect(marginX + 2, topY, 16, 16, 2, 2, 'F');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8);
+    doc.setTextColor(255, 255, 255);
+    doc.text((kop.institutionLine1 || 'RTI').slice(0, 3).toUpperCase(), marginX + 10, topY + 9, {
+      align: 'center',
+    });
+    doc.setFontSize(5);
+    doc.text('FACILITY', marginX + 10, topY + 13, { align: 'center' });
+  }
+
+  // Double horizontal rule under Kop
+  const lineY = topY + 22;
+  doc.setDrawColor(15, 35, 75);
+  doc.setLineWidth(0.75);
+  doc.line(marginX, lineY, pageWidth - marginX, lineY);
+  doc.setLineWidth(0.2);
+  doc.line(marginX, lineY + 0.8, pageWidth - marginX, lineY + 0.8);
+
+  return lineY + 3; // Next Y coordinate
 };
 
 // Convert status to B / K / R code
@@ -77,52 +182,8 @@ export const exportChecklistToPDF = (options: ExportChecklistPDFOptions): void =
   const pageWidth = doc.internal.pageSize.getWidth(); // 297mm
   const marginX = 14;
 
-  // 1. KOP SURAT HEADER (Left Logo, Center Text, Right Logo)
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(10);
-  doc.setTextColor(20, 50, 90);
-  doc.text(kopSurat.institutionLine1, pageWidth / 2, 12, { align: 'center' });
-
-  doc.setFontSize(9);
-  doc.text(kopSurat.institutionLine2, pageWidth / 2, 16.5, { align: 'center' });
-
-  doc.setFontSize(12);
-  doc.setTextColor(10, 40, 80);
-  doc.text(kopSurat.facilityName, pageWidth / 2, 21.5, { align: 'center' });
-
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(7.5);
-  doc.setTextColor(60, 60, 60);
-  doc.text(kopSurat.addressLine1, pageWidth / 2, 25.5, { align: 'center' });
-  doc.text(kopSurat.contactLine, pageWidth / 2, 29, { align: 'center' });
-
-  // Draw decorative logos on left & right
-  // Left emblem
-  doc.setDrawColor(16, 149, 193);
-  doc.setFillColor(16, 185, 129);
-  doc.roundedRect(marginX + 2, 11, 14, 14, 2, 2, 'F');
-  doc.setFillColor(234, 179, 8);
-  doc.circle(marginX + 9, 18, 4, 'F');
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(7);
-  doc.setTextColor(255, 255, 255);
-  doc.text('KEMENKES', marginX + 9, 27, { align: 'center' });
-
-  // Right logo
-  doc.setFillColor(14, 116, 144);
-  doc.roundedRect(pageWidth - marginX - 18, 11, 14, 14, 2, 2, 'F');
-  doc.setTextColor(255, 255, 255);
-  doc.setFontSize(6.5);
-  doc.text('RSMH', pageWidth - marginX - 11, 18.5, { align: 'center' });
-  doc.setFontSize(5);
-  doc.text('AKREDITASI', pageWidth - marginX - 11, 22, { align: 'center' });
-
-  // Double horizontal rule under Kop
-  doc.setDrawColor(20, 40, 80);
-  doc.setLineWidth(0.8);
-  doc.line(marginX, 32, pageWidth - marginX, 32);
-  doc.setLineWidth(0.25);
-  doc.line(marginX, 33, pageWidth - marginX, 33);
+  // 1. KOP SURAT RESMI (Logo Perusahaan Dinamis & Info Kop)
+  drawKopSurat(doc, kopSurat, pageWidth, marginX, 8);
 
   // 2. DOCUMENT TITLE
   const title =
@@ -426,31 +487,8 @@ export const exportMonthlyReportToPDF = async (
   // HALAMAN 1: KOP SURAT, RINGKASAN & TABEL PEKERJAAN
   // ----------------------------------------------------
 
-  // 1. KOP SURAT
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(10);
-  doc.setTextColor(20, 40, 80);
-  doc.text(kopSurat.institutionLine1, pageWidth / 2, 12, { align: 'center' });
-
-  doc.setFontSize(9);
-  doc.text(kopSurat.institutionLine2, pageWidth / 2, 16.5, { align: 'center' });
-
-  doc.setFontSize(12);
-  doc.setTextColor(15, 30, 70);
-  doc.text(kopSurat.facilityName, pageWidth / 2, 21.5, { align: 'center' });
-
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(7.5);
-  doc.setTextColor(70, 70, 70);
-  doc.text(kopSurat.addressLine1, pageWidth / 2, 25.5, { align: 'center' });
-  doc.text(kopSurat.contactLine, pageWidth / 2, 29, { align: 'center' });
-
-  // Double horizontal rule under Kop
-  doc.setDrawColor(20, 40, 80);
-  doc.setLineWidth(0.8);
-  doc.line(marginX, 32, pageWidth - marginX, 32);
-  doc.setLineWidth(0.25);
-  doc.line(marginX, 33, pageWidth - marginX, 33);
+  // 1. KOP SURAT RESMI
+  drawKopSurat(doc, kopSurat, pageWidth, marginX, 8);
 
   // 2. DOCUMENT TITLE
   doc.setFont('helvetica', 'bold');
@@ -873,33 +911,8 @@ export const exportMasterCleaningProgramToPDF = (
   const pageHeight = doc.internal.pageSize.getHeight(); // 210mm
   const marginX = 10;
 
-  // 1. KOP SURAT
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(9.5);
-  doc.setTextColor(20, 45, 90);
-  doc.text(kopSurat.institutionLine1, pageWidth / 2, 10, { align: 'center' });
-
-  doc.setFontSize(8.5);
-  doc.text(kopSurat.institutionLine2, pageWidth / 2, 14, { align: 'center' });
-
-  doc.setFontSize(11);
-  doc.setTextColor(10, 35, 80);
-  doc.text(kopSurat.facilityName, pageWidth / 2, 18.5, { align: 'center' });
-
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(7);
-  doc.setTextColor(60, 60, 60);
-  doc.text(
-    `${kopSurat.addressLine1}  |  ${kopSurat.contactLine}`,
-    pageWidth / 2,
-    22.5,
-    { align: 'center' }
-  );
-
-  // Line under kop
-  doc.setDrawColor(20, 40, 80);
-  doc.setLineWidth(0.6);
-  doc.line(marginX, 25, pageWidth - marginX, 25);
+  // 1. KOP SURAT RESMI
+  drawKopSurat(doc, kopSurat, pageWidth, marginX, 6);
 
   // 2. DOCUMENT TITLE
   doc.setFont('helvetica', 'bold');
@@ -1130,36 +1143,8 @@ export const exportDailyActivityToPDF = (
   const marginX = 14;
   const usableWidth = pageWidth - marginX * 2;
 
-  // 1. KOP SURAT
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(11);
-  doc.setTextColor(15, 45, 95);
-  doc.text(kopSurat.institutionLine1, pageWidth / 2, 12, { align: 'center' });
-
-  doc.setFontSize(8.5);
-  doc.setTextColor(30, 41, 59);
-  doc.text(kopSurat.institutionLine2, pageWidth / 2, 16.5, { align: 'center' });
-
-  doc.setFontSize(12);
-  doc.setTextColor(10, 30, 75);
-  doc.text(kopSurat.facilityName, pageWidth / 2, 21.5, { align: 'center' });
-
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(7);
-  doc.setTextColor(71, 85, 105);
-  doc.text(
-    `${kopSurat.addressLine1}  |  ${kopSurat.contactLine}`,
-    pageWidth / 2,
-    25.5,
-    { align: 'center' }
-  );
-
-  // Double horizontal rule under Kop
-  doc.setDrawColor(15, 45, 95);
-  doc.setLineWidth(0.75);
-  doc.line(marginX, 28, pageWidth - marginX, 28);
-  doc.setLineWidth(0.25);
-  doc.line(marginX, 29, pageWidth - marginX, 29);
+  // 1. KOP SURAT RESMI
+  drawKopSurat(doc, kopSurat, pageWidth, marginX, 7);
 
   // 2. DOCUMENT TITLE
   doc.setFont('helvetica', 'bold');
@@ -1436,36 +1421,8 @@ export const exportWeeklyActivityToPDF = (
   const marginX = 12;
   const usableWidth = pageWidth - marginX * 2;
 
-  // 1. KOP SURAT
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(11);
-  doc.setTextColor(88, 28, 135); // Purple 900
-  doc.text(kopSurat.institutionLine1, pageWidth / 2, 12, { align: 'center' });
-
-  doc.setFontSize(8.5);
-  doc.setTextColor(30, 41, 59);
-  doc.text(kopSurat.institutionLine2, pageWidth / 2, 16.5, { align: 'center' });
-
-  doc.setFontSize(12);
-  doc.setTextColor(59, 7, 100);
-  doc.text(kopSurat.facilityName, pageWidth / 2, 21.5, { align: 'center' });
-
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(7);
-  doc.setTextColor(71, 85, 105);
-  doc.text(
-    `${kopSurat.addressLine1}  |  ${kopSurat.contactLine}`,
-    pageWidth / 2,
-    25.5,
-    { align: 'center' }
-  );
-
-  // Line under kop
-  doc.setDrawColor(88, 28, 135);
-  doc.setLineWidth(0.75);
-  doc.line(marginX, 28, pageWidth - marginX, 28);
-  doc.setLineWidth(0.25);
-  doc.line(marginX, 29, pageWidth - marginX, 29);
+  // 1. KOP SURAT RESMI
+  drawKopSurat(doc, kopSurat, pageWidth, marginX, 7);
 
   // 2. DOCUMENT TITLE
   doc.setFont('helvetica', 'bold');
@@ -1740,34 +1697,8 @@ export const exportMonthlyActivityToPDF = (
   const marginX = 10;
   const usableWidth = pageWidth - marginX * 2;
 
-  // 1. KOP SURAT
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(10);
-  doc.setTextColor(180, 83, 9); // Amber 700
-  doc.text(kopSurat.institutionLine1, pageWidth / 2, 10, { align: 'center' });
-
-  doc.setFontSize(8.5);
-  doc.setTextColor(30, 41, 59);
-  doc.text(kopSurat.institutionLine2, pageWidth / 2, 14, { align: 'center' });
-
-  doc.setFontSize(11);
-  doc.setTextColor(120, 53, 15);
-  doc.text(kopSurat.facilityName, pageWidth / 2, 18.5, { align: 'center' });
-
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(7);
-  doc.setTextColor(71, 85, 105);
-  doc.text(
-    `${kopSurat.addressLine1}  |  ${kopSurat.contactLine}`,
-    pageWidth / 2,
-    22.5,
-    { align: 'center' }
-  );
-
-  // Line under kop
-  doc.setDrawColor(180, 83, 9);
-  doc.setLineWidth(0.65);
-  doc.line(marginX, 25, pageWidth - marginX, 25);
+  // 1. KOP SURAT RESMI
+  drawKopSurat(doc, kopSurat, pageWidth, marginX, 6);
 
   // 2. DOCUMENT TITLE
   doc.setFont('helvetica', 'bold');

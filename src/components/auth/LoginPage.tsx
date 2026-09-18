@@ -3,7 +3,7 @@ import { useCleaning } from '../../context/CleaningContext';
 import { Sparkles, Lock, User, Eye, EyeOff, LogIn, AlertCircle, ShieldCheck } from 'lucide-react';
 
 export const LoginPage: React.FC = () => {
-  const { login } = useCleaning();
+  const { login, companyProfile } = useCleaning();
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -45,12 +45,25 @@ export const LoginPage: React.FC = () => {
       <div className="w-full max-w-md relative z-10">
         {/* Header Branding */}
         <div className="text-center mb-6">
-          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-gradient-to-tr from-sky-600 to-cyan-500 text-white shadow-lg shadow-sky-500/20 mb-3 border border-white/10">
-            <Sparkles className="w-7 h-7" />
-          </div>
-          <h1 className="text-2xl font-bold text-white tracking-tight">Rajawali Smart Service</h1>
-          <p className="text-sm text-slate-400 mt-1 font-normal">
-            Cleaning Operations & Facility Management System
+          {companyProfile?.logoUrl ? (
+            <div className="inline-flex items-center justify-center p-2 rounded-2xl bg-white/10 backdrop-blur-md border border-white/20 shadow-xl shadow-sky-500/15 mb-3.5 transition-transform hover:scale-105">
+              <img
+                src={companyProfile.logoUrl}
+                alt={companyProfile.companyName || 'Company Logo'}
+                className="w-14 h-14 object-contain rounded-xl"
+                referrerPolicy="no-referrer"
+              />
+            </div>
+          ) : (
+            <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-gradient-to-tr from-sky-600 to-cyan-500 text-white shadow-lg shadow-sky-500/20 mb-3 border border-white/10">
+              <Sparkles className="w-7 h-7" />
+            </div>
+          )}
+          <h1 className="text-2xl font-bold text-white tracking-tight">
+            {companyProfile?.companyName || 'Rajawali Smart Service'}
+          </h1>
+          <p className="text-sm text-slate-400 mt-1 font-normal max-w-xs mx-auto leading-relaxed">
+            {companyProfile?.tagline || 'Cleaning Operations & Facility Management System'}
           </p>
         </div>
 
@@ -171,7 +184,7 @@ export const LoginPage: React.FC = () => {
 
         {/* Footer info */}
         <div className="text-center mt-6 text-slate-500 text-xs">
-          &copy; {new Date().getFullYear()} Rajawali Smart Service. Seluruh hak cipta dilindungi.
+          &copy; {new Date().getFullYear()} {companyProfile?.companyName || 'Rajawali Smart Service'}. Seluruh hak cipta dilindungi.
         </div>
       </div>
     </div>

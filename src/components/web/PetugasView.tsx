@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import {
   Users,
+  User,
   Plus,
   Search,
   Filter,
@@ -267,7 +268,7 @@ export const PetugasView: React.FC = () => {
         phone: '0812-0000-0000',
         shiftId: matchedShift?.id || 'shift-1',
         shiftName: matchedShift?.name || 'Shift 1 ( satu )',
-        photoUrl: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80',
+        photoUrl: '',
         assignedAreas: ['area-1'],
         status: 'active',
         rating: 5.0,
@@ -749,15 +750,14 @@ export const PetugasView: React.FC = () => {
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex items-start gap-3">
                       <div className="relative shrink-0">
-                        <img
-                          src={cleaner.photoUrl || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150'}
-                          alt={cleaner.name}
-                          className="w-12 h-12 rounded-xl object-cover border border-slate-200 shadow-2xs"
-                        />
+                        <div className="w-10 h-10 rounded-xl bg-slate-100 text-slate-600 border border-slate-200 flex items-center justify-center font-bold text-xs shadow-2xs">
+                          <User className="w-5 h-5 text-slate-500" />
+                        </div>
                         <span
                           className={`absolute -bottom-1 -right-1 w-3.5 h-3.5 rounded-full border-2 border-white ${
                             cleaner.isClockedIn ? 'bg-emerald-500' : 'bg-slate-300'
                           }`}
+                          title={cleaner.isClockedIn ? 'Clock In' : 'Belum Clock In'}
                         />
                       </div>
 
@@ -1109,11 +1109,6 @@ export const PetugasView: React.FC = () => {
                       {/* Cleaner Name & Work Plotting */}
                       <td className="p-2.5 font-bold text-slate-900 border-r border-slate-100 sticky left-8 bg-white z-10">
                         <div className="flex items-center gap-2">
-                          <img
-                            src={cleaner.photoUrl}
-                            alt={cleaner.name}
-                            className="w-7 h-7 rounded-lg object-cover border border-slate-200 shrink-0"
-                          />
                           <div className="min-w-0">
                             <span className="truncate block text-xs font-bold text-slate-900">{cleaner.name}</span>
                             <div className="flex items-center gap-1.5 mt-0.5">
