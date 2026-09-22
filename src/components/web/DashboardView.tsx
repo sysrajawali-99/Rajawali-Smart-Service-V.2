@@ -25,6 +25,8 @@ import { useCleaning } from '../../context/CleaningContext';
 import { BeforeAfterModal } from '../modals/BeforeAfterModal';
 import { NewComplaintModal } from '../modals/NewComplaintModal';
 import { DashboardKpiSection } from './DashboardKpiSection';
+import { CrossProjectLiveMonitor } from './CrossProjectLiveMonitor';
+
 
 export const DashboardView: React.FC = () => {
   const {
@@ -140,6 +142,10 @@ export const DashboardView: React.FC = () => {
           </button>
         </div>
       )}
+
+      {/* DASHBOARD MONITORING LIVE LINTAS PROYEK (SINGLE SCREEN) */}
+      <CrossProjectLiveMonitor />
+
 
       {/* COMPREHENSIVE KPI SECTION: Planned, In-Progress, Completed, Quality Score & Compliance */}
       {(kpiConfig.kpiWorkLifecycle ||

@@ -12,7 +12,9 @@ import {
   Award,
   Sparkles,
   ArrowDownToLine,
+  BarChart2,
   Eye,
+
   Plus,
   Trash2,
   Edit3,
@@ -28,6 +30,10 @@ import { useCleaning } from '../../context/CleaningContext';
 import { CleaningTask } from '../../types';
 import { BeforeAfterModal } from '../modals/BeforeAfterModal';
 import { exportMonthlyReportToPDF } from '../../utils/pdfExport';
+import { exportTasksToExcel } from '../../utils/excelExport';
+import { PerformanceTrendsSection } from './PerformanceTrendsSection';
+
+
 
 export const LaporanReportView: React.FC = () => {
   const {
@@ -44,8 +50,9 @@ export const LaporanReportView: React.FC = () => {
     setActiveTab,
   } = useCleaning();
 
-  // Active view tab inside Laporan: 'monthly_jobs' (Before, Progress, After) vs 'executive_kpi'
-  const [activeSubTab, setActiveSubTab] = useState<'monthly_jobs' | 'executive_kpi'>('monthly_jobs');
+  // Active view tab inside Laporan: 'monthly_jobs' (Before, Progress, After) vs 'executive_kpi' vs 'performance_trends'
+  const [activeSubTab, setActiveSubTab] = useState<'monthly_jobs' | 'executive_kpi' | 'performance_trends'>('monthly_jobs');
+
 
   // Month period filter
   const [selectedMonth, setSelectedMonth] = useState<string>('2026-09');
@@ -141,34 +148,13 @@ export const LaporanReportView: React.FC = () => {
   };
 
   const handleExportCSV = () => {
-    const csvRows = [
-      ['No. Urut', 'ID Tugas', 'Bulan Periode', 'Tanggal Selesai', 'Area / Lokasi', 'Petugas', 'Shift', 'Uraian Pekerjaan', 'Foto Before (URL)', 'Foto Progress (URL)', 'Foto After (URL)', 'Catatan Petugas'],
-      ...monthlyTasks.map((t) => [
-        t.monthlyOrderNo || '',
-        t.id,
-        t.monthPeriod || selectedMonth,
-        t.completedTime || 'Hari ini',
-        `"${t.areaName} (${t.buildingFloor})"`,
-        `"${t.cleanerName}"`,
-        `"${t.shift}"`,
-        `"${(t.workDescription || t.remarks || 'Pembersihan rutin area sesuai standar operasional').replace(/"/g, '""')}"`,
-        t.photoBefore || '',
-        t.photoProgress || '',
-        t.photoAfter || '',
-        `"${(t.remarks || '').replace(/"/g, '""')}"`,
-      ]),
-    ];
-
-    const csvContent =
-      'data:text/csv;charset=utf-8,\uFEFF' + csvRows.map((r) => r.join(',')).join('\n');
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `Laporan_Bulanan_Pekerjaan_${selectedMonth}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    exportTasksToExcel(
+      monthlyTasks,
+      `Laporan_Bulanan_Pekerjaan_${selectedMonth}.csv`,
+      activeProject?.name || 'Gedung Operasional'
+    );
   };
+
 
   const startEditDescription = (task: CleaningTask) => {
     setEditingTaskId(task.id);
@@ -254,10 +240,12 @@ export const LaporanReportView: React.FC = () => {
           <button
             onClick={handleExportCSV}
             className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-semibold text-xs shadow-xs transition-colors"
+            title="Download file format Excel/CSV siap kirim ke klien"
           >
             <Download className="w-3.5 h-3.5 text-slate-500" />
-            <span>Ekspor CSV</span>
+            <span>Ekspor Excel / CSV</span>
           </button>
+
 
           <button
             onClick={handleDownloadPDF}
@@ -304,7 +292,23 @@ export const LaporanReportView: React.FC = () => {
           <TrendingUp className="w-4 h-4" />
           <span>Ringkasan Eksekutif, SLA & Konsumsi Material</span>
         </button>
+
+        <button
+          onClick={() => setActiveSubTab('performance_trends')}
+          className={`pb-3 px-4 text-xs font-bold transition-all border-b-2 flex items-center gap-2 ${
+            activeSubTab === 'performance_trends'
+              ? 'border-sky-600 text-sky-700'
+              : 'border-transparent text-slate-500 hover:text-slate-800'
+          }`}
+        >
+          <BarChart2 className="w-4 h-4 text-sky-600" />
+          <span>Tren Kinerja Petugas & Area</span>
+          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800">
+            Evaluasi
+          </span>
+        </button>
       </div>
+
 
       {/* Official Print Header for Corporate Handover */}
       <div className="hidden print:block border-b-2 border-slate-900 pb-4 mb-4">
@@ -819,7 +823,13 @@ export const LaporanReportView: React.FC = () => {
         </div>
       )}
 
+      {/* TAB 3: Performance Trends & Evaluation per Petugas & Area */}
+      {activeSubTab === 'performance_trends' && (
+        <PerformanceTrendsSection />
+      )}
+
       {/* Modal: Select Tasks From Month's History To Add to Monthly Report */}
+
       {showAddFromHistoryModal && (
         <div
           id="history-candidate-modal-backdrop"

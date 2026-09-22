@@ -20,7 +20,9 @@ import { WeeklyActivityView } from './components/web/WeeklyActivityView';
 import { MonthlyActivityView } from './components/web/MonthlyActivityView';
 import { DamageReportView } from './components/web/DamageReportView';
 import { LoginPage } from './components/auth/LoginPage';
+import { OverdueAlertBanner } from './components/layout/OverdueAlertBanner';
 import { ShieldAlert } from 'lucide-react';
+
 
 const MainLayout: React.FC = () => {
   const { isAuthenticated, activeTab, userRole, hasAccess, setActiveTab } = useCleaning();
@@ -102,8 +104,10 @@ const MainLayout: React.FC = () => {
   return (
     <div className="h-screen flex flex-col bg-slate-50 font-sans text-slate-900 antialiased selection:bg-sky-500 selection:text-white overflow-hidden">
       <Header />
+      <OverdueAlertBanner />
 
       {/* Unified responsive multi-device layout (PC, Laptop, Tablet, Smartphone) */}
+
       <div className="flex-1 flex overflow-hidden relative min-h-0">
         <Sidebar />
         <main className="flex-1 overflow-y-auto bg-slate-50 min-h-0">

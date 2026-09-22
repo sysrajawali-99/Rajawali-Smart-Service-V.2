@@ -32,6 +32,7 @@ import {
   DEFAULT_KPI_VISIBILITY_OFF,
   CompanyProfile,
   DEFAULT_COMPANY_PROFILE,
+  AuditLogEntry,
 } from '../types';
 import { calculateShiftDuration } from '../utils/shiftUtils';
 import { normalizeFrequencyCode, getNextProgramDayStatus } from '../utils/mcpUtils';
@@ -52,8 +53,10 @@ import {
   INITIAL_DAILY_CHECKLISTS,
   INITIAL_MASTER_PROGRAMS,
   INITIAL_DAMAGE_REPORTS,
+  INITIAL_AUDIT_LOGS,
   generate24HourSlots,
 } from '../data/initialData';
+
 import {
   ensureCompleteSlotItems,
   findMatchingSlotItem,
@@ -316,7 +319,23 @@ interface CleaningContextType {
     submenuKey: string,
     scope: 'active_project' | 'all'
   ) => { count: number; label: string };
+
+  // Verifikasi / Approval Berjenjang Controller
+  verifyTaskApproval: (
+    taskId: string,
+    action: 'approved' | 'rejected',
+    notes?: string
+  ) => void;
+
+  // Audit Trail Multi-Proyek
+  auditLogs: AuditLogEntry[];
+  addAuditLog: (entry: Omit<AuditLogEntry, 'id' | 'timestamp' | 'userId' | 'userName' | 'userRole'>) => void;
+  clearAuditLogs: () => void;
+
+  // Real-time Overdue Monitoring Check
+  checkOverdueAreasAndTasks: () => { overdueTasksCount: number; overdueChecklistsCount: number };
 }
+
 
 const CleaningContext = createContext<CleaningContextType | undefined>(undefined);
 
@@ -759,6 +778,210 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     localStorage.setItem('sco_notifs', JSON.stringify(notifications));
   }, [notifications]);
 
+  // Audit Logs (Multi-Proyek)
+  const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>(() => {
+    const saved = localStorage.getItem('sco_audit_logs');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {
+        console.error('Failed to parse audit logs', e);
+      }
+    }
+    return INITIAL_AUDIT_LOGS;
+  });
+
+  useEffect(() => {
+    localStorage.setItem('sco_audit_logs', JSON.stringify(auditLogs));
+  }, [auditLogs]);
+
+  const addAuditLog = (
+    entry: Omit<AuditLogEntry, 'id' | 'timestamp' | 'userId' | 'userName' | 'userRole'>
+  ) => {
+    const now = new Date();
+    const dateFormatted = now.toLocaleDateString('id-ID', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+    });
+    const timeFormatted = now.toLocaleTimeString('id-ID', {
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    });
+    const timestampStr = `${dateFormatted}, ${timeFormatted} WIB`;
+
+    const newLog: AuditLogEntry = {
+      id: `audit-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      timestamp: timestampStr,
+      userId: currentUser?.id || 'usr-system',
+      userName: currentUser?.name || 'Administrator',
+      userRole: userRole,
+      projectId: entry.projectId || safeActiveProjectId,
+      projectName: entry.projectName || activeProject?.name || 'Gedung Operasional',
+      action: entry.action,
+      module: entry.module,
+      entityId: entry.entityId,
+      entityName: entry.entityName,
+      details: entry.details,
+      previousState: entry.previousState,
+      newState: entry.newState,
+    };
+
+    setAuditLogs((prev) => [newLog, ...prev]);
+  };
+
+  const clearAuditLogs = () => {
+    setAuditLogs([]);
+  };
+
+  // Controller Verification / Approval for Tasks
+  const verifyTaskApproval = (
+    taskId: string,
+    action: 'approved' | 'rejected',
+    notes?: string
+  ) => {
+    const nowStr = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB';
+    const verifierName = currentUser?.name || 'Pengawas/Controller';
+
+    let affectedTask: CleaningTask | undefined;
+
+    setTasks((prev) =>
+      prev.map((t) => {
+        if (t.id === taskId) {
+          affectedTask = t;
+          return {
+            ...t,
+            status: action === 'approved' ? 'completed' : 'in_progress',
+            controllerApprovalStatus: action,
+            controllerApprovedBy: verifierName,
+            controllerApprovedAt: nowStr,
+            controllerRejectionReason: action === 'rejected' ? notes : undefined,
+            remarks: action === 'rejected' && notes ? `[Catatan Controller: ${notes}] ${t.remarks || ''}` : t.remarks,
+          };
+        }
+        return t;
+      })
+    );
+
+    // Kirim notifikasi hasil approval ke petugas
+    const notif: AppNotification = {
+      id: `notif-appr-${Date.now()}`,
+      title: action === 'approved' ? '✅ Tugas Disetujui Controller' : '⚠️ Tugas Ditolak oleh Controller',
+      message: action === 'approved'
+        ? `Laporan pengerjaan "${affectedTask?.areaName || 'Area'}" telah diverifikasi & DISETUJUI oleh Controller ${verifierName}.`
+        : `Laporan pengerjaan "${affectedTask?.areaName || 'Area'}" DITOLAK oleh Controller ${verifierName}. Alasan: "${notes || 'Pekerjaan belum memenuhi standar'}". Segera lakukan perbaikan!`,
+      timestamp: nowStr,
+      type: action === 'approved' ? 'success' : 'warning',
+      targetRole: ['petugas', 'admin', 'supervisor'],
+      read: false,
+      taskId: taskId,
+      projectId: affectedTask?.projectId || safeActiveProjectId,
+    };
+    setNotifications((prev) => [notif, ...prev]);
+
+    // Catat Audit Trail
+    addAuditLog({
+      action: action === 'approved' ? 'verify_approve' : 'verify_reject',
+      module: 'inspeksi',
+      entityId: taskId,
+      entityName: affectedTask?.areaName || 'Tugas Area Kebersihan',
+      projectId: affectedTask?.projectId || safeActiveProjectId,
+      projectName: activeProject?.name,
+      details: action === 'approved'
+        ? `Controller ${verifierName} MENYETUJUI laporan tugas (${affectedTask?.areaName || taskId}). Catatan: "${notes || '-'}"`
+        : `Controller ${verifierName} MENOLAK laporan tugas (${affectedTask?.areaName || taskId}) dan meminta perbaikan. Alasan: "${notes || '-'}"`,
+      previousState: affectedTask?.controllerApprovalStatus || 'pending',
+      newState: action,
+    });
+  };
+
+  // Real-time Check for Overdue Checklist & Tasks
+  const checkOverdueAreasAndTasks = (): { overdueTasksCount: number; overdueChecklistsCount: number } => {
+    const now = new Date();
+    const currentHour = now.getHours();
+    const todayStr = '2026-09-13'; // Standard baseline or today's date
+    const nowStr = now.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB';
+
+    let overdueChecklistsCount = 0;
+    let overdueTasksCount = 0;
+
+    // Periksa Checklist 24 jam yang belum dicek melewati jadwal
+    dailyChecklists.forEach((d) => {
+      d.hourlySlots.forEach((slot) => {
+        if (slot.hour < currentHour && slot.status === 'pending') {
+          overdueChecklistsCount++;
+        }
+      });
+    });
+
+    // Periksa Tugas yang belum selesai melewati deadline
+    tasks.forEach((t) => {
+      if (t.status === 'in_progress' || t.status === 'scheduled') {
+        const deadlineHour = parseInt(t.deadlineTime?.split(':')[0] || '24', 10);
+        if (deadlineHour <= currentHour) {
+          overdueTasksCount++;
+        }
+      }
+    });
+
+    // Buat notifikasi peringatan jika ada area terlambat
+    if (overdueChecklistsCount > 0 || overdueTasksCount > 0) {
+      const alertNotif: AppNotification = {
+        id: `notif-overdue-${Date.now()}`,
+        title: '⚠️ Peringatan: Area Melewati Jadwal Cek!',
+        message: `Terdeteksi ${overdueChecklistsCount} slot checklist area dan ${overdueTasksCount} jadwal tugas belum diselesaikan melewati waktu yang ditentukan.`,
+        timestamp: nowStr,
+        type: 'warning',
+        targetRole: ['admin', 'supervisor', 'petugas'],
+        read: false,
+        projectId: safeActiveProjectId,
+      };
+      setNotifications((prev) => [alertNotif, ...prev]);
+    }
+
+    return { overdueTasksCount, overdueChecklistsCount };
+  };
+
+  // Jalankan pengecekan overdue otomatis secara berkala (real-time interval)
+  useEffect(() => {
+    // Initial check after mount
+    const timer = setTimeout(() => {
+      const now = new Date();
+      const currentHour = now.getHours();
+      // Count pending slots in previous hours
+      let pendingCount = 0;
+      dailyChecklists.forEach((d) => {
+        d.hourlySlots.forEach((slot) => {
+          if (slot.hour < currentHour && slot.status === 'pending') {
+            pendingCount++;
+          }
+        });
+      });
+
+      if (pendingCount > 0) {
+        const notif: AppNotification = {
+          id: `notif-overdue-init-${Date.now()}`,
+          title: `⚠️ Real-Time Alert: ${pendingCount} Jadwal Ceklist Terlewat!`,
+          message: `Terdapat ${pendingCount} slot inspeksi checklist yang belum diisi oleh petugas melewati batas jam jadwal. Segera tindak lanjuti!`,
+          timestamp: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB',
+          type: 'warning',
+          targetRole: ['admin', 'supervisor'],
+          read: false,
+          projectId: safeActiveProjectId,
+        };
+        setNotifications((prev) => {
+          // Prevent exact duplicate notifications
+          if (prev.some((n) => n.title.includes('Jadwal Ceklist Terlewat'))) return prev;
+          return [notif, ...prev];
+        });
+      }
+    }, 4000);
+
+    return () => clearTimeout(timer);
+  }, []);
+
+
   // Authentication & Session
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
     const saved = localStorage.getItem('sco_auth_state');
@@ -1053,15 +1276,39 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     const id = `tpl-custom-${Date.now()}`;
     const newTpl: ChecklistTemplateItem = { ...tpl, id };
     setChecklistTemplates((prev) => [...prev, newTpl]);
+    addAuditLog({
+      action: 'create',
+      module: 'pengaturan',
+      entityId: id,
+      entityName: tpl.name,
+      details: `Menambah SOP Checklist baru: "${tpl.name}" [Kategori: ${tpl.category}]`,
+    });
   };
 
   const updateChecklistTemplate = (id: string, updates: Partial<ChecklistTemplateItem>) => {
     setChecklistTemplates((prev) => prev.map((t) => (t.id === id ? { ...t, ...updates } : t)));
+    addAuditLog({
+      action: 'update',
+      module: 'pengaturan',
+      entityId: id,
+      entityName: updates.name || id,
+      details: `Memperbarui SOP Checklist: ${updates.name || updates.sopInstruction || id}`,
+    });
   };
 
   const deleteChecklistTemplate = (id: string) => {
+    const target = checklistTemplates.find((t) => t.id === id);
     setChecklistTemplates((prev) => prev.filter((t) => t.id !== id));
+    addAuditLog({
+      action: 'delete',
+      module: 'pengaturan',
+      entityId: id,
+      entityName: target?.name || id,
+      details: `Menghapus item SOP Checklist: "${target?.name || id}"`,
+    });
   };
+
+
 
   const toggleHourlySlotCell = (
     dailyChecklistId: string,
@@ -2737,10 +2984,22 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         // Delete helpers
         deleteSchedule,
         deleteComplaint,
+
+        // Verifikasi / Approval Berjenjang Controller
+        verifyTaskApproval,
+
+        // Audit Trail Multi-Proyek
+        auditLogs,
+        addAuditLog,
+        clearAuditLogs,
+
+        // Real-Time Overdue Monitoring
+        checkOverdueAreasAndTasks,
       }}
     >
       {children}
     </CleaningContext.Provider>
+
   );
 };
 

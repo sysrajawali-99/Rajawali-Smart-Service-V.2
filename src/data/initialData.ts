@@ -21,7 +21,9 @@ import {
   MasterCleaningProgramItem,
   ProgramDayStatus,
   FacilityDamageReport,
+  AuditLogEntry,
 } from '../types';
+
 import { calculateShiftDuration } from '../utils/shiftUtils';
 
 export const INITIAL_SHIFTS: Shift[] = [
@@ -2256,4 +2258,70 @@ export const INITIAL_DAMAGE_REPORTS: FacilityDamageReport[] = [
     createdAt: '2026-09-15T07:45:00.000Z',
   },
 ];
+
+export const INITIAL_AUDIT_LOGS: AuditLogEntry[] = [
+  {
+    id: 'log-001',
+    timestamp: '15/09/2026, 08:30:15 WIB',
+    userId: 'usr-1',
+    userName: 'Rendra Pratama',
+    userRole: 'admin',
+    projectId: 'proj-1',
+    projectName: 'RS Siloam Kebon Jeruk',
+    action: 'verify_approve',
+    module: 'inspeksi',
+    entityId: 'task-101',
+    entityName: 'Pembersihan Koridor Lt. 1 & Sanitasi Handle',
+    details: 'Controller menyetujui hasil pengerjaan petugas (Skor QC: 95/100). Status diubah menjadi Selesai Terverifikasi.',
+    previousState: 'pending_approval',
+    newState: 'approved',
+  },
+  {
+    id: 'log-002',
+    timestamp: '15/09/2026, 09:15:20 WIB',
+    userId: 'usr-2',
+    userName: 'Ahmad Fauzi',
+    userRole: 'supervisor',
+    projectId: 'proj-1',
+    projectName: 'RS Siloam Kebon Jeruk',
+    action: 'update',
+    module: 'ceklist',
+    entityId: 'cloc-1',
+    entityName: 'Checklist Toilet Utama Pria',
+    details: 'Mengubah status checklist jam 09:00 - 10:00 menjadi Bersih (B) untuk 11 parameter sanitasi.',
+    previousState: 'pending',
+    newState: 'clean',
+  },
+  {
+    id: 'log-003',
+    timestamp: '15/09/2026, 09:40:00 WIB',
+    userId: 'usr-1',
+    userName: 'Rendra Pratama',
+    userRole: 'admin',
+    projectId: 'proj-2',
+    projectName: 'Gedung Menara Rajawali',
+    action: 'update',
+    module: 'pengaturan',
+    entityId: 'sop-tlt-1',
+    entityName: 'SOP Pembersihan Kaca & Wastafel',
+    details: 'Menyesuaikan instruksi SOP checklist dinamis khusus Gedung Menara Rajawali.',
+    previousState: 'Gunakan kain microfiber standar',
+    newState: 'Wajib gunakan microfiber biru + cairan disinfektan food-grade',
+  },
+  {
+    id: 'log-004',
+    timestamp: '15/09/2026, 10:10:00 WIB',
+    userId: 'usr-1',
+    userName: 'Rendra Pratama',
+    userRole: 'admin',
+    projectId: 'proj-1',
+    projectName: 'RS Siloam Kebon Jeruk',
+    action: 'export',
+    module: 'report',
+    entityId: 'rep-2026-09',
+    entityName: 'Laporan Rekapitulasi Kinerja Bulanan',
+    details: 'Export data laporan bulanan operasional ke format Excel & PDF untuk arsip klien.',
+  },
+];
+
 

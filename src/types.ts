@@ -140,10 +140,16 @@ export interface CleaningTask {
   qcNotes?: string;
   inspectedBy?: string;
   inspectedAt?: string;
+  // Verifikasi / Approval berjenjang Controller / Pengawas
+  controllerApprovalStatus?: 'approved' | 'rejected' | 'pending';
+  controllerApprovedBy?: string;
+  controllerApprovedAt?: string;
+  controllerRejectionReason?: string;
   exportedToMonthlyReport?: boolean;
   monthlyOrderNo?: number; // Nomor urut pekerjaan di laporan bulanan
   monthlyReportExportDate?: string;
 }
+
 
 export interface QCAuditParameterResult {
   parameterName: string;
@@ -289,12 +295,15 @@ export interface ChecklistLocation {
 
 export interface ChecklistTemplateItem {
   id: string;
+  projectId?: string; // Spesifik per gedung / proyek atau global jika undefined
   category: ChecklistLocationCategory | 'all';
   name: string;
   description?: string;
+  sopInstruction?: string; // Instruksi Standar Operasional Prosedur (SOP) pengerjaan
   isDefault?: boolean;
   order?: number;
 }
+
 
 export type HourlyCheckItemStatus = 'clean' | 'issue' | 'not_checked' | 'dirty' | 'broken';
 
@@ -479,4 +488,32 @@ export const DEFAULT_COMPANY_PROFILE: CompanyProfile = {
   website: 'www.rajawali-smart.co.id',
   logoUrl: '',
 };
+
+export type AuditActionType =
+  | 'create'
+  | 'update'
+  | 'delete'
+  | 'verify_approve'
+  | 'verify_reject'
+  | 'bulk_delete'
+  | 'login'
+  | 'export';
+
+export interface AuditLogEntry {
+  id: string;
+  timestamp: string; // ISO format or formatted WIB
+  userId: string;
+  userName: string;
+  userRole: UserRole;
+  projectId?: string;
+  projectName?: string;
+  action: AuditActionType;
+  module: string; // 'ceklist' | 'task' | 'inspeksi' | 'pengaturan' | 'complaint' | 'area' | 'petugas'
+  entityId?: string;
+  entityName?: string;
+  details: string; // Deskripsi perubahan: Siapa mengubah apa dan kapan
+  previousState?: string;
+  newState?: string;
+}
+
 

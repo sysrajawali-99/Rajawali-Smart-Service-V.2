@@ -41,6 +41,8 @@ import {
   evaluateQcSuccessRating,
 } from '../../utils/qcJobsAggregation';
 import { PhotoWatermarkUploader } from '../common/PhotoWatermarkUploader';
+import { ControllerApprovalSection } from './ControllerApprovalSection';
+
 
 // Standar Skala Mutu Kebersihan (1 - 5) Berbasis Kategori
 export const QUALITY_SCALE_CATEGORIES: Record<
@@ -482,8 +484,12 @@ export const InspeksiControlView: React.FC = () => {
         </div>
       </div>
 
+      {/* VERIFIKASI / APPROVAL BERJENJANG CONTROLLER */}
+      <ControllerApprovalSection />
+
       {/* SECTION 1: SELEKSI PEKERJAAN SELESAI 7 HARI TERAKHIR (Weekly, Monthly, Special Job & Komplain) */}
       <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-xs space-y-4">
+
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
           <div>
             <div className="flex items-center gap-2">
