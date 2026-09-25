@@ -1,0 +1,918 @@
+import React, { useState, useMemo } from 'react';
+import {
+  Wrench,
+  AlertTriangle,
+  CheckCircle2,
+  Clock,
+  Plus,
+  Search,
+  Filter,
+  Eye,
+  Camera,
+  Layers,
+  Building2,
+  X,
+  Calendar,
+  User,
+  Phone,
+  FileText,
+  DollarSign,
+  ChevronRight,
+  ShieldCheck,
+  AlertCircle,
+  HelpCircle,
+} from 'lucide-react';
+import { useCleaning } from '../../../context/CleaningContext';
+import { FacilityDamageReport, DamageCategory, DamageSeverity, DamageReportStatus } from '../../../types';
+
+export const KlienDamageSection: React.FC = () => {
+  const {
+    damageReports,
+    addDamageReport,
+    updateDamageReport,
+    deleteDamageReport,
+    resolveDamageReport,
+    activeProject,
+    currentUser,
+    userRole,
+  } = useCleaning();
+
+  // Filters
+  const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'all' | DamageReportStatus>('all');
+  const [severityFilter, setSeverityFilter] = useState<'all' | DamageSeverity>('all');
+  const [selectedReport, setSelectedReport] = useState<FacilityDamageReport | null>(null);
+
+  // Modal: Create New Damage Report
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [newItemName, setNewItemName] = useState('');
+  const [newCategory, setNewCategory] = useState<DamageCategory>('sanitair');
+  const [newLocationName, setNewLocationName] = useState('');
+  const [newFloor, setNewFloor] = useState('Lantai 1');
+  const [newZone, setNewZone] = useState('Zona Publik');
+  const [newDamageLevel, setNewDamageLevel] = useState<DamageSeverity>('sedang');
+  const [newPriority, setNewPriority] = useState<'low' | 'medium' | 'high' | 'urgent'>('medium');
+  const [newChronology, setNewChronology] = useState('');
+  const [newImpact, setNewImpact] = useState('');
+  const [newActionTaken, setNewActionTaken] = useState('');
+  const [newTargetDept, setNewTargetDept] = useState('Building Maintenance (MEP)');
+  const [newPhotoBefore, setNewPhotoBefore] = useState('');
+
+  // Modal: Resolve Damage Report
+  const [showResolveModal, setShowResolveModal] = useState(false);
+  const [resolvingReport, setResolvingReport] = useState<FacilityDamageReport | null>(null);
+  const [resolutionTechnician, setResolutionTechnician] = useState('');
+  const [resolutionNotes, setResolutionNotes] = useState('');
+  const [resolutionPhotoAfter, setResolutionPhotoAfter] = useState('');
+  const [resolutionCost, setResolutionCost] = useState<number>(0);
+
+  // Toast
+  const [toastMsg, setToastMsg] = useState<string | null>(null);
+  const showToast = (msg: string) => {
+    setToastMsg(msg);
+    setTimeout(() => setToastMsg(null), 3000);
+  };
+
+  // Filtered Damage Reports (already filtered by active project in context)
+  const filteredReports = useMemo(() => {
+    return damageReports.filter((item) => {
+      const matchStatus = statusFilter === 'all' || item.status === statusFilter;
+      const matchSeverity = severityFilter === 'all' || item.damageLevel === severityFilter;
+      const q = searchQuery.toLowerCase().trim();
+      const matchQuery =
+        !q ||
+        item.ticketNo.toLowerCase().includes(q) ||
+        item.itemName.toLowerCase().includes(q) ||
+        item.locationName.toLowerCase().includes(q) ||
+        item.floor.toLowerCase().includes(q) ||
+        item.reporterName.toLowerCase().includes(q);
+
+      return matchStatus && matchSeverity && matchQuery;
+    });
+  }, [damageReports, statusFilter, severityFilter, searchQuery]);
+
+  // Statistics
+  const totalCount = damageReports.length;
+  const reportedCount = damageReports.filter((r) => r.status === 'dilaporkan').length;
+  const inProgressCount = damageReports.filter(
+    (r) => r.status === 'dalam_penanganan' || r.status === 'menunggu_sparepart'
+  ).length;
+  const resolvedCount = damageReports.filter((r) => r.status === 'selesai').length;
+  const criticalCount = damageReports.filter((r) => r.damageLevel === 'kritis' || r.priority === 'urgent').length;
+
+  const handleCreateReport = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newItemName.trim() || !newLocationName.trim()) {
+      alert('Nama barang dan lokasi kerusakan wajib diisi.');
+      return;
+    }
+
+    addDamageReport({
+      projectId: activeProject.id,
+      itemName: newItemName,
+      category: newCategory,
+      locationName: newLocationName,
+      floor: newFloor,
+      zone: newZone,
+      damageLevel: newDamageLevel,
+      priority: newPriority,
+      chronology: newChronology || 'Ditemukan saat inspeksi operasional rutin.',
+      impact: newImpact || 'Mengganggu kenyamanan pengguna fasilitas gedung.',
+      actionTaken: newActionTaken || 'Pemberian tanda pengaman & pembatasan akses sementara.',
+      targetDepartment: newTargetDept,
+      reporterName: currentUser?.name || 'Klien Building Management',
+      reporterRole: userRole === 'klien' ? 'Klien Gedung' : 'Pengawas Operasional',
+      photoBefore:
+        newPhotoBefore ||
+        'https://images.unsplash.com/photo-1581092160607-ee22621dd758?w=600&auto=format&fit=crop&q=80',
+      status: 'dilaporkan',
+      reportDate: new Date().toISOString().split('T')[0],
+      reportTime: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB',
+    });
+
+    showToast(`Laporan kerusakan "${newItemName}" berhasil dibuat.`);
+    setShowCreateModal(false);
+
+    // Reset Form
+    setNewItemName('');
+    setNewLocationName('');
+    setNewChronology('');
+    setNewImpact('');
+    setNewActionTaken('');
+    setNewPhotoBefore('');
+  };
+
+  const handleOpenResolve = (report: FacilityDamageReport) => {
+    setResolvingReport(report);
+    setResolutionTechnician(currentUser?.name || 'Tim Maintenance MEP');
+    setResolutionNotes('');
+    setResolutionPhotoAfter('');
+    setResolutionCost(report.costEstimate || 0);
+    setShowResolveModal(true);
+  };
+
+  const handleConfirmResolve = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!resolvingReport) return;
+
+    resolveDamageReport(resolvingReport.id, {
+      technicianName: resolutionTechnician,
+      technicianNotes: resolutionNotes || 'Perbaikan fasilitas telah selesai dan diuji fungsi dengan baik.',
+      photoAfter:
+        resolutionPhotoAfter ||
+        'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?w=600&auto=format&fit=crop&q=80',
+      costEstimate: Number(resolutionCost) || 0,
+    });
+
+    showToast(`Tiket kerusakan ${resolvingReport.ticketNo} berhasil diselesaikan.`);
+    setShowResolveModal(false);
+    setResolvingReport(null);
+    if (selectedReport?.id === resolvingReport.id) {
+      setSelectedReport(null);
+    }
+  };
+
+  const getStatusBadge = (status: DamageReportStatus) => {
+    switch (status) {
+      case 'dilaporkan':
+        return (
+          <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-rose-50 text-rose-700 border border-rose-200 flex items-center gap-1.5">
+            <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse" />
+            Dilaporkan
+          </span>
+        );
+      case 'dalam_penanganan':
+        return (
+          <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200 flex items-center gap-1.5">
+            <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+            Dalam Penanganan
+          </span>
+        );
+      case 'menunggu_sparepart':
+        return (
+          <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-purple-50 text-purple-700 border border-purple-200 flex items-center gap-1.5">
+            <span className="w-1.5 h-1.5 rounded-full bg-purple-500" />
+            Menunggu Sparepart
+          </span>
+        );
+      case 'selesai':
+        return (
+          <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1.5">
+            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+            Selesai Diperbaiki
+          </span>
+        );
+      case 'ditolak':
+        return (
+          <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-slate-100 text-slate-600 border border-slate-200">
+            Ditolak
+          </span>
+        );
+      default:
+        return null;
+    }
+  };
+
+  const getSeverityBadge = (level: DamageSeverity) => {
+    switch (level) {
+      case 'kritis':
+        return <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-red-100 text-red-800">Kritis</span>;
+      case 'berat':
+        return <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-orange-100 text-orange-800">Berat</span>;
+      case 'sedang':
+        return <span className="px-2 py-0.5 rounded text-[11px] font-medium bg-amber-100 text-amber-800">Sedang</span>;
+      case 'ringan':
+        return <span className="px-2 py-0.5 rounded text-[11px] font-medium bg-slate-100 text-slate-700">Ringan</span>;
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Toast */}
+      {toastMsg && (
+        <div className="fixed bottom-6 right-6 z-50 bg-slate-900 text-white px-4 py-3 rounded-xl shadow-2xl border border-slate-700 flex items-center gap-2.5 text-xs animate-in fade-in slide-in-from-bottom-2">
+          <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+          <span className="font-medium">{toastMsg}</span>
+        </div>
+      )}
+
+      {/* HEADER & SUMMARY METRICS */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div>
+          <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+            <Wrench className="w-5 h-5 text-rose-600" />
+            <span>Laporan Kerusakan Fasilitas & Aset</span>
+          </h3>
+          <p className="text-xs text-slate-500">
+            Pemantauan kerusakan sarana gedung, tindak lanjut teknisi, dan dokumentasi perbaikan di {activeProject.name}.
+          </p>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => setShowCreateModal(true)}
+          className="inline-flex items-center gap-2 px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold rounded-xl shadow-sm transition-colors cursor-pointer self-start sm:self-auto"
+        >
+          <Plus className="w-4 h-4" />
+          <span>Laporkan Kerusakan Baru</span>
+        </button>
+      </div>
+
+      {/* KPI METRIC CARDS */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="bg-white p-3.5 rounded-2xl border border-slate-200/90 shadow-xs">
+          <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-1">Total Laporan</div>
+          <div className="text-2xl font-extrabold text-slate-900 tabular-nums">{totalCount}</div>
+          <div className="text-[10.5px] text-slate-500 mt-0.5">Seluruh tiket tercatat</div>
+        </div>
+
+        <div className="bg-rose-50/70 p-3.5 rounded-2xl border border-rose-200 shadow-xs">
+          <div className="text-[11px] font-bold text-rose-800 uppercase tracking-wider mb-1">Menunggu Tindakan</div>
+          <div className="text-2xl font-extrabold text-rose-700 tabular-nums">{reportedCount}</div>
+          <div className="text-[10.5px] text-rose-600 mt-0.5 font-medium">Status Dilaporkan</div>
+        </div>
+
+        <div className="bg-amber-50/70 p-3.5 rounded-2xl border border-amber-200 shadow-xs">
+          <div className="text-[11px] font-bold text-amber-800 uppercase tracking-wider mb-1">Sedang Ditangani</div>
+          <div className="text-2xl font-extrabold text-amber-700 tabular-nums">{inProgressCount}</div>
+          <div className="text-[10.5px] text-amber-600 mt-0.5 font-medium">Proses teknisi / part</div>
+        </div>
+
+        <div className="bg-emerald-50/70 p-3.5 rounded-2xl border border-emerald-200 shadow-xs">
+          <div className="text-[11px] font-bold text-emerald-800 uppercase tracking-wider mb-1">Selesai Diperbaiki</div>
+          <div className="text-2xl font-extrabold text-emerald-700 tabular-nums">{resolvedCount}</div>
+          <div className="text-[10.5px] text-emerald-600 mt-0.5 font-medium">Fasilitas normal kembali</div>
+        </div>
+      </div>
+
+      {/* FILTER & SEARCH BAR */}
+      <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-xs flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
+        <div className="relative flex-1">
+          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Cari no. tiket, nama barang, lantai, atau pelapor..."
+            className="w-full pl-9 pr-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500 transition-colors"
+          />
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Status Filter */}
+          <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl text-xs">
+            <button
+              type="button"
+              onClick={() => setStatusFilter('all')}
+              className={`px-2.5 py-1 rounded-lg font-medium transition-colors cursor-pointer ${
+                statusFilter === 'all' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              Semua
+            </button>
+            <button
+              type="button"
+              onClick={() => setStatusFilter('dilaporkan')}
+              className={`px-2.5 py-1 rounded-lg font-medium transition-colors cursor-pointer ${
+                statusFilter === 'dilaporkan' ? 'bg-white text-rose-700 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              Baru ({reportedCount})
+            </button>
+            <button
+              type="button"
+              onClick={() => setStatusFilter('dalam_penanganan')}
+              className={`px-2.5 py-1 rounded-lg font-medium transition-colors cursor-pointer ${
+                statusFilter === 'dalam_penanganan'
+                  ? 'bg-white text-amber-700 shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              Diproses
+            </button>
+            <button
+              type="button"
+              onClick={() => setStatusFilter('selesai')}
+              className={`px-2.5 py-1 rounded-lg font-medium transition-colors cursor-pointer ${
+                statusFilter === 'selesai'
+                  ? 'bg-white text-emerald-700 shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              Selesai ({resolvedCount})
+            </button>
+          </div>
+
+          {/* Severity Filter */}
+          <select
+            value={severityFilter}
+            onChange={(e) => setSeverityFilter(e.target.value as any)}
+            className="px-3 py-1.5 bg-slate-50 border border-slate-200 text-xs rounded-xl text-slate-700 focus:outline-none focus:ring-2 focus:ring-rose-500/20"
+          >
+            <option value="all">Semua Keparahan</option>
+            <option value="kritis">Kritis</option>
+            <option value="berat">Berat</option>
+            <option value="sedang">Sedang</option>
+            <option value="ringan">Ringan</option>
+          </select>
+        </div>
+      </div>
+
+      {/* LIST OF DAMAGE REPORTS */}
+      {filteredReports.length === 0 ? (
+        <div className="bg-white rounded-2xl border border-slate-200 p-12 text-center shadow-xs">
+          <div className="w-12 h-12 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center mx-auto mb-3">
+            <Wrench className="w-6 h-6" />
+          </div>
+          <h4 className="text-sm font-bold text-slate-800 mb-1">Tidak Ada Laporan Kerusakan</h4>
+          <p className="text-xs text-slate-500 max-w-sm mx-auto mb-4">
+            Tidak ditemukan catatan kerusakan fasilitas yang cocok dengan filter aktif saat ini.
+          </p>
+          <button
+            type="button"
+            onClick={() => {
+              setStatusFilter('all');
+              setSeverityFilter('all');
+              setSearchQuery('');
+            }}
+            className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-xl transition-colors cursor-pointer"
+          >
+            Reset Filter
+          </button>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {filteredReports.map((report) => {
+            return (
+              <div
+                key={report.id}
+                className="bg-white rounded-2xl border border-slate-200 shadow-xs hover:shadow-md transition-shadow overflow-hidden flex flex-col justify-between"
+              >
+                <div>
+                  {/* Photo Before Header */}
+                  <div className="relative h-40 bg-slate-100 overflow-hidden group">
+                    <img
+                      src={
+                        report.photoBefore ||
+                        'https://images.unsplash.com/photo-1581092160607-ee22621dd758?w=600&auto=format&fit=crop&q=80'
+                      }
+                      alt={report.itemName}
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                    />
+                    <div className="absolute top-2.5 left-2.5 flex items-center gap-1.5">
+                      <span className="px-2 py-0.5 rounded text-[10.5px] font-bold bg-slate-900/80 backdrop-blur-xs text-white">
+                        {report.ticketNo}
+                      </span>
+                      {getSeverityBadge(report.damageLevel)}
+                    </div>
+
+                    <div className="absolute top-2.5 right-2.5">{getStatusBadge(report.status)}</div>
+
+                    {report.status === 'selesai' && report.photoAfter && (
+                      <div className="absolute bottom-2.5 right-2.5 px-2 py-1 rounded-lg bg-emerald-600/90 text-white text-[10px] font-bold backdrop-blur-xs flex items-center gap-1">
+                        <CheckCircle2 className="w-3 h-3" />
+                        <span>Foto Selesai Ada</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Body Content */}
+                  <div className="p-4 space-y-3">
+                    <div>
+                      <h4 className="text-sm font-bold text-slate-900 line-clamp-1">{report.itemName}</h4>
+                      <p className="text-xs text-slate-500 flex items-center gap-1.5 mt-0.5">
+                        <Building2 className="w-3.5 h-3.5 text-slate-400" />
+                        <span>
+                          {report.locationName} · {report.floor}
+                        </span>
+                      </p>
+                    </div>
+
+                    <p className="text-xs text-slate-600 line-clamp-2 leading-relaxed bg-slate-50 p-2.5 rounded-xl border border-slate-100">
+                      {report.chronology}
+                    </p>
+
+                    <div className="grid grid-cols-2 gap-2 text-[11px] pt-1 border-t border-slate-100">
+                      <div>
+                        <span className="text-slate-400 block">Pelapor</span>
+                        <span className="font-medium text-slate-700 truncate block">{report.reporterName}</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 block">Tanggal Lapor</span>
+                        <span className="font-medium text-slate-700 block">{report.reportDate}</span>
+                      </div>
+                    </div>
+
+                    {report.status === 'selesai' && (
+                      <div className="bg-emerald-50/70 p-2.5 rounded-xl border border-emerald-100 text-xs text-emerald-800">
+                        <div className="font-bold flex items-center gap-1 mb-0.5">
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                          <span>Telah Diperbaiki: {report.repairedDate || 'Hari ini'}</span>
+                        </div>
+                        <p className="text-[11px] text-emerald-700 line-clamp-1">
+                          Teknisi: {report.technicianName || 'Tim Maintenance'}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Card Actions */}
+                <div className="p-3 bg-slate-50/80 border-t border-slate-100 flex items-center justify-between gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedReport(report)}
+                    className="flex-1 py-1.5 px-3 bg-white hover:bg-slate-100 text-slate-700 text-xs font-semibold rounded-lg border border-slate-200 transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+                  >
+                    <Eye className="w-3.5 h-3.5 text-slate-500" />
+                    <span>Detail Lengkap</span>
+                  </button>
+
+                  {report.status !== 'selesai' && (
+                    <button
+                      type="button"
+                      onClick={() => handleOpenResolve(report)}
+                      className="py-1.5 px-3 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-lg transition-colors flex items-center gap-1 cursor-pointer"
+                    >
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      <span>Selesaikan</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* MODAL: DETAIL LAPORAN */}
+      {selectedReport && (
+        <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white rounded-3xl max-w-2xl w-full p-6 shadow-2xl border border-slate-200 space-y-5 animate-in fade-in zoom-in-95 my-8">
+            <div className="flex items-start justify-between pb-3 border-b border-slate-100">
+              <div>
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="px-2.5 py-0.5 rounded text-xs font-bold bg-slate-900 text-white">
+                    {selectedReport.ticketNo}
+                  </span>
+                  {getSeverityBadge(selectedReport.damageLevel)}
+                  {getStatusBadge(selectedReport.status)}
+                </div>
+                <h3 className="text-lg font-bold text-slate-900">{selectedReport.itemName}</h3>
+                <p className="text-xs text-slate-500">
+                  {selectedReport.locationName} · {selectedReport.floor} ({selectedReport.zone || 'Semua Zona'})
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedReport(null)}
+                className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center cursor-pointer transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Photos Side by Side if Resolved */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <span className="text-xs font-bold text-slate-700 mb-1.5 block flex items-center gap-1">
+                  <Camera className="w-3.5 h-3.5 text-rose-500" />
+                  Foto Kerusakan Awal
+                </span>
+                <div className="h-44 rounded-2xl bg-slate-100 overflow-hidden border border-slate-200">
+                  <img
+                    src={
+                      selectedReport.photoBefore ||
+                      'https://images.unsplash.com/photo-1581092160607-ee22621dd758?w=600&auto=format&fit=crop&q=80'
+                    }
+                    alt="Kerusakan Awal"
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <span className="text-xs font-bold text-slate-700 mb-1.5 block flex items-center gap-1">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+                  Foto Hasil Perbaikan Selesai
+                </span>
+                <div className="h-44 rounded-2xl bg-slate-100 overflow-hidden border border-slate-200 flex items-center justify-center">
+                  {selectedReport.photoAfter ? (
+                    <img
+                      src={selectedReport.photoAfter}
+                      alt="Hasil Perbaikan"
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <div className="text-center p-4 text-slate-400">
+                      <Wrench className="w-8 h-8 mx-auto mb-1 opacity-50" />
+                      <p className="text-xs">Belum ada foto perbaikan</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Information Grid */}
+            <div className="space-y-3 bg-slate-50 p-4 rounded-2xl border border-slate-100 text-xs">
+              <div>
+                <span className="font-bold text-slate-700 block mb-1">Kronologi Kerusakan:</span>
+                <p className="text-slate-600 leading-relaxed">{selectedReport.chronology}</p>
+              </div>
+
+              {selectedReport.impact && (
+                <div>
+                  <span className="font-bold text-slate-700 block mb-1">Dampak Terhadap Operasional:</span>
+                  <p className="text-slate-600 leading-relaxed">{selectedReport.impact}</p>
+                </div>
+              )}
+
+              {selectedReport.actionTaken && (
+                <div>
+                  <span className="font-bold text-slate-700 block mb-1">Tindakan Pengamanan Awal:</span>
+                  <p className="text-slate-600 leading-relaxed">{selectedReport.actionTaken}</p>
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 pt-2 border-t border-slate-200/80">
+                <div>
+                  <span className="text-slate-400 block text-[10.5px]">Pelapor</span>
+                  <span className="font-bold text-slate-800">{selectedReport.reporterName}</span>
+                </div>
+                <div>
+                  <span className="text-slate-400 block text-[10.5px]">Departemen Dituju</span>
+                  <span className="font-bold text-slate-800">{selectedReport.targetDepartment}</span>
+                </div>
+                <div>
+                  <span className="text-slate-400 block text-[10.5px]">Waktu Pelaporan</span>
+                  <span className="font-bold text-slate-800">
+                    {selectedReport.reportDate} · {selectedReport.reportTime}
+                  </span>
+                </div>
+              </div>
+
+              {selectedReport.status === 'selesai' && (
+                <div className="pt-2 border-t border-emerald-200 text-emerald-900 bg-emerald-100/60 p-3 rounded-xl mt-2">
+                  <div className="font-bold text-xs mb-1 flex items-center gap-1.5">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                    <span>Rincian Tindakan Perbaikan Selesai</span>
+                  </div>
+                  <p className="text-xs mb-2">{selectedReport.technicianNotes || 'Perbaikan selesai dilaksanakan.'}</p>
+                  <div className="grid grid-cols-2 gap-2 text-[11px] text-emerald-800">
+                    <div>Teknisi: {selectedReport.technicianName || '-'}</div>
+                    <div>Biaya Estimasi: Rp {(selectedReport.costEstimate || 0).toLocaleString('id-ID')}</div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Modal Actions */}
+            <div className="flex items-center justify-between pt-2">
+              <button
+                type="button"
+                onClick={() => setSelectedReport(null)}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-xl transition-colors cursor-pointer"
+              >
+                Tutup
+              </button>
+
+              {selectedReport.status !== 'selesai' && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleOpenResolve(selectedReport);
+                  }}
+                  className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-xl shadow-xs transition-colors flex items-center gap-1.5 cursor-pointer"
+                >
+                  <CheckCircle2 className="w-4 h-4" />
+                  <span>Tandai Selesai Diperbaiki</span>
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: LAPOR KERUSAKAN BARU */}
+      {showCreateModal && (
+        <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white rounded-3xl max-w-xl w-full p-6 shadow-2xl border border-slate-200 space-y-4 animate-in fade-in zoom-in-95 my-8">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <div className="w-9 h-9 rounded-xl bg-rose-100 text-rose-600 flex items-center justify-center">
+                  <Wrench className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900">Laporkan Kerusakan Fasilitas</h3>
+                  <p className="text-xs text-slate-500">Tiket diteruskan langsung ke tim maintenance & MEP</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowCreateModal(false)}
+                className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateReport} className="space-y-3.5 text-xs">
+              <div>
+                <label className="font-bold text-slate-700 block mb-1">Nama Fasilitas / Barang Rusak *</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Contoh: Kloset Bilik 2 Mampet, Hand Dryer Rusak, Pintu Kaca Retak"
+                  value={newItemName}
+                  onChange={(e) => setNewItemName(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1">Kategori Fasilitas</label>
+                  <select
+                    value={newCategory}
+                    onChange={(e) => setNewCategory(e.target.value as any)}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-rose-500/20"
+                  >
+                    <option value="sanitair">Sanitair / Plumbing</option>
+                    <option value="elektrikal">Elektrikal / Lampu</option>
+                    <option value="mekanikal">Mekanikal / AC / Exhaust</option>
+                    <option value="eskalator_lift">Eskalator & Lift</option>
+                    <option value="furniture_interior">Furniture & Interior</option>
+                    <option value="sipil_arsitektur">Sipil & Dinding</option>
+                    <option value="alat_kerja">Alat Kerja Cleaning</option>
+                    <option value="lainnya">Lainnya</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1">Tingkat Keparahan</label>
+                  <select
+                    value={newDamageLevel}
+                    onChange={(e) => setNewDamageLevel(e.target.value as any)}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-rose-500/20"
+                  >
+                    <option value="ringan">Ringan (Masih bisa fungsi)</option>
+                    <option value="sedang">Sedang (Perlu perbaikan segera)</option>
+                    <option value="berat">Berat (Tidak dapat digunakan)</option>
+                    <option value="kritis">Kritis (Bahaya K3 / Meluap)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1">Lokasi Ruangan *</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Contoh: Toilet Pria Zona A, Lobby Barat"
+                    value={newLocationName}
+                    onChange={(e) => setNewLocationName(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-rose-500/20"
+                  />
+                </div>
+
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1">Lantai</label>
+                  <select
+                    value={newFloor}
+                    onChange={(e) => setNewFloor(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-rose-500/20"
+                  >
+                    <option value="Basement B2">Basement B2</option>
+                    <option value="Basement B1">Basement B1</option>
+                    <option value="Lantai GF">Lantai GF / Dasar</option>
+                    <option value="Lantai 1">Lantai 1</option>
+                    <option value="Lantai 2">Lantai 2</option>
+                    <option value="Lantai 3">Lantai 3</option>
+                    <option value="Lantai 5">Lantai 5</option>
+                    <option value="Lantai 8">Lantai 8</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="font-bold text-slate-700 block mb-1">Kronologi & Gejala Kerusakan</label>
+                <textarea
+                  rows={2}
+                  placeholder="Jelaskan detail apa yang rusak dan sejak kapan..."
+                  value={newChronology}
+                  onChange={(e) => setNewChronology(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-rose-500/20 resize-none"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1">Departemen Penanganan</label>
+                  <select
+                    value={newTargetDept}
+                    onChange={(e) => setNewTargetDept(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-rose-500/20"
+                  >
+                    <option value="Building Maintenance (MEP)">Building Maintenance (MEP)</option>
+                    <option value="General Affair & Pengadaan">General Affair & Pengadaan</option>
+                    <option value="Vendor Spesialis / Teknisi Luar">Vendor Spesialis / Teknisi Luar</option>
+                    <option value="Pengelola Gedung Tenant">Pengelola Gedung Tenant</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1">Prioritas</label>
+                  <select
+                    value={newPriority}
+                    onChange={(e) => setNewPriority(e.target.value as any)}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-rose-500/20"
+                  >
+                    <option value="low">Rendah (Sesuai Roster)</option>
+                    <option value="medium">Sedang (Hari Ini)</option>
+                    <option value="high">Tinggi (Maks. 2 Jam)</option>
+                    <option value="urgent">Mendesak (Segera Tangani)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="font-bold text-slate-700 block mb-1">Foto Bukti Kerusakan (Opsional URL)</label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    placeholder="https://... atau biarkan default"
+                    value={newPhotoBefore}
+                    onChange={(e) => setNewPhotoBefore(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-rose-500/20 text-xs"
+                  />
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setNewPhotoBefore(
+                        'https://images.unsplash.com/photo-1581092160607-ee22621dd758?w=600&auto=format&fit=crop&q=80'
+                      )
+                    }
+                    className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-medium shrink-0 cursor-pointer"
+                  >
+                    Contoh Foto
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setShowCreateModal(false)}
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-xl cursor-pointer"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 bg-rose-600 hover:bg-rose-700 text-white font-semibold rounded-xl shadow-xs cursor-pointer flex items-center gap-1.5"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Kirim Laporan</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: SELESAIKAN KERUSAKAN */}
+      {showResolveModal && resolvingReport && (
+        <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 space-y-4 animate-in fade-in zoom-in-95 my-8">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div>
+                <h3 className="text-base font-bold text-slate-900">Konfirmasi Penyelesaian Kerusakan</h3>
+                <p className="text-xs text-slate-500">
+                  Tiket {resolvingReport.ticketNo} · {resolvingReport.itemName}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowResolveModal(false)}
+                className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleConfirmResolve} className="space-y-3.5 text-xs">
+              <div>
+                <label className="font-bold text-slate-700 block mb-1">Nama Teknisi / Tim yang Menangani *</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Contoh: Wahyu Hidayat (Plumber MEP)"
+                  value={resolutionTechnician}
+                  onChange={(e) => setResolutionTechnician(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                />
+              </div>
+
+              <div>
+                <label className="font-bold text-slate-700 block mb-1">Catatan Tindakan Perbaikan</label>
+                <textarea
+                  rows={2}
+                  required
+                  placeholder="Contoh: Penggantian valve karet bocor, pembersihan leher angsa porselen, uji debit air lancar normal..."
+                  value={resolutionNotes}
+                  onChange={(e) => setResolutionNotes(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500/20 resize-none"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1">Biaya Perbaikan / Part (Rp)</label>
+                  <input
+                    type="number"
+                    value={resolutionCost}
+                    onChange={(e) => setResolutionCost(Number(e.target.value))}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                  />
+                </div>
+
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1">Foto Bukti Selesai</label>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setResolutionPhotoAfter(
+                        'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?w=600&auto=format&fit=crop&q=80'
+                      )
+                    }
+                    className="w-full py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-medium text-xs cursor-pointer truncate"
+                  >
+                    {resolutionPhotoAfter ? 'Foto Terpasang ✓' : 'Pakai Foto Selesai'}
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setShowResolveModal(false)}
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-xl cursor-pointer"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-xl shadow-xs cursor-pointer flex items-center gap-1.5"
+                >
+                  <CheckCircle2 className="w-4 h-4" />
+                  <span>Simpan & Selesaikan</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};

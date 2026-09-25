@@ -103,6 +103,18 @@ export const Header: React.FC = () => {
         return { category: 'Activity Report', label: 'Master Cleaning Program' };
       case 'complaint':
         return { category: 'Activity Report', label: 'Complaint' };
+      case 'klien-mode':
+        return { category: 'Klien Mode', label: 'Portal Klien Eksekutif' };
+      case 'klien-manpower':
+        return { category: 'Klien Mode', label: 'Manpower' };
+      case 'klien-checklist':
+        return { category: 'Klien Mode', label: 'Checklist Kebersihan' };
+      case 'klien-kerusakan':
+        return { category: 'Klien Mode', label: 'Laporan Kerusakan' };
+      case 'klien-activity':
+        return { category: 'Klien Mode', label: 'Activity Report' };
+      case 'klien-keluhan':
+        return { category: 'Klien Mode', label: 'Keluhan' };
       case 'pengaturan':
         return { category: 'Sistem', label: 'Pengaturan & Master Data' };
       default:
@@ -286,6 +298,12 @@ export const Header: React.FC = () => {
                         const matchingUser = users.find((u) => u.role === role);
                         if (matchingUser) {
                           setActiveUserId(matchingUser.id);
+                          if (matchingUser.role !== 'admin') {
+                            const userProjs = matchingUser.assignedProjectIds || [];
+                            if (userProjs.length > 0) {
+                              setActiveProjectId(userProjs[0]);
+                            }
+                          }
                         }
                         setShowRoleDropdown(false);
                       }}

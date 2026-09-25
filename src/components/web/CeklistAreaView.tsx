@@ -521,36 +521,45 @@ export const CeklistAreaView: React.FC = () => {
             <div className="flex items-center justify-between">
               <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1">
                 <Building2 className="w-3.5 h-3.5 text-sky-700" />
-                <span>1. Proyek (Super Admin):</span>
+                <span>{userRole === 'admin' ? '1. Proyek (Super Admin):' : '1. Lokasi Proyek Ditugaskan:'}</span>
               </label>
               <span className="text-[10px] font-bold text-sky-700 bg-sky-50 px-1.5 py-0.2 rounded border border-sky-200">
                 Site Aktif
               </span>
             </div>
-            <div className="relative">
-              <select
-                value={activeProject.id}
-                onChange={(e) => {
-                  const newProjId = e.target.value;
-                  setActiveProjectId(newProjId);
-                }}
-                className="w-full pl-3 pr-8 py-2 bg-sky-50/60 border border-sky-200 rounded-xl text-xs font-bold text-slate-900 focus:ring-2 focus:ring-sky-500 appearance-none cursor-pointer"
-              >
-                {(userRole === 'admin' ? projects : allowedProjects).map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name} ({p.clientName})
-                  </option>
-                ))}
-              </select>
-              <ChevronDown className="w-3.5 h-3.5 text-sky-700 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-            </div>
+            {userRole === 'admin' || allowedProjects.length > 1 ? (
+              <div className="relative">
+                <select
+                  value={activeProject?.id}
+                  onChange={(e) => {
+                    const newProjId = e.target.value;
+                    setActiveProjectId(newProjId);
+                  }}
+                  className="w-full pl-3 pr-8 py-2 bg-sky-50/60 border border-sky-200 rounded-xl text-xs font-bold text-slate-900 focus:ring-2 focus:ring-sky-500 appearance-none cursor-pointer"
+                >
+                  {(userRole === 'admin' ? projects : allowedProjects).map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name} ({p.clientName})
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown className="w-3.5 h-3.5 text-sky-700 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+              </div>
+            ) : (
+              <div className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 flex items-center justify-between">
+                <span className="truncate">{activeProject?.name || 'Menara Mandiri Tower A'}</span>
+                <span className="text-[10px] text-amber-800 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded font-medium shrink-0">
+                  🔒 Ditugaskan
+                </span>
+              </div>
+            )}
             <p className="text-[10.5px] text-slate-500 truncate">
-              {activeProject.type === 'office'
+              {activeProject?.type === 'office'
                 ? 'Gedung Perkantoran'
-                : activeProject.type === 'airport'
+                : activeProject?.type === 'airport'
                 ? 'Bandara Udara'
                 : 'Fasilitas Komersial'}{' '}
-              • {activeProject.totalFloors} Lantai • {activeProject.city}
+              • {activeProject?.totalFloors || 1} Lantai • {activeProject?.city || 'Jakarta'}
             </p>
           </div>
 

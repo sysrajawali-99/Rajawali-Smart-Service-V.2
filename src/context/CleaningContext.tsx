@@ -33,6 +33,9 @@ import {
   CompanyProfile,
   DEFAULT_COMPANY_PROFILE,
   AuditLogEntry,
+  EmployeeTurnoverRecord,
+  KlienChecklistItem,
+  KlienChecklistInspection,
 } from '../types';
 import { calculateShiftDuration } from '../utils/shiftUtils';
 import { normalizeFrequencyCode, getNextProgramDayStatus } from '../utils/mcpUtils';
@@ -54,6 +57,9 @@ import {
   INITIAL_MASTER_PROGRAMS,
   INITIAL_DAMAGE_REPORTS,
   INITIAL_AUDIT_LOGS,
+  INITIAL_EMPLOYEE_TURNOVERS,
+  INITIAL_KLIEN_CHECKLIST_ITEMS,
+  INITIAL_KLIEN_CHECKLIST_INSPECTIONS,
   generate24HourSlots,
 } from '../data/initialData';
 
@@ -90,6 +96,7 @@ interface CleaningContextType {
 
   // Project Location Management & User Access Restrictions
   projects: ProjectLocation[];
+  allProjects: ProjectLocation[];
   activeProjectId: string;
   activeProject: ProjectLocation;
   setActiveProjectId: (id: string) => void;
@@ -293,6 +300,7 @@ interface CleaningContextType {
   // Authentication & Session
   isAuthenticated: boolean;
   login: (identifier: string, pass: string) => { success: boolean; message?: string };
+  instantLogin: (userId: string) => { success: boolean; message?: string };
   logout: () => void;
 
   // System Reload Feature
@@ -334,6 +342,21 @@ interface CleaningContextType {
 
   // Real-time Overdue Monitoring Check
   checkOverdueAreasAndTasks: () => { overdueTasksCount: number; overdueChecklistsCount: number };
+
+  // ==================== KLIEN MODE ====================
+  employeeTurnovers: EmployeeTurnoverRecord[];
+  addEmployeeTurnover: (record: Omit<EmployeeTurnoverRecord, 'id' | 'createdAt'>) => void;
+  deleteEmployeeTurnover: (id: string) => void;
+
+  klienChecklistItems: KlienChecklistItem[];
+  addKlienChecklistItem: (item: Omit<KlienChecklistItem, 'id'>) => void;
+  updateKlienChecklistItem: (id: string, updates: Partial<KlienChecklistItem>) => void;
+  deleteKlienChecklistItem: (id: string) => void;
+  resetKlienChecklistItems: () => void;
+
+  klienChecklistInspections: KlienChecklistInspection[];
+  submitKlienChecklistInspection: (insp: Omit<KlienChecklistInspection, 'id' | 'timestamp'>) => void;
+  deleteKlienChecklistInspection: (id: string) => void;
 }
 
 
@@ -521,7 +544,15 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   // 3. Users & Project Assignments
   const [users, setUsers] = useState<AppUser[]>(() => {
     const saved = localStorage.getItem('sco_users');
-    return saved ? JSON.parse(saved) : INITIAL_USERS;
+    if (!saved) return INITIAL_USERS;
+    try {
+      const parsed: AppUser[] = JSON.parse(saved);
+      const existingIds = new Set(parsed.map((u) => u.id));
+      const missing = INITIAL_USERS.filter((u) => !existingIds.has(u.id));
+      return [...parsed, ...missing];
+    } catch {
+      return INITIAL_USERS;
+    }
   });
 
   const [activeUserId, setActiveUserId] = useState<string>(() => {
@@ -540,13 +571,13 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const allowedProjects =
     userRole === 'admin'
       ? projects
-      : projects.filter((p) => currentUser.assignedProjectIds?.includes(p.id));
+      : projects.filter((p) => currentUser?.assignedProjectIds?.includes(p.id));
 
   // If activeProjectId is not in allowedProjects, automatically select first allowed
   const safeActiveProjectId =
     allowedProjects.some((p) => p.id === activeProjectId)
       ? activeProjectId
-      : allowedProjects[0]?.id || projects[0]?.id || 'proj-1';
+      : allowedProjects[0]?.id || (userRole === 'admin' ? projects[0]?.id || 'proj-1' : '');
 
   const setActiveProjectId = (id: string) => {
     // Only allow setting if admin OR if id is in allowedProjects
@@ -557,7 +588,13 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   const activeProject =
-    projects.find((p) => p.id === safeActiveProjectId) || projects[0] || INITIAL_PROJECTS[0];
+    allowedProjects.find((p) => p.id === safeActiveProjectId) ||
+    projects.find((p) => p.id === safeActiveProjectId) ||
+    allowedProjects[0] ||
+    projects[0] ||
+    INITIAL_PROJECTS[0];
+
+  const visibleProjects = userRole === 'admin' ? projects : allowedProjects;
 
   // 4. Checklist Master & 24-Hour Checklist Data
   const [checklistLocations, setChecklistLocations] = useState<ChecklistLocation[]>(() => {
@@ -600,13 +637,13 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     if (!saved) return INITIAL_AREAS;
     try {
       const parsed: Area[] = JSON.parse(saved);
-      // Ensure GF items from INITIAL_AREAS exist if user had older saved items without GF
-      const hasGF = parsed.some((a) => a.floor === 'Lantai GF');
-      if (!hasGF) {
-        const gfItems = INITIAL_AREAS.filter((a) => a.floor === 'Lantai GF');
-        return [...gfItems, ...parsed];
-      }
-      return parsed;
+      const normalized = parsed.map((a) => ({
+        ...a,
+        projectId: a.projectId || 'proj-1',
+      }));
+      const existingIds = new Set(normalized.map((a) => a.id));
+      const missing = INITIAL_AREAS.filter((a) => !existingIds.has(a.id));
+      return [...normalized, ...missing];
     } catch {
       return INITIAL_AREAS;
     }
@@ -617,11 +654,21 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     if (!saved) return INITIAL_CLEANERS;
     try {
       const parsed: Cleaner[] = JSON.parse(saved);
-      return parsed.map((c, idx) => ({
+      const normalized = parsed.map((c, idx) => ({
         ...c,
+        projectId:
+          c.projectId ||
+          (c.id === 'cln-5' || c.id === 'cln-7'
+            ? 'proj-2'
+            : c.id === 'cln-6' || c.id === 'cln-8'
+            ? 'proj-3'
+            : 'proj-1'),
         workPlotting: c.workPlotting || INITIAL_CLEANERS[idx]?.workPlotting || 'Lobby & Koridor Utama',
         workPlottingUpdatedAt: c.workPlottingUpdatedAt || '07:00 WIB',
       }));
+      const existingIds = new Set(normalized.map((c) => c.id));
+      const missing = INITIAL_CLEANERS.filter((c) => !existingIds.has(c.id));
+      return [...normalized, ...missing];
     } catch {
       return INITIAL_CLEANERS;
     }
@@ -656,7 +703,19 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const [tasks, setTasks] = useState<CleaningTask[]>(() => {
     const saved = localStorage.getItem('sco_tasks');
-    return saved ? JSON.parse(saved) : INITIAL_TASKS;
+    if (!saved) return INITIAL_TASKS;
+    try {
+      const parsed: CleaningTask[] = JSON.parse(saved);
+      const normalized = parsed.map((t) => ({
+        ...t,
+        projectId: t.projectId || 'proj-1',
+      }));
+      const existingIds = new Set(normalized.map((t) => t.id));
+      const missing = INITIAL_TASKS.filter((t) => !existingIds.has(t.id));
+      return [...normalized, ...missing];
+    } catch {
+      return INITIAL_TASKS;
+    }
   });
 
   const [inspections, setInspections] = useState<QCInspection[]>(() => {
@@ -710,10 +769,68 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     return INITIAL_DAMAGE_REPORTS;
   });
 
+  // Klien Mode States (Turnover, Custom Checklist Items, Inspections)
+  const [employeeTurnovers, setEmployeeTurnovers] = useState<EmployeeTurnoverRecord[]>(() => {
+    const saved = localStorage.getItem('sco_employee_turnovers');
+    if (saved) {
+      try {
+        const parsed: EmployeeTurnoverRecord[] = JSON.parse(saved);
+        const existingIds = new Set(parsed.map((t) => t.id));
+        const missing = INITIAL_EMPLOYEE_TURNOVERS.filter((t) => !existingIds.has(t.id));
+        return [...parsed, ...missing];
+      } catch (e) {
+        console.error('Failed to parse employee turnovers', e);
+      }
+    }
+    return INITIAL_EMPLOYEE_TURNOVERS;
+  });
+
+  const [klienChecklistItems, setKlienChecklistItems] = useState<KlienChecklistItem[]>(() => {
+    const saved = localStorage.getItem('sco_klien_checklist_items');
+    if (saved) {
+      try {
+        const parsed: KlienChecklistItem[] = JSON.parse(saved);
+        const existingIds = new Set(parsed.map((i) => i.id));
+        const missing = INITIAL_KLIEN_CHECKLIST_ITEMS.filter((i) => !existingIds.has(i.id));
+        return [...parsed, ...missing];
+      } catch (e) {
+        console.error('Failed to parse klien checklist items', e);
+      }
+    }
+    return INITIAL_KLIEN_CHECKLIST_ITEMS;
+  });
+
+  const [klienChecklistInspections, setKlienChecklistInspections] = useState<KlienChecklistInspection[]>(() => {
+    const saved = localStorage.getItem('sco_klien_checklist_inspections');
+    if (saved) {
+      try {
+        const parsed: KlienChecklistInspection[] = JSON.parse(saved);
+        const existingIds = new Set(parsed.map((i) => i.id));
+        const missing = INITIAL_KLIEN_CHECKLIST_INSPECTIONS.filter((i) => !existingIds.has(i.id));
+        return [...parsed, ...missing];
+      } catch (e) {
+        console.error('Failed to parse klien checklist inspections', e);
+      }
+    }
+    return INITIAL_KLIEN_CHECKLIST_INSPECTIONS;
+  });
+
   // Synchronize localStorage
   useEffect(() => {
     localStorage.setItem('sco_damage_reports', JSON.stringify(damageReports));
   }, [damageReports]);
+
+  useEffect(() => {
+    localStorage.setItem('sco_employee_turnovers', JSON.stringify(employeeTurnovers));
+  }, [employeeTurnovers]);
+
+  useEffect(() => {
+    localStorage.setItem('sco_klien_checklist_items', JSON.stringify(klienChecklistItems));
+  }, [klienChecklistItems]);
+
+  useEffect(() => {
+    localStorage.setItem('sco_klien_checklist_inspections', JSON.stringify(klienChecklistInspections));
+  }, [klienChecklistInspections]);
 
   useEffect(() => {
     localStorage.setItem('sco_master_programs', JSON.stringify(masterPrograms));
@@ -1024,14 +1141,54 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setActiveUserId(matchedUser.id);
     setUserRole(matchedUser.role);
 
-    if (matchedUser.assignedProjectIds && matchedUser.assignedProjectIds.length > 0) {
-      setActiveProjectIdState(matchedUser.assignedProjectIds[0]);
-      localStorage.setItem('sco_active_project_id', matchedUser.assignedProjectIds[0]);
-    }
+    const userAllowedProjs =
+      matchedUser.role === 'admin'
+        ? projects
+        : projects.filter((p) => matchedUser.assignedProjectIds?.includes(p.id));
+    const nextProjId = userAllowedProjs[0]?.id || projects[0]?.id || 'proj-1';
+    setActiveProjectIdState(nextProjId);
+    localStorage.setItem('sco_active_project_id', nextProjId);
 
     localStorage.setItem('sco_auth_state', 'true');
     localStorage.setItem('sco_active_user_id', matchedUser.id);
     localStorage.setItem('sco_role', matchedUser.role);
+
+    if (matchedUser.role === 'klien') {
+      setActiveTab('klien-manpower');
+    } else {
+      setActiveTab('dashboard');
+    }
+
+    return { success: true };
+  };
+
+  const instantLogin = (userId: string): { success: boolean; message?: string } => {
+    const matchedUser = users.find((u) => u.id === userId);
+    if (!matchedUser) {
+      return { success: false, message: 'Akun pengguna tidak ditemukan.' };
+    }
+
+    setIsAuthenticated(true);
+    setActiveUserId(matchedUser.id);
+    setUserRole(matchedUser.role);
+
+    const userAllowedProjs =
+      matchedUser.role === 'admin'
+        ? projects
+        : projects.filter((p) => matchedUser.assignedProjectIds?.includes(p.id));
+    const nextProjId = userAllowedProjs[0]?.id || projects[0]?.id || 'proj-1';
+    setActiveProjectIdState(nextProjId);
+    localStorage.setItem('sco_active_project_id', nextProjId);
+
+    localStorage.setItem('sco_auth_state', 'true');
+    localStorage.setItem('sco_active_user_id', matchedUser.id);
+    localStorage.setItem('sco_role', matchedUser.role);
+
+    if (matchedUser.role === 'klien') {
+      setActiveTab('klien-manpower');
+    } else {
+      setActiveTab('dashboard');
+    }
 
     return { success: true };
   };
@@ -1597,13 +1754,13 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     return buildDailyChecklistObject(projectId, locationId, date);
   };
 
-  // Filter operational data by the active project location
-  const filteredAreas = areas.filter((a) => !a.projectId || a.projectId === safeActiveProjectId);
-  const filteredCleaners = cleaners.filter((c) => !c.projectId || c.projectId === safeActiveProjectId);
-  const filteredSchedules = schedules.filter((s) => !s.projectId || s.projectId === safeActiveProjectId);
-  const filteredTasks = tasks.filter((t) => !t.projectId || t.projectId === safeActiveProjectId);
-  const filteredInspections = inspections.filter((i) => !i.projectId || i.projectId === safeActiveProjectId);
-  const filteredComplaints = complaints.filter((c) => !c.projectId || c.projectId === safeActiveProjectId);
+  // Filter operational data by the active project location (strictly isolate locations)
+  const filteredAreas = areas.filter((a) => (a.projectId || 'proj-1') === safeActiveProjectId);
+  const filteredCleaners = cleaners.filter((c) => (c.projectId || 'proj-1') === safeActiveProjectId);
+  const filteredSchedules = schedules.filter((s) => (s.projectId || 'proj-1') === safeActiveProjectId);
+  const filteredTasks = tasks.filter((t) => (t.projectId || 'proj-1') === safeActiveProjectId);
+  const filteredInspections = inspections.filter((i) => (i.projectId || 'proj-1') === safeActiveProjectId);
+  const filteredComplaints = complaints.filter((c) => (c.projectId || 'proj-1') === safeActiveProjectId);
   const filteredChecklistLocations = checklistLocations.filter(
     (cl) => (cl.projectId || 'proj-1') === safeActiveProjectId
   );
@@ -1611,11 +1768,92 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     (d) => (d.projectId || 'proj-1') === safeActiveProjectId
   );
   const filteredMasterPrograms = masterPrograms.filter(
-    (m) => !m.projectId || m.projectId === safeActiveProjectId
+    (m) => (m.projectId || 'proj-1') === safeActiveProjectId
   );
   const filteredDamageReports = damageReports.filter(
-    (r) => !r.projectId || r.projectId === safeActiveProjectId
+    (r) => (r.projectId || 'proj-1') === safeActiveProjectId
   );
+
+  // Klien Mode Filtered Data by Active Project
+  const filteredTurnovers = employeeTurnovers.filter(
+    (to) => (to.projectId || 'proj-1') === safeActiveProjectId
+  );
+  const filteredKlienChecklistItems = klienChecklistItems.filter(
+    (item) => (item.projectId || 'proj-1') === safeActiveProjectId
+  );
+  const filteredKlienChecklistInspections = klienChecklistInspections.filter(
+    (insp) => (insp.projectId || 'proj-1') === safeActiveProjectId
+  );
+
+  const addEmployeeTurnover = (record: Omit<EmployeeTurnoverRecord, 'id' | 'createdAt'>) => {
+    const newRecord: EmployeeTurnoverRecord = {
+      ...record,
+      id: `to-${Date.now()}`,
+      projectId: record.projectId || safeActiveProjectId,
+      createdAt: new Date().toISOString(),
+    };
+    setEmployeeTurnovers((prev) => [newRecord, ...prev]);
+  };
+
+  const deleteEmployeeTurnover = (id: string) => {
+    setEmployeeTurnovers((prev) => prev.filter((r) => r.id !== id));
+  };
+
+  const addKlienChecklistItem = (item: Omit<KlienChecklistItem, 'id'>) => {
+    const newItem: KlienChecklistItem = {
+      ...item,
+      id: `kci-${Date.now()}`,
+      projectId: item.projectId || safeActiveProjectId,
+    };
+    setKlienChecklistItems((prev) => [...prev, newItem]);
+  };
+
+  const updateKlienChecklistItem = (id: string, updates: Partial<KlienChecklistItem>) => {
+    setKlienChecklistItems((prev) =>
+      prev.map((item) => (item.id === id ? { ...item, ...updates } : item))
+    );
+  };
+
+  const deleteKlienChecklistItem = (id: string) => {
+    setKlienChecklistItems((prev) => prev.filter((item) => item.id !== id));
+  };
+
+  const resetKlienChecklistItems = () => {
+    const defaults = INITIAL_KLIEN_CHECKLIST_ITEMS.map((item) => ({
+      ...item,
+      projectId: safeActiveProjectId,
+    }));
+    setKlienChecklistItems((prev) => [
+      ...prev.filter((item) => (item.projectId || 'proj-1') !== safeActiveProjectId),
+      ...defaults,
+    ]);
+  };
+
+  const submitKlienChecklistInspection = (
+    insp: Omit<KlienChecklistInspection, 'id' | 'timestamp'>
+  ) => {
+    const newInsp: KlienChecklistInspection = {
+      ...insp,
+      id: `kci-insp-${Date.now()}`,
+      projectId: insp.projectId || safeActiveProjectId,
+      timestamp: new Date().toISOString(),
+    };
+    setKlienChecklistInspections((prev) => [newInsp, ...prev]);
+  };
+
+  const deleteKlienChecklistInspection = (id: string) => {
+    setKlienChecklistInspections((prev) => prev.filter((i) => i.id !== id));
+  };
+
+  // Global areas/tasks filtered by user's assigned projects for non-admin
+  const accessibleAllAreas =
+    userRole === 'admin'
+      ? areas
+      : areas.filter((a) => currentUser?.assignedProjectIds?.includes(a.projectId || 'proj-1'));
+  const accessibleAllTasks =
+    userRole === 'admin'
+      ? tasks
+      : tasks.filter((t) => currentUser?.assignedProjectIds?.includes(t.projectId || 'proj-1'));
 
   const addMasterProgram = (item: Omit<MasterCleaningProgramItem, 'id' | 'createdAt' | 'updatedAt'>) => {
     const newItem: MasterCleaningProgramItem = {
@@ -2864,7 +3102,8 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         resolveDamageReport,
 
         // Projects
-        projects,
+        projects: visibleProjects,
+        allProjects: projects,
         activeProjectId: safeActiveProjectId,
         activeProject,
         setActiveProjectId,
@@ -2922,9 +3161,9 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         complaints: filteredComplaints,
         notifications,
 
-        // Unfiltered lists
-        allAreas: areas,
-        allTasks: tasks,
+        // Unfiltered lists (restricted for non-admin)
+        allAreas: accessibleAllAreas,
+        allTasks: accessibleAllTasks,
 
         // Operations
         toggleTaskChecklist,
@@ -2969,6 +3208,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         // Authentication & Session
         isAuthenticated,
         login,
+        instantLogin,
         logout,
 
         // System Reload Feature
@@ -2995,6 +3235,21 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
         // Real-Time Overdue Monitoring
         checkOverdueAreasAndTasks,
+
+        // Klien Mode Data & Methods
+        employeeTurnovers: filteredTurnovers,
+        addEmployeeTurnover,
+        deleteEmployeeTurnover,
+
+        klienChecklistItems: filteredKlienChecklistItems,
+        addKlienChecklistItem,
+        updateKlienChecklistItem,
+        deleteKlienChecklistItem,
+        resetKlienChecklistItems,
+
+        klienChecklistInspections: filteredKlienChecklistInspections,
+        submitKlienChecklistInspection,
+        deleteKlienChecklistInspection,
       }}
     >
       {children}

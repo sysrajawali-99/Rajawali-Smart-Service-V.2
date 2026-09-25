@@ -167,6 +167,43 @@ export const Sidebar: React.FC = () => {
         },
       ],
     },
+    {
+      id: 'klien-mode-group',
+      title: 'Klien Mode',
+      icon: Building2,
+      colorBadge: 'bg-indigo-100 text-indigo-800 border-indigo-200',
+      items: [
+        {
+          id: 'klien-manpower',
+          label: 'Manpower',
+          icon: Users,
+        },
+        {
+          id: 'klien-checklist',
+          label: 'Checklist Kebersihan',
+          icon: ClipboardList,
+        },
+        {
+          id: 'klien-kerusakan',
+          label: 'Laporan Kerusakan',
+          icon: Wrench,
+          badge: pendingDamageCount > 0 ? pendingDamageCount : undefined,
+          badgeColor: 'bg-rose-600 text-white',
+        },
+        {
+          id: 'klien-activity',
+          label: 'Activity Report',
+          icon: CalendarRange,
+        },
+        {
+          id: 'klien-keluhan',
+          label: 'Keluhan',
+          icon: AlertCircle,
+          badge: openComplaintCount > 0 ? openComplaintCount : undefined,
+          badgeColor: 'bg-amber-600 text-white',
+        },
+      ],
+    },
   ];
 
   // Filter groups and items by RBAC matrix

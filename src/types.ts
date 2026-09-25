@@ -516,4 +516,51 @@ export interface AuditLogEntry {
   newState?: string;
 }
 
+// ==================== KLIEN MODE INTERFACES ====================
+
+export interface EmployeeTurnoverRecord {
+  id: string;
+  projectId: string;
+  cleanerId?: string;
+  cleanerName: string;
+  nik: string;
+  role: string;
+  shiftName: string;
+  resignDate: string; // YYYY-MM-DD
+  reason: string;
+  replacementStatus: 'replaced' | 'recruiting' | 'pending';
+  replacementCleanerName?: string;
+  notes?: string;
+  createdAt: string;
+}
+
+export type KlienChecklistCategory = 'toilet' | 'public_area' | 'parking';
+
+export interface KlienChecklistItem {
+  id: string;
+  projectId: string;
+  category: KlienChecklistCategory;
+  name: string;
+  standard: string;
+  order: number;
+}
+
+export interface KlienChecklistInspection {
+  id: string;
+  projectId: string;
+  category: KlienChecklistCategory;
+  areaLocation: string;
+  inspectionDate: string; // YYYY-MM-DD
+  inspectionTime: string; // HH:mm WIB
+  shiftName: string;
+  inspectorName: string;
+  checkedItemIds: string[];
+  totalItems: number;
+  scorePercent: number;
+  conditionStatus: 'clean' | 'fair' | 'dirty';
+  notes?: string;
+  photoUrl?: string;
+  timestamp: string;
+}
+
 

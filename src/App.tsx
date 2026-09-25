@@ -19,6 +19,7 @@ import { DailyActivityView } from './components/web/DailyActivityView';
 import { WeeklyActivityView } from './components/web/WeeklyActivityView';
 import { MonthlyActivityView } from './components/web/MonthlyActivityView';
 import { DamageReportView } from './components/web/DamageReportView';
+import { KlienModeView } from './components/web/klien/KlienModeView';
 import { LoginPage } from './components/auth/LoginPage';
 import { OverdueAlertBanner } from './components/layout/OverdueAlertBanner';
 import { ShieldAlert } from 'lucide-react';
@@ -93,6 +94,14 @@ const MainLayout: React.FC = () => {
         return <MasterCleaningProgramView />;
       case 'complaint':
         return <ComplaintView />;
+      // Klien Mode Portal & Sub-Menu
+      case 'klien-mode':
+      case 'klien-manpower':
+      case 'klien-checklist':
+      case 'klien-kerusakan':
+      case 'klien-activity':
+      case 'klien-keluhan':
+        return <KlienModeView initialSubTab={activeTab} />;
       // Sistem & Master Data
       case 'pengaturan':
         return <PengaturanView />;

@@ -226,13 +226,13 @@ export const LokasiProyekView: React.FC = () => {
               />
             </div>
             <span className="text-xs text-slate-500">
-              Menampilkan {isSuperAdmin ? filteredProjects.length : allowedProjects.length} lokasi proyek
+              Menampilkan {filteredProjects.length} lokasi proyek
             </span>
           </div>
 
           {/* Cards Grid */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {(isSuperAdmin ? filteredProjects : allowedProjects).map((proj) => {
+            {filteredProjects.map((proj) => {
               const isSelected = proj.id === activeProjectId;
               const assignedUsersCount = users.filter((u) => u.assignedProjectIds?.includes(proj.id)).length;
 
@@ -267,7 +267,7 @@ export const LokasiProyekView: React.FC = () => {
                       ) : (
                         <button
                           onClick={() => setActiveProjectId(proj.id)}
-                          className="px-2.5 py-1 rounded-lg text-xs font-semibold text-sky-700 bg-sky-50 hover:bg-sky-100 transition-colors shrink-0"
+                          className="px-2.5 py-1 rounded-lg text-xs font-semibold text-sky-700 bg-sky-50 hover:bg-sky-100 transition-colors shrink-0 cursor-pointer"
                         >
                           Pilih Proyek
                         </button>
@@ -311,7 +311,7 @@ export const LokasiProyekView: React.FC = () => {
                     <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between">
                       <button
                         onClick={() => openEditModal(proj)}
-                        className="text-xs text-slate-600 hover:text-slate-900 font-medium flex items-center gap-1"
+                        className="text-xs text-slate-600 hover:text-slate-900 font-medium flex items-center gap-1 cursor-pointer"
                       >
                         <Edit2 className="w-3.5 h-3.5" />
                         <span>Edit</span>
@@ -334,6 +334,18 @@ export const LokasiProyekView: React.FC = () => {
                 </div>
               );
             })}
+
+            {filteredProjects.length === 0 && (
+              <div className="col-span-full p-8 text-center bg-white rounded-2xl border border-slate-200 shadow-xs">
+                <Building2 className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+                <h3 className="font-bold text-slate-800 text-sm">Tidak Ada Lokasi Proyek yang Ditugaskan</h3>
+                <p className="text-xs text-slate-500 mt-1 max-w-md mx-auto leading-relaxed">
+                  {isSuperAdmin
+                    ? 'Tidak ditemukan proyek yang cocok dengan kata kunci pencarian.'
+                    : 'Akun Anda belum memiliki akses ke lokasi proyek ini. Seluruh lokasi proyek lainnya disembunyikan oleh Super Administrator sesuai kebijakan hak akses.'}
+                </p>
+              </div>
+            )}
           </div>
         </div>
       )}
