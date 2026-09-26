@@ -41,7 +41,37 @@ export const KlienDamageSection: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | DamageReportStatus>('all');
   const [severityFilter, setSeverityFilter] = useState<'all' | DamageSeverity>('all');
+  const [selectedMonth, setSelectedMonth] = useState<string>('all');
+  const [selectedYear, setSelectedYear] = useState<string>('all');
   const [selectedReport, setSelectedReport] = useState<FacilityDamageReport | null>(null);
+
+  const MONTH_OPTIONS = [
+    { value: 'all', label: 'Semua Bulan' },
+    { value: '1', label: 'Januari' },
+    { value: '2', label: 'Februari' },
+    { value: '3', label: 'Maret' },
+    { value: '4', label: 'April' },
+    { value: '5', label: 'Mei' },
+    { value: '6', label: 'Juni' },
+    { value: '7', label: 'Juli' },
+    { value: '8', label: 'Agustus' },
+    { value: '9', label: 'September' },
+    { value: '10', label: 'Oktober' },
+    { value: '11', label: 'November' },
+    { value: '12', label: 'Desember' },
+  ];
+
+  const availableYears = useMemo(() => {
+    const years = new Set<number>([2024, 2025, 2026, 2027]);
+    damageReports.forEach((r) => {
+      const dateStr = r.reportDate || (r.createdAt ? r.createdAt.split('T')[0] : '');
+      if (dateStr) {
+        const y = parseInt(dateStr.split('-')[0], 10);
+        if (!isNaN(y) && y > 2000) years.add(y);
+      }
+    });
+    return Array.from(years).sort((a, b) => b - a);
+  }, [damageReports]);
 
   // Modal: Create New Damage Report
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -73,9 +103,44 @@ export const KlienDamageSection: React.FC = () => {
     setTimeout(() => setToastMsg(null), 3000);
   };
 
+  // Filter by Month & Year Period
+  const periodFilteredReports = useMemo(() => {
+    return damageReports.filter((item) => {
+      const dateStr = item.reportDate || (item.createdAt ? item.createdAt.split('T')[0] : '');
+      if (!dateStr) {
+        return selectedYear === 'all' && selectedMonth === 'all';
+      }
+      let rYear = NaN;
+      let rMonth = NaN;
+      if (dateStr.includes('-')) {
+        const parts = dateStr.split('-');
+        if (parts.length >= 2) {
+          rYear = parseInt(parts[0], 10);
+          rMonth = parseInt(parts[1], 10);
+        }
+      } else if (dateStr.includes('/')) {
+        const parts = dateStr.split('/');
+        if (parts.length === 3) {
+          rMonth = parseInt(parts[1], 10);
+          rYear = parseInt(parts[2], 10);
+        }
+      }
+      if (!isNaN(rYear) && !isNaN(rMonth)) {
+        if (selectedYear !== 'all' && rYear !== parseInt(selectedYear, 10)) {
+          return false;
+        }
+        if (selectedMonth !== 'all' && rMonth !== parseInt(selectedMonth, 10)) {
+          return false;
+        }
+        return true;
+      }
+      return selectedYear === 'all' && selectedMonth === 'all';
+    });
+  }, [damageReports, selectedMonth, selectedYear]);
+
   // Filtered Damage Reports (already filtered by active project in context)
   const filteredReports = useMemo(() => {
-    return damageReports.filter((item) => {
+    return periodFilteredReports.filter((item) => {
       const matchStatus = statusFilter === 'all' || item.status === statusFilter;
       const matchSeverity = severityFilter === 'all' || item.damageLevel === severityFilter;
       const q = searchQuery.toLowerCase().trim();
@@ -89,16 +154,16 @@ export const KlienDamageSection: React.FC = () => {
 
       return matchStatus && matchSeverity && matchQuery;
     });
-  }, [damageReports, statusFilter, severityFilter, searchQuery]);
+  }, [periodFilteredReports, statusFilter, severityFilter, searchQuery]);
 
   // Statistics
-  const totalCount = damageReports.length;
-  const reportedCount = damageReports.filter((r) => r.status === 'dilaporkan').length;
-  const inProgressCount = damageReports.filter(
+  const totalCount = periodFilteredReports.length;
+  const reportedCount = periodFilteredReports.filter((r) => r.status === 'dilaporkan').length;
+  const inProgressCount = periodFilteredReports.filter(
     (r) => r.status === 'dalam_penanganan' || r.status === 'menunggu_sparepart'
   ).length;
-  const resolvedCount = damageReports.filter((r) => r.status === 'selesai').length;
-  const criticalCount = damageReports.filter((r) => r.damageLevel === 'kritis' || r.priority === 'urgent').length;
+  const resolvedCount = periodFilteredReports.filter((r) => r.status === 'selesai').length;
+  const criticalCount = periodFilteredReports.filter((r) => r.damageLevel === 'kritis' || r.priority === 'urgent').length;
 
   const handleCreateReport = (e: React.FormEvent) => {
     e.preventDefault();
@@ -237,7 +302,7 @@ export const KlienDamageSection: React.FC = () => {
       )}
 
       {/* HEADER & SUMMARY METRICS */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
         <div>
           <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
             <Wrench className="w-5 h-5 text-rose-600" />
@@ -248,14 +313,73 @@ export const KlienDamageSection: React.FC = () => {
           </p>
         </div>
 
-        <button
-          type="button"
-          onClick={() => setShowCreateModal(true)}
-          className="inline-flex items-center gap-2 px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold rounded-xl shadow-sm transition-colors cursor-pointer self-start sm:self-auto"
-        >
-          <Plus className="w-4 h-4" />
-          <span>Laporkan Kerusakan Baru</span>
-        </button>
+        <div className="flex flex-wrap sm:flex-nowrap items-center gap-2 self-start lg:self-auto shrink-0">
+          {/* Filter Periode: Bulan & Tahun */}
+          <div className="inline-flex items-center gap-2 bg-white border border-slate-200 px-3 h-9 rounded-xl shadow-xs">
+            <div className="flex items-center gap-1.5 text-slate-600 border-r border-slate-200 pr-2">
+              <Calendar className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+              <span className="text-[11px] font-bold text-slate-700 whitespace-nowrap">Filter Periode</span>
+            </div>
+
+            <div className="flex items-center gap-1">
+              <span className="text-[11px] text-slate-400 font-medium hidden sm:inline">Bulan:</span>
+              <select
+                value={selectedMonth}
+                onChange={(e) => setSelectedMonth(e.target.value)}
+                aria-label="Filter Bulan"
+                className="text-xs font-semibold text-slate-800 bg-transparent focus:outline-none cursor-pointer pr-1"
+              >
+                {MONTH_OPTIONS.map((m) => (
+                  <option key={m.value} value={m.value}>
+                    {m.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <span className="text-slate-200">|</span>
+
+            <div className="flex items-center gap-1">
+              <span className="text-[11px] text-slate-400 font-medium hidden sm:inline">Tahun:</span>
+              <select
+                value={selectedYear}
+                onChange={(e) => setSelectedYear(e.target.value)}
+                aria-label="Filter Tahun"
+                className="text-xs font-semibold text-slate-800 bg-transparent focus:outline-none cursor-pointer pr-1"
+              >
+                <option value="all">Semua Tahun</option>
+                {availableYears.map((yr) => (
+                  <option key={yr} value={String(yr)}>
+                    {yr}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {(selectedMonth !== 'all' || selectedYear !== 'all') && (
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedMonth('all');
+                  setSelectedYear('all');
+                }}
+                title="Reset Periode"
+                className="ml-0.5 p-1 rounded-md hover:bg-rose-50 text-slate-400 hover:text-rose-600 transition-colors cursor-pointer"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setShowCreateModal(true)}
+            className="inline-flex items-center justify-center gap-1.5 px-4 h-9 bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold rounded-xl shadow-sm transition-colors cursor-pointer whitespace-nowrap shrink-0"
+          >
+            <Plus className="w-4 h-4 shrink-0" />
+            <span>Tambah Laporan</span>
+          </button>
+        </div>
       </div>
 
       {/* KPI METRIC CARDS */}
@@ -373,6 +497,8 @@ export const KlienDamageSection: React.FC = () => {
             onClick={() => {
               setStatusFilter('all');
               setSeverityFilter('all');
+              setSelectedMonth('all');
+              setSelectedYear('all');
               setSearchQuery('');
             }}
             className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-xl transition-colors cursor-pointer"
