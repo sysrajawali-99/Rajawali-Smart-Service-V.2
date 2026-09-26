@@ -141,16 +141,21 @@ export const KlienDamageSection: React.FC = () => {
   // Filtered Damage Reports (already filtered by active project in context)
   const filteredReports = useMemo(() => {
     return periodFilteredReports.filter((item) => {
-      const matchStatus = statusFilter === 'all' || item.status === statusFilter;
+      const matchStatus =
+        statusFilter === 'all'
+          ? true
+          : statusFilter === 'dalam_penanganan'
+          ? item.status === 'dalam_penanganan' || item.status === 'menunggu_sparepart'
+          : item.status === statusFilter;
       const matchSeverity = severityFilter === 'all' || item.damageLevel === severityFilter;
       const q = searchQuery.toLowerCase().trim();
       const matchQuery =
         !q ||
-        item.ticketNo.toLowerCase().includes(q) ||
-        item.itemName.toLowerCase().includes(q) ||
-        item.locationName.toLowerCase().includes(q) ||
-        item.floor.toLowerCase().includes(q) ||
-        item.reporterName.toLowerCase().includes(q);
+        (item.ticketNo || '').toLowerCase().includes(q) ||
+        (item.itemName || '').toLowerCase().includes(q) ||
+        (item.locationName || '').toLowerCase().includes(q) ||
+        (item.floor || '').toLowerCase().includes(q) ||
+        (item.reporterName || '').toLowerCase().includes(q);
 
       return matchStatus && matchSeverity && matchQuery;
     });
@@ -382,35 +387,99 @@ export const KlienDamageSection: React.FC = () => {
         </div>
       </div>
 
-      {/* KPI METRIC CARDS */}
+      {/* KPI METRIC CARDS (Interactive Status Filters for Mobile & Desktop) */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <div className="bg-white p-3.5 rounded-2xl border border-slate-200/90 shadow-xs">
-          <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-1">Total Laporan</div>
+        <button
+          type="button"
+          onClick={() => setStatusFilter('all')}
+          aria-pressed={statusFilter === 'all'}
+          className={`text-left p-3.5 rounded-2xl border transition-all cursor-pointer select-none active:scale-[0.98] ${
+            statusFilter === 'all'
+              ? 'bg-white border-slate-400 ring-2 ring-slate-900/10 shadow-sm'
+              : 'bg-white/80 hover:bg-white border-slate-200/90 opacity-75 hover:opacity-100 shadow-xs'
+          }`}
+        >
+          <div className="flex items-center justify-between gap-1 mb-1">
+            <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Total Laporan</div>
+            {statusFilter === 'all' && (
+              <span className="w-2 h-2 rounded-full bg-slate-700 shrink-0" />
+            )}
+          </div>
           <div className="text-2xl font-extrabold text-slate-900 tabular-nums">{totalCount}</div>
           <div className="text-[10.5px] text-slate-500 mt-0.5">Seluruh tiket tercatat</div>
-        </div>
+        </button>
 
-        <div className="bg-rose-50/70 p-3.5 rounded-2xl border border-rose-200 shadow-xs">
-          <div className="text-[11px] font-bold text-rose-800 uppercase tracking-wider mb-1">Menunggu Tindakan</div>
+        <button
+          type="button"
+          onClick={() => setStatusFilter((prev) => (prev === 'dilaporkan' ? 'all' : 'dilaporkan'))}
+          aria-pressed={statusFilter === 'dilaporkan'}
+          className={`text-left p-3.5 rounded-2xl border transition-all cursor-pointer select-none active:scale-[0.98] ${
+            statusFilter === 'dilaporkan'
+              ? 'bg-rose-50 border-rose-400 ring-2 ring-rose-500/25 shadow-sm'
+              : statusFilter === 'all'
+              ? 'bg-rose-50/70 hover:bg-rose-50 border-rose-200 shadow-xs'
+              : 'bg-rose-50/40 hover:bg-rose-50/80 border-rose-200/70 opacity-70 hover:opacity-100 shadow-xs'
+          }`}
+        >
+          <div className="flex items-center justify-between gap-1 mb-1">
+            <div className="text-[11px] font-bold text-rose-800 uppercase tracking-wider">Menunggu Tindakan</div>
+            {statusFilter === 'dilaporkan' && (
+              <span className="w-2 h-2 rounded-full bg-rose-600 animate-pulse shrink-0" />
+            )}
+          </div>
           <div className="text-2xl font-extrabold text-rose-700 tabular-nums">{reportedCount}</div>
           <div className="text-[10.5px] text-rose-600 mt-0.5 font-medium">Status Dilaporkan</div>
-        </div>
+        </button>
 
-        <div className="bg-amber-50/70 p-3.5 rounded-2xl border border-amber-200 shadow-xs">
-          <div className="text-[11px] font-bold text-amber-800 uppercase tracking-wider mb-1">Sedang Ditangani</div>
+        <button
+          type="button"
+          onClick={() =>
+            setStatusFilter((prev) => (prev === 'dalam_penanganan' ? 'all' : 'dalam_penanganan'))
+          }
+          aria-pressed={statusFilter === 'dalam_penanganan'}
+          className={`text-left p-3.5 rounded-2xl border transition-all cursor-pointer select-none active:scale-[0.98] ${
+            statusFilter === 'dalam_penanganan'
+              ? 'bg-amber-50 border-amber-400 ring-2 ring-amber-500/25 shadow-sm'
+              : statusFilter === 'all'
+              ? 'bg-amber-50/70 hover:bg-amber-50 border-amber-200 shadow-xs'
+              : 'bg-amber-50/40 hover:bg-amber-50/80 border-amber-200/70 opacity-70 hover:opacity-100 shadow-xs'
+          }`}
+        >
+          <div className="flex items-center justify-between gap-1 mb-1">
+            <div className="text-[11px] font-bold text-amber-800 uppercase tracking-wider">Sedang Ditangani</div>
+            {statusFilter === 'dalam_penanganan' && (
+              <span className="w-2 h-2 rounded-full bg-amber-600 animate-pulse shrink-0" />
+            )}
+          </div>
           <div className="text-2xl font-extrabold text-amber-700 tabular-nums">{inProgressCount}</div>
           <div className="text-[10.5px] text-amber-600 mt-0.5 font-medium">Proses teknisi / part</div>
-        </div>
+        </button>
 
-        <div className="bg-emerald-50/70 p-3.5 rounded-2xl border border-emerald-200 shadow-xs">
-          <div className="text-[11px] font-bold text-emerald-800 uppercase tracking-wider mb-1">Selesai Diperbaiki</div>
+        <button
+          type="button"
+          onClick={() => setStatusFilter((prev) => (prev === 'selesai' ? 'all' : 'selesai'))}
+          aria-pressed={statusFilter === 'selesai'}
+          className={`text-left p-3.5 rounded-2xl border transition-all cursor-pointer select-none active:scale-[0.98] ${
+            statusFilter === 'selesai'
+              ? 'bg-emerald-50 border-emerald-400 ring-2 ring-emerald-500/25 shadow-sm'
+              : statusFilter === 'all'
+              ? 'bg-emerald-50/70 hover:bg-emerald-50 border-emerald-200 shadow-xs'
+              : 'bg-emerald-50/40 hover:bg-emerald-50/80 border-emerald-200/70 opacity-70 hover:opacity-100 shadow-xs'
+          }`}
+        >
+          <div className="flex items-center justify-between gap-1 mb-1">
+            <div className="text-[11px] font-bold text-emerald-800 uppercase tracking-wider">Selesai Diperbaiki</div>
+            {statusFilter === 'selesai' && (
+              <span className="w-2 h-2 rounded-full bg-emerald-600 shrink-0" />
+            )}
+          </div>
           <div className="text-2xl font-extrabold text-emerald-700 tabular-nums">{resolvedCount}</div>
           <div className="text-[10.5px] text-emerald-600 mt-0.5 font-medium">Fasilitas normal kembali</div>
-        </div>
+        </button>
       </div>
 
       {/* FILTER & SEARCH BAR */}
-      <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-xs flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
+      <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-xs flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
         <div className="relative flex-1">
           <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
           <input
@@ -422,64 +491,18 @@ export const KlienDamageSection: React.FC = () => {
           />
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          {/* Status Filter */}
-          <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl text-xs">
-            <button
-              type="button"
-              onClick={() => setStatusFilter('all')}
-              className={`px-2.5 py-1 rounded-lg font-medium transition-colors cursor-pointer ${
-                statusFilter === 'all' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              Semua
-            </button>
-            <button
-              type="button"
-              onClick={() => setStatusFilter('dilaporkan')}
-              className={`px-2.5 py-1 rounded-lg font-medium transition-colors cursor-pointer ${
-                statusFilter === 'dilaporkan' ? 'bg-white text-rose-700 shadow-xs' : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              Baru ({reportedCount})
-            </button>
-            <button
-              type="button"
-              onClick={() => setStatusFilter('dalam_penanganan')}
-              className={`px-2.5 py-1 rounded-lg font-medium transition-colors cursor-pointer ${
-                statusFilter === 'dalam_penanganan'
-                  ? 'bg-white text-amber-700 shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              Diproses
-            </button>
-            <button
-              type="button"
-              onClick={() => setStatusFilter('selesai')}
-              className={`px-2.5 py-1 rounded-lg font-medium transition-colors cursor-pointer ${
-                statusFilter === 'selesai'
-                  ? 'bg-white text-emerald-700 shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              Selesai ({resolvedCount})
-            </button>
-          </div>
-
-          {/* Severity Filter */}
-          <select
-            value={severityFilter}
-            onChange={(e) => setSeverityFilter(e.target.value as any)}
-            className="px-3 py-1.5 bg-slate-50 border border-slate-200 text-xs rounded-xl text-slate-700 focus:outline-none focus:ring-2 focus:ring-rose-500/20"
-          >
-            <option value="all">Semua Keparahan</option>
-            <option value="kritis">Kritis</option>
-            <option value="berat">Berat</option>
-            <option value="sedang">Sedang</option>
-            <option value="ringan">Ringan</option>
-          </select>
-        </div>
+        {/* Severity Filter */}
+        <select
+          value={severityFilter}
+          onChange={(e) => setSeverityFilter(e.target.value as any)}
+          className="px-3 py-2 bg-slate-50 border border-slate-200 text-xs rounded-xl text-slate-700 focus:outline-none focus:ring-2 focus:ring-rose-500/20 shrink-0"
+        >
+          <option value="all">Semua Keparahan</option>
+          <option value="kritis">Kritis</option>
+          <option value="berat">Berat</option>
+          <option value="sedang">Sedang</option>
+          <option value="ringan">Ringan</option>
+        </select>
       </div>
 
       {/* LIST OF DAMAGE REPORTS */}
