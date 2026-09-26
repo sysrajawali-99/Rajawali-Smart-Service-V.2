@@ -2405,10 +2405,26 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setComplaints((prev) =>
       prev.map((c) => {
         if (c.id === complaintId) {
+          const hours = c.slaHours && c.slaHours > 0 ? c.slaHours : 2;
+          const needsNewDeadline =
+            c.status === 'resolved' || !c.deadlineTimestamp || c.deadlineTimestamp <= Date.now();
+          const nextDeadline = needsNewDeadline
+            ? Date.now() + hours * 3600 * 1000
+            : c.deadlineTimestamp;
+          const nextDeadlineStr = needsNewDeadline
+            ? new Date(nextDeadline).toLocaleTimeString('id-ID', {
+                hour: '2-digit',
+                minute: '2-digit',
+              }) + ' WIB'
+            : c.slaDeadline;
+
           targetTicket = {
             ...c,
             status: 'in_progress',
             startedAt: `Hari ini, ${nowStr}`,
+            resolvedAt: undefined,
+            deadlineTimestamp: nextDeadline,
+            slaDeadline: nextDeadlineStr,
           };
           return targetTicket;
         }
@@ -2419,8 +2435,8 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     if (targetTicket) {
       const notif: AppNotification = {
         id: `notif-${Date.now()}`,
-        title: '⚙️ Komplain Sedang Ditangani',
-        message: `Petugas (${targetTicket.assignedCleanerName || 'Tim Kebersihan'}) mulai menangani tiket ${targetTicket.ticketNumber} di ${targetTicket.areaName}.`,
+        title: '⚙️ Komplain Dalam Pengerjaan (Di Kerjakan)',
+        message: `Tiket ${targetTicket.ticketNumber} di ${targetTicket.areaName} kini berstatus Di Kerjakan oleh petugas (${targetTicket.assignedCleanerName || 'Tim Kebersihan'}).`,
         timestamp: nowStr,
         type: 'info',
         targetRole: ['admin', 'supervisor', 'petugas', 'klien'],

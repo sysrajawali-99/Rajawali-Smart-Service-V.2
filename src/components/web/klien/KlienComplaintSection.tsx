@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import {
   AlertCircle,
   Clock,
@@ -8,6 +8,8 @@ import {
   Filter,
   Eye,
   Camera,
+  Upload,
+  Trash2,
   Layers,
   Building2,
   User,
@@ -20,6 +22,7 @@ import {
   Calendar,
   Hourglass,
   HelpCircle,
+  RotateCcw,
 } from 'lucide-react';
 import { useCleaning } from '../../../context/CleaningContext';
 import { Complaint, PriorityLevel } from '../../../types';
@@ -55,12 +58,28 @@ export const KlienComplaintSection: React.FC = () => {
   const [newDescription, setNewDescription] = useState('');
   const [newSlaHours, setNewSlaHours] = useState(2);
   const [newPhotoBefore, setNewPhotoBefore] = useState('');
+  const [newPhotoMeta, setNewPhotoMeta] = useState<{
+    timestamp: string;
+    userName: string;
+  } | null>(null);
 
   // Modal: Selesaikan Keluhan
   const [showResolveModal, setShowResolveModal] = useState(false);
   const [resolvingComplaint, setResolvingComplaint] = useState<Complaint | null>(null);
   const [resolutionNotes, setResolutionNotes] = useState('');
   const [resolutionPhotoAfter, setResolutionPhotoAfter] = useState('');
+  const [resolutionPhotoMeta, setResolutionPhotoMeta] = useState<{
+    timestamp: string;
+    userName: string;
+  } | null>(null);
+
+  // Photo processing state & refs
+  const [isProcessingPhoto, setIsProcessingPhoto] = useState(false);
+  const [photoError, setPhotoError] = useState<string | null>(null);
+  const createCameraRef = useRef<HTMLInputElement | null>(null);
+  const createGalleryRef = useRef<HTMLInputElement | null>(null);
+  const resolveCameraRef = useRef<HTMLInputElement | null>(null);
+  const resolveGalleryRef = useRef<HTMLInputElement | null>(null);
 
   // Toast
   const [toastMsg, setToastMsg] = useState<string | null>(null);
@@ -90,11 +109,159 @@ export const KlienComplaintSection: React.FC = () => {
   const diKerjakanList = useMemo(() => complaints.filter((c) => c.status === 'in_progress'), [complaints]);
   const diSelesaikanList = useMemo(() => complaints.filter((c) => c.status === 'resolved'), [complaints]);
 
+  // Helper: Stamp automatic timestamp & logged-in user name onto uploaded/captured photo
+  const processPhotoWithTimestamp = (
+    file: File,
+    locationLabel?: string
+  ): Promise<{ dataUrl: string; timestamp: string; userName: string }> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onerror = () => reject(new Error('Gagal membaca file foto.'));
+      reader.onload = () => {
+        const baseDataUrl = reader.result as string;
+        const img = new Image();
+        img.onload = () => {
+          const now = new Date();
+          const dateFormatted = now.toLocaleDateString('id-ID', {
+            day: '2-digit',
+            month: '2-digit',
+            year: 'numeric',
+          });
+          const timeFormatted =
+            now.toLocaleTimeString('id-ID', {
+              hour: '2-digit',
+              minute: '2-digit',
+              second: '2-digit',
+            }) + ' WIB';
+          const fullTimestamp = `${dateFormatted} • ${timeFormatted}`;
+          const loggedInUser = currentUser?.name || 'User Login';
+
+          const canvas = document.createElement('canvas');
+          const maxDim = 1280;
+          let targetW = img.width || 800;
+          let targetH = img.height || 600;
+          if (targetW > maxDim || targetH > maxDim) {
+            if (targetW >= targetH) {
+              targetH = Math.round((targetH * maxDim) / targetW);
+              targetW = maxDim;
+            } else {
+              targetW = Math.round((targetW * maxDim) / targetH);
+              targetH = maxDim;
+            }
+          }
+
+          canvas.width = targetW;
+          canvas.height = targetH;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) {
+            resolve({ dataUrl: baseDataUrl, timestamp: fullTimestamp, userName: loggedInUser });
+            return;
+          }
+
+          // Draw original photo
+          ctx.drawImage(img, 0, 0, targetW, targetH);
+
+          // Draw bottom watermark banner with timestamp & logged-in user name
+          const bannerHeight = Math.max(76, Math.floor(targetH * 0.16));
+          const bannerY = targetH - bannerHeight;
+
+          const gradient = ctx.createLinearGradient(0, bannerY, 0, targetH);
+          gradient.addColorStop(0, 'rgba(15, 23, 42, 0.55)');
+          gradient.addColorStop(0.35, 'rgba(15, 23, 42, 0.88)');
+          gradient.addColorStop(1, 'rgba(15, 23, 42, 0.96)');
+          ctx.fillStyle = gradient;
+          ctx.fillRect(0, bannerY, targetW, bannerHeight);
+
+          // Top accent line
+          ctx.fillStyle = '#f59e0b';
+          ctx.fillRect(0, bannerY, targetW, Math.max(2, Math.floor(targetH * 0.004)));
+
+          const padX = Math.max(14, Math.floor(targetW * 0.025));
+          const fontSizePrimary = Math.max(13, Math.floor(targetW * 0.024));
+          const fontSizeSecondary = Math.max(11, Math.floor(targetW * 0.019));
+
+          // Line 1: Timestamp (Date & Time)
+          let textY = bannerY + Math.floor(bannerHeight * 0.36);
+          ctx.font = `bold ${fontSizePrimary}px monospace`;
+          ctx.fillStyle = '#fde047';
+          ctx.fillText(`🕒 ${fullTimestamp}`, padX, textY);
+
+          // Line 2: Logged-in User Name
+          textY += Math.floor(bannerHeight * 0.32);
+          ctx.font = `bold ${fontSizeSecondary}px sans-serif`;
+          ctx.fillStyle = '#ffffff';
+          ctx.fillText(`👤 User: ${loggedInUser}`, padX, textY);
+
+          // Line 3: Project & Area Location
+          textY += Math.floor(bannerHeight * 0.24);
+          ctx.font = `normal ${Math.max(10, fontSizeSecondary - 2)}px sans-serif`;
+          ctx.fillStyle = '#cbd5e1';
+          const locInfo = locationLabel
+            ? `${activeProject.name} • ${locationLabel}`
+            : activeProject.name;
+          ctx.fillText(`📍 ${locInfo}`, padX, textY);
+
+          const stampedDataUrl = canvas.toDataURL('image/jpeg', 0.88);
+          resolve({
+            dataUrl: stampedDataUrl,
+            timestamp: fullTimestamp,
+            userName: loggedInUser,
+          });
+        };
+        img.onerror = () => reject(new Error('Format gambar tidak dapat diproses.'));
+        img.src = baseDataUrl;
+      };
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const handleBeforePhotoFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsProcessingPhoto(true);
+    setPhotoError(null);
+    try {
+      const selectedAreaObj = areas.find((a) => a.id === newAreaId);
+      const locLabel = selectedAreaObj
+        ? `${selectedAreaObj.name} (${selectedAreaObj.floor})`
+        : undefined;
+      const result = await processPhotoWithTimestamp(file, locLabel);
+      setNewPhotoBefore(result.dataUrl);
+      setNewPhotoMeta({ timestamp: result.timestamp, userName: result.userName });
+    } catch {
+      setPhotoError('Gagal memproses foto. Silakan coba ambil ulang atau pilih file gambar lain.');
+    } finally {
+      setIsProcessingPhoto(false);
+      e.target.value = '';
+    }
+  };
+
+  const handleAfterPhotoFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsProcessingPhoto(true);
+    try {
+      const locLabel = resolvingComplaint
+        ? `${resolvingComplaint.areaName} (${resolvingComplaint.floor})`
+        : undefined;
+      const result = await processPhotoWithTimestamp(file, locLabel);
+      setResolutionPhotoAfter(result.dataUrl);
+      setResolutionPhotoMeta({ timestamp: result.timestamp, userName: result.userName });
+    } catch {
+      showToast('Gagal memproses foto bukti penyelesaian.');
+    } finally {
+      setIsProcessingPhoto(false);
+      e.target.value = '';
+    }
+  };
+
   // Submit New Complaint
   const handleCreateComplaint = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newDescription.trim()) {
-      alert('Deskripsi keluhan wajib diisi.');
+      setPhotoError('Deskripsi keluhan wajib diisi.');
       return;
     }
 
@@ -117,6 +284,8 @@ export const KlienComplaintSection: React.FC = () => {
     // Reset Form
     setNewDescription('');
     setNewPhotoBefore('');
+    setNewPhotoMeta(null);
+    setPhotoError(null);
   };
 
   // Confirm Resolve
@@ -137,6 +306,41 @@ export const KlienComplaintSection: React.FC = () => {
     setResolvingComplaint(null);
     if (selectedComplaint?.id === resolvingComplaint.id) {
       setSelectedComplaint(null);
+    }
+  };
+
+  // Handle Tinjau Ulang (returns ticket status back to 'in_progress' / Di Kerjakan)
+  const handleTinjauUlang = (ticket: Complaint) => {
+    startHandlingComplaint(ticket.id);
+    showToast(
+      `Tiket ${ticket.ticketNumber} diajukan Tinjau Ulang — status kembali menjadi "Di Kerjakan".`
+    );
+    setSelectedComplaint(null);
+  };
+
+  const getStatusBadge = (status: Complaint['status']) => {
+    switch (status) {
+      case 'open':
+        return (
+          <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-rose-50 text-rose-700 border border-rose-200 inline-flex items-center gap-1.5">
+            <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse" />
+            Tiket Baru
+          </span>
+        );
+      case 'in_progress':
+        return (
+          <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200 inline-flex items-center gap-1.5">
+            <Clock className="w-3.5 h-3.5 text-amber-600" />
+            Di Kerjakan
+          </span>
+        );
+      case 'resolved':
+        return (
+          <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 inline-flex items-center gap-1.5">
+            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+            Di Selesaikan
+          </span>
+        );
     }
   };
 
@@ -473,46 +677,20 @@ export const KlienComplaintSection: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Actions */}
-                <div className="pt-2 border-t border-slate-100 flex items-center justify-between gap-2">
+                {/* Actions (Read-Only Status + Detail Button; No Selesaikan Button) */}
+                <div className="pt-2.5 border-t border-slate-100 flex items-center justify-between gap-2">
+                  <div className="shrink-0">
+                    {getStatusBadge(ticket.status)}
+                  </div>
+
                   <button
                     type="button"
                     onClick={() => setSelectedComplaint(ticket)}
-                    className="flex-1 py-1.5 px-3 bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-semibold rounded-lg border border-slate-200 transition-colors flex items-center justify-center gap-1 cursor-pointer"
+                    className="py-1.5 px-3.5 bg-white hover:bg-slate-100 text-slate-700 text-xs font-semibold rounded-lg border border-slate-200 transition-colors flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs"
                   >
                     <Eye className="w-3.5 h-3.5 text-slate-500" />
                     <span>Detail</span>
                   </button>
-
-                  {isOpen && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        startHandlingComplaint(ticket.id);
-                        showToast(`Tiket ${ticket.ticketNumber} mulai dikerjakan petugas.`);
-                      }}
-                      className="py-1.5 px-3 bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold rounded-lg transition-colors flex items-center gap-1 cursor-pointer"
-                    >
-                      <Play className="w-3.5 h-3.5" />
-                      <span>Kerjakan</span>
-                    </button>
-                  )}
-
-                  {isInProgress && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setResolvingComplaint(ticket);
-                        setResolutionNotes('');
-                        setResolutionPhotoAfter('');
-                        setShowResolveModal(true);
-                      }}
-                      className="py-1.5 px-3 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-lg transition-colors flex items-center gap-1 cursor-pointer"
-                    >
-                      <CheckCircle2 className="w-3.5 h-3.5" />
-                      <span>Selesaikan</span>
-                    </button>
-                  )}
                 </div>
               </div>
             );
@@ -526,11 +704,12 @@ export const KlienComplaintSection: React.FC = () => {
           <div className="bg-white rounded-3xl max-w-xl w-full p-6 shadow-2xl border border-slate-200 space-y-4 animate-in fade-in zoom-in-95 my-8">
             <div className="flex items-start justify-between pb-3 border-b border-slate-100">
               <div>
-                <div className="flex items-center gap-2 mb-1">
+                <div className="flex items-center gap-2 flex-wrap mb-1">
                   <span className="font-mono text-xs font-bold px-2 py-0.5 rounded bg-slate-900 text-white">
                     {selectedComplaint.ticketNumber}
                   </span>
                   {getPriorityBadge(selectedComplaint.priority)}
+                  {getStatusBadge(selectedComplaint.status)}
                 </div>
                 <h3 className="text-base font-bold text-slate-900">{selectedComplaint.areaName}</h3>
                 <p className="text-xs text-slate-500">{selectedComplaint.floor} · {selectedComplaint.category}</p>
@@ -605,14 +784,31 @@ export const KlienComplaintSection: React.FC = () => {
               </div>
             </div>
 
-            <div className="flex justify-end pt-2">
-              <button
-                type="button"
-                onClick={() => setSelectedComplaint(null)}
-                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-xl cursor-pointer"
-              >
-                Tutup
-              </button>
+            <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-100">
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-slate-500 font-medium">Status Saat Ini:</span>
+                {getStatusBadge(selectedComplaint.status)}
+              </div>
+
+              <div className="flex items-center gap-2 ml-auto">
+                <button
+                  type="button"
+                  onClick={() => handleTinjauUlang(selectedComplaint)}
+                  className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold rounded-xl shadow-xs transition-colors flex items-center gap-1.5 cursor-pointer"
+                  title="Kembalikan status pekerjaan menjadi Di Kerjakan untuk ditinjau ulang oleh petugas"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span>Tinjau Ulang</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setSelectedComplaint(null)}
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-xl cursor-pointer"
+                >
+                  Tutup
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -701,33 +897,109 @@ export const KlienComplaintSection: React.FC = () => {
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="font-bold text-slate-700 block mb-1">Target Durasi SLA (Jam)</label>
-                  <input
-                    type="number"
-                    min={1}
-                    max={24}
-                    value={newSlaHours}
-                    onChange={(e) => setNewSlaHours(Number(e.target.value))}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500/20"
-                  />
+              <div>
+                <label className="font-bold text-slate-700 block mb-1">Target Durasi SLA (Jam)</label>
+                <input
+                  type="number"
+                  min={1}
+                  max={24}
+                  value={newSlaHours}
+                  onChange={(e) => setNewSlaHours(Number(e.target.value))}
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500/20"
+                />
+              </div>
+
+              {/* FOTO BUKTI (OPSIONAL) DENGAN TIMESTAMP OTOMATIS & NAMA USER */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="font-bold text-slate-700 block">
+                    Foto Bukti (Opsional)
+                  </label>
+                  <span className="text-[10.5px] font-semibold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">
+                    Otomatis Timestamp &amp; User: {currentUser?.name || 'User Login'}
+                  </span>
                 </div>
 
-                <div>
-                  <label className="font-bold text-slate-700 block mb-1">Foto Bukti (Opsional)</label>
+                {/* Hidden File Inputs for Camera & Gallery */}
+                <input
+                  ref={createCameraRef}
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  onChange={handleBeforePhotoFileChange}
+                  className="hidden"
+                />
+                <input
+                  ref={createGalleryRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleBeforePhotoFileChange}
+                  className="hidden"
+                />
+
+                <div className="grid grid-cols-2 gap-2.5">
                   <button
                     type="button"
-                    onClick={() =>
-                      setNewPhotoBefore(
-                        'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?w=600&auto=format&fit=crop&q=80'
-                      )
-                    }
-                    className="w-full py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-medium cursor-pointer"
+                    disabled={isProcessingPhoto}
+                    onClick={() => createCameraRef.current?.click()}
+                    className="py-2.5 px-3 bg-amber-600 hover:bg-amber-700 disabled:opacity-60 text-white rounded-xl font-bold flex items-center justify-center gap-1.5 shadow-2xs transition-colors cursor-pointer"
                   >
-                    {newPhotoBefore ? 'Foto Terpasang ✓' : 'Pakai Foto Contoh'}
+                    <Camera className="w-4 h-4 shrink-0" />
+                    <span>{isProcessingPhoto ? 'Memproses...' : 'Ambil Foto Kamera'}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={isProcessingPhoto}
+                    onClick={() => createGalleryRef.current?.click()}
+                    className="py-2.5 px-3 bg-slate-100 hover:bg-slate-200 disabled:opacity-60 text-slate-700 border border-slate-200 rounded-xl font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                  >
+                    <Upload className="w-4 h-4 shrink-0" />
+                    <span>Upload Foto / Galeri</span>
                   </button>
                 </div>
+
+                {photoError && (
+                  <p className="text-[11px] font-semibold text-rose-600 bg-rose-50 px-3 py-1.5 rounded-lg border border-rose-200">
+                    {photoError}
+                  </p>
+                )}
+
+                {newPhotoBefore && (
+                  <div className="p-2.5 rounded-2xl bg-slate-50 border border-slate-200 space-y-2">
+                    <div className="relative h-44 rounded-xl overflow-hidden bg-slate-900 border border-slate-200">
+                      <img
+                        src={newPhotoBefore}
+                        alt="Pratinjau Foto Bukti Keluhan"
+                        className="w-full h-full object-contain"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setNewPhotoBefore('');
+                          setNewPhotoMeta(null);
+                        }}
+                        title="Hapus Foto"
+                        className="absolute top-2 right-2 p-1.5 rounded-full bg-rose-600/90 hover:bg-rose-700 text-white shadow-md cursor-pointer"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+
+                    {newPhotoMeta && (
+                      <div className="flex flex-wrap items-center justify-between gap-2 px-2.5 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200 text-[11px] text-emerald-900">
+                        <span className="font-bold flex items-center gap-1">
+                          <Clock className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                          <span>{newPhotoMeta.timestamp}</span>
+                        </span>
+                        <span className="font-bold flex items-center gap-1">
+                          <User className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                          <span>User: {newPhotoMeta.userName}</span>
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
               <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
@@ -782,19 +1054,67 @@ export const KlienComplaintSection: React.FC = () => {
                 />
               </div>
 
-              <div>
-                <label className="font-bold text-slate-700 block mb-1">Foto Bukti Bersih Selesai</label>
-                <button
-                  type="button"
-                  onClick={() =>
-                    setResolutionPhotoAfter(
-                      'https://images.unsplash.com/photo-1527515637462-cff94eecc1ac?w=600&auto=format&fit=crop&q=80'
-                    )
-                  }
-                  className="w-full py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-medium cursor-pointer"
-                >
-                  {resolutionPhotoAfter ? 'Foto Selesai Terpasang ✓' : 'Sematkan Foto Selesai'}
-                </button>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="font-bold text-slate-700 block">Foto Bukti Bersih Selesai</label>
+                  <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                    Timestamp &amp; User Otomatis
+                  </span>
+                </div>
+
+                <input
+                  ref={resolveCameraRef}
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  onChange={handleAfterPhotoFileChange}
+                  className="hidden"
+                />
+                <input
+                  ref={resolveGalleryRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleAfterPhotoFileChange}
+                  className="hidden"
+                />
+
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    disabled={isProcessingPhoto}
+                    onClick={() => resolveCameraRef.current?.click()}
+                    className="py-2 px-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-semibold flex items-center justify-center gap-1.5 cursor-pointer"
+                  >
+                    <Camera className="w-3.5 h-3.5" />
+                    <span>Ambil Kamera</span>
+                  </button>
+                  <button
+                    type="button"
+                    disabled={isProcessingPhoto}
+                    onClick={() => resolveGalleryRef.current?.click()}
+                    className="py-2 px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 rounded-xl font-semibold flex items-center justify-center gap-1.5 cursor-pointer"
+                  >
+                    <Upload className="w-3.5 h-3.5" />
+                    <span>Upload Foto</span>
+                  </button>
+                </div>
+
+                {resolutionPhotoAfter && (
+                  <div className="space-y-1.5">
+                    <div className="relative h-40 rounded-xl overflow-hidden bg-slate-900 border border-slate-200">
+                      <img
+                        src={resolutionPhotoAfter}
+                        alt="Pratinjau Foto Selesai"
+                        className="w-full h-full object-contain"
+                      />
+                    </div>
+                    {resolutionPhotoMeta && (
+                      <p className="text-[11px] text-emerald-700 font-semibold">
+                        ✓ {resolutionPhotoMeta.timestamp} • User: {resolutionPhotoMeta.userName}
+                      </p>
+                    )}
+                  </div>
+                )}
               </div>
 
               <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
