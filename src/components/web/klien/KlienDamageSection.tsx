@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import {
   Wrench,
   AlertTriangle,
@@ -9,6 +9,8 @@ import {
   Filter,
   Eye,
   Camera,
+  Upload,
+  Trash2,
   Layers,
   Building2,
   X,
@@ -87,6 +89,14 @@ export const KlienDamageSection: React.FC = () => {
   const [newActionTaken, setNewActionTaken] = useState('');
   const [newTargetDept, setNewTargetDept] = useState('Building Maintenance (MEP)');
   const [newPhotoBefore, setNewPhotoBefore] = useState('');
+  const [newPhotoMeta, setNewPhotoMeta] = useState<{ timestamp: string; userName: string } | null>(null);
+  const [photoError, setPhotoError] = useState<string | null>(null);
+  const [isProcessingPhoto, setIsProcessingPhoto] = useState(false);
+
+  const cameraInputRef = useRef<HTMLInputElement | null>(null);
+  const galleryInputRef = useRef<HTMLInputElement | null>(null);
+  const resolveCameraInputRef = useRef<HTMLInputElement | null>(null);
+  const resolveGalleryInputRef = useRef<HTMLInputElement | null>(null);
 
   // Modal: Resolve Damage Report
   const [showResolveModal, setShowResolveModal] = useState(false);
@@ -94,6 +104,7 @@ export const KlienDamageSection: React.FC = () => {
   const [resolutionTechnician, setResolutionTechnician] = useState('');
   const [resolutionNotes, setResolutionNotes] = useState('');
   const [resolutionPhotoAfter, setResolutionPhotoAfter] = useState('');
+  const [resolutionPhotoMeta, setResolutionPhotoMeta] = useState<{ timestamp: string; userName: string } | null>(null);
   const [resolutionCost, setResolutionCost] = useState<number>(0);
 
   // Toast
@@ -170,10 +181,161 @@ export const KlienDamageSection: React.FC = () => {
   const resolvedCount = periodFilteredReports.filter((r) => r.status === 'selesai').length;
   const criticalCount = periodFilteredReports.filter((r) => r.damageLevel === 'kritis' || r.priority === 'urgent').length;
 
+  // Helper: Stamp automatic timestamp & logged-in user name onto uploaded/captured photo
+  const processPhotoWithTimestamp = (
+    file: File,
+    locationLabel?: string
+  ): Promise<{ dataUrl: string; timestamp: string; userName: string }> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onerror = () => reject(new Error('Gagal membaca file foto.'));
+      reader.onload = () => {
+        const baseDataUrl = reader.result as string;
+        const img = new Image();
+        img.onload = () => {
+          const now = new Date();
+          const dateFormatted = now.toLocaleDateString('id-ID', {
+            day: '2-digit',
+            month: '2-digit',
+            year: 'numeric',
+          });
+          const timeFormatted =
+            now.toLocaleTimeString('id-ID', {
+              hour: '2-digit',
+              minute: '2-digit',
+              second: '2-digit',
+            }) + ' WIB';
+          const fullTimestamp = `${dateFormatted} • ${timeFormatted}`;
+          const loggedInUser = currentUser?.name || 'User Login';
+
+          const canvas = document.createElement('canvas');
+          const maxDim = 1280;
+          let targetW = img.width || 800;
+          let targetH = img.height || 600;
+          if (targetW > maxDim || targetH > maxDim) {
+            if (targetW >= targetH) {
+              targetH = Math.round((targetH * maxDim) / targetW);
+              targetW = maxDim;
+            } else {
+              targetW = Math.round((targetW * maxDim) / targetH);
+              targetH = maxDim;
+            }
+          }
+
+          canvas.width = targetW;
+          canvas.height = targetH;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) {
+            resolve({ dataUrl: baseDataUrl, timestamp: fullTimestamp, userName: loggedInUser });
+            return;
+          }
+
+          // Draw original photo
+          ctx.drawImage(img, 0, 0, targetW, targetH);
+
+          // Draw bottom watermark banner with timestamp & logged-in user name
+          const bannerHeight = Math.max(76, Math.floor(targetH * 0.16));
+          const bannerY = targetH - bannerHeight;
+
+          const gradient = ctx.createLinearGradient(0, bannerY, 0, targetH);
+          gradient.addColorStop(0, 'rgba(15, 23, 42, 0.55)');
+          gradient.addColorStop(0.35, 'rgba(15, 23, 42, 0.88)');
+          gradient.addColorStop(1, 'rgba(15, 23, 42, 0.96)');
+          ctx.fillStyle = gradient;
+          ctx.fillRect(0, bannerY, targetW, bannerHeight);
+
+          // Top accent line
+          ctx.fillStyle = '#f43f5e';
+          ctx.fillRect(0, bannerY, targetW, Math.max(2, Math.floor(targetH * 0.004)));
+
+          const padX = Math.max(14, Math.floor(targetW * 0.025));
+          const fontSizePrimary = Math.max(13, Math.floor(targetW * 0.024));
+          const fontSizeSecondary = Math.max(11, Math.floor(targetW * 0.019));
+
+          // Line 1: Timestamp (Date & Time)
+          let textY = bannerY + Math.floor(bannerHeight * 0.36);
+          ctx.font = `bold ${fontSizePrimary}px monospace`;
+          ctx.fillStyle = '#fde047';
+          ctx.fillText(`🕒 ${fullTimestamp}`, padX, textY);
+
+          // Line 2: Logged-in User Name
+          textY += Math.floor(bannerHeight * 0.32);
+          ctx.font = `bold ${fontSizeSecondary}px sans-serif`;
+          ctx.fillStyle = '#ffffff';
+          ctx.fillText(`👤 User: ${loggedInUser}`, padX, textY);
+
+          // Line 3: Project / Location
+          textY += Math.floor(bannerHeight * 0.24);
+          ctx.font = `normal ${Math.max(10, fontSizeSecondary - 2)}px sans-serif`;
+          ctx.fillStyle = '#cbd5e1';
+          const locInfo = locationLabel
+            ? `${activeProject.name} • ${locationLabel}`
+            : activeProject.name;
+          ctx.fillText(`📍 ${locInfo}`, padX, textY);
+
+          const stampedDataUrl = canvas.toDataURL('image/jpeg', 0.88);
+          resolve({
+            dataUrl: stampedDataUrl,
+            timestamp: fullTimestamp,
+            userName: loggedInUser,
+          });
+        };
+        img.onerror = () => reject(new Error('Format gambar tidak dapat diproses.'));
+        img.src = baseDataUrl;
+      };
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const handleBeforePhotoFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsProcessingPhoto(true);
+    setPhotoError(null);
+    try {
+      const locLabel = newLocationName.trim()
+        ? `${newLocationName.trim()} (${newFloor})`
+        : newFloor;
+      const result = await processPhotoWithTimestamp(file, locLabel);
+      setNewPhotoBefore(result.dataUrl);
+      setNewPhotoMeta({ timestamp: result.timestamp, userName: result.userName });
+    } catch {
+      setPhotoError('Gagal memproses foto. Silakan coba ambil ulang atau pilih file gambar lain.');
+    } finally {
+      setIsProcessingPhoto(false);
+      e.target.value = '';
+    }
+  };
+
+  const handleAfterPhotoFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsProcessingPhoto(true);
+    try {
+      const locLabel = resolvingReport
+        ? `${resolvingReport.locationName} (${resolvingReport.floor})`
+        : undefined;
+      const result = await processPhotoWithTimestamp(file, locLabel);
+      setResolutionPhotoAfter(result.dataUrl);
+      setResolutionPhotoMeta({ timestamp: result.timestamp, userName: result.userName });
+    } catch {
+      showToast('Gagal memproses foto perbaikan.');
+    } finally {
+      setIsProcessingPhoto(false);
+      e.target.value = '';
+    }
+  };
+
   const handleCreateReport = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newItemName.trim() || !newLocationName.trim()) {
-      alert('Nama barang dan lokasi kerusakan wajib diisi.');
+      setPhotoError('Nama barang dan lokasi kerusakan wajib diisi.');
+      return;
+    }
+    if (!newPhotoBefore) {
+      setPhotoError('Foto bukti kerusakan wajib diambil dari kamera atau diupload dari galeri/file.');
       return;
     }
 
@@ -192,9 +354,7 @@ export const KlienDamageSection: React.FC = () => {
       targetDepartment: newTargetDept,
       reporterName: currentUser?.name || 'Klien Building Management',
       reporterRole: userRole === 'klien' ? 'Klien Gedung' : 'Pengawas Operasional',
-      photoBefore:
-        newPhotoBefore ||
-        'https://images.unsplash.com/photo-1581092160607-ee22621dd758?w=600&auto=format&fit=crop&q=80',
+      photoBefore: newPhotoBefore,
       status: 'dilaporkan',
       reportDate: new Date().toISOString().split('T')[0],
       reportTime: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB',
@@ -210,6 +370,8 @@ export const KlienDamageSection: React.FC = () => {
     setNewImpact('');
     setNewActionTaken('');
     setNewPhotoBefore('');
+    setNewPhotoMeta(null);
+    setPhotoError(null);
   };
 
   const handleOpenResolve = (report: FacilityDamageReport) => {
@@ -217,6 +379,7 @@ export const KlienDamageSection: React.FC = () => {
     setResolutionTechnician(currentUser?.name || 'Tim Maintenance MEP');
     setResolutionNotes('');
     setResolutionPhotoAfter('');
+    setResolutionPhotoMeta(null);
     setResolutionCost(report.costEstimate || 0);
     setShowResolveModal(true);
   };
@@ -926,27 +1089,111 @@ export const KlienDamageSection: React.FC = () => {
               </div>
 
               <div>
-                <label className="font-bold text-slate-700 block mb-1">Foto Bukti Kerusakan (Opsional URL)</label>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="text"
-                    placeholder="https://... atau biarkan default"
-                    value={newPhotoBefore}
-                    onChange={(e) => setNewPhotoBefore(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-rose-500/20 text-xs"
-                  />
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setNewPhotoBefore(
-                        'https://images.unsplash.com/photo-1581092160607-ee22621dd758?w=600&auto=format&fit=crop&q=80'
-                      )
-                    }
-                    className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-medium shrink-0 cursor-pointer"
-                  >
-                    Contoh Foto
-                  </button>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="font-bold text-slate-700">
+                    Foto Bukti Kerusakan <span className="text-rose-600">* (Wajib)</span>
+                  </label>
+                  <span className="text-[10.5px] text-slate-500">
+                    Otomatis Timestamp & User: <strong className="text-slate-700">{currentUser?.name || 'User Login'}</strong>
+                  </span>
                 </div>
+
+                {/* Hidden File Inputs for Camera & Gallery/File */}
+                <input
+                  ref={cameraInputRef}
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  onChange={handleBeforePhotoFileChange}
+                  className="hidden"
+                />
+                <input
+                  ref={galleryInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleBeforePhotoFileChange}
+                  className="hidden"
+                />
+
+                {!newPhotoBefore ? (
+                  <div
+                    className={`p-3.5 rounded-2xl border-2 border-dashed transition-colors ${
+                      photoError
+                        ? 'border-rose-300 bg-rose-50/50'
+                        : 'border-slate-200 bg-slate-50/70 hover:border-rose-300'
+                    }`}
+                  >
+                    <div className="grid grid-cols-2 gap-2.5">
+                      <button
+                        type="button"
+                        disabled={isProcessingPhoto}
+                        onClick={() => cameraInputRef.current?.click()}
+                        className="flex flex-col items-center justify-center gap-1.5 py-3 px-3 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-semibold transition-colors cursor-pointer shadow-xs active:scale-[0.98]"
+                      >
+                        <Camera className="w-5 h-5" />
+                        <span className="text-xs">Ambil dari Kamera</span>
+                        <span className="text-[10px] text-rose-100 font-normal">Kamera Langsung</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        disabled={isProcessingPhoto}
+                        onClick={() => galleryInputRef.current?.click()}
+                        className="flex flex-col items-center justify-center gap-1.5 py-3 px-3 rounded-xl bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 font-semibold transition-colors cursor-pointer shadow-xs active:scale-[0.98]"
+                      >
+                        <Upload className="w-5 h-5 text-rose-600" />
+                        <span className="text-xs">Upload Galeri / File</span>
+                        <span className="text-[10px] text-slate-400 font-normal">Pilih dari Ponsel</span>
+                      </button>
+                    </div>
+                    <p className="text-[10.5px] text-slate-500 text-center mt-2">
+                      {isProcessingPhoto
+                        ? 'Memproses foto & menyematkan timestamp...'
+                        : 'Setiap foto otomatis disematkan waktu (timestamp) & nama user login.'}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <div className="relative rounded-2xl overflow-hidden border border-slate-200 bg-slate-900 h-48">
+                      <img
+                        src={newPhotoBefore}
+                        alt="Preview Bukti Kerusakan"
+                        className="w-full h-full object-contain"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setNewPhotoBefore('');
+                          setNewPhotoMeta(null);
+                        }}
+                        className="absolute top-2.5 right-2.5 px-2.5 py-1.5 rounded-xl bg-slate-900/80 hover:bg-rose-600 text-white text-[11px] font-semibold flex items-center gap-1 backdrop-blur-xs transition-colors cursor-pointer"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>Hapus / Ganti</span>
+                      </button>
+                    </div>
+
+                    {newPhotoMeta && (
+                      <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 rounded-xl bg-emerald-50 border border-emerald-200 text-[11px] text-emerald-800">
+                        <div className="flex items-center gap-1.5 font-semibold">
+                          <Clock className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                          <span>{newPhotoMeta.timestamp}</span>
+                        </div>
+                        <div className="flex items-center gap-1 font-semibold">
+                          <User className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                          <span>{newPhotoMeta.userName}</span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {photoError && (
+                  <p className="text-[11px] font-semibold text-rose-600 mt-1.5 flex items-center gap-1">
+                    <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                    <span>{photoError}</span>
+                  </p>
+                )}
               </div>
 
               <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
@@ -1028,17 +1275,44 @@ export const KlienDamageSection: React.FC = () => {
 
                 <div>
                   <label className="font-bold text-slate-700 block mb-1">Foto Bukti Selesai</label>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setResolutionPhotoAfter(
-                        'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?w=600&auto=format&fit=crop&q=80'
-                      )
-                    }
-                    className="w-full py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-medium text-xs cursor-pointer truncate"
-                  >
-                    {resolutionPhotoAfter ? 'Foto Terpasang ✓' : 'Pakai Foto Selesai'}
-                  </button>
+                  <input
+                    ref={resolveCameraInputRef}
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    onChange={handleAfterPhotoFileChange}
+                    className="hidden"
+                  />
+                  <input
+                    ref={resolveGalleryInputRef}
+                    type="file"
+                    accept="image/*"
+                    onChange={handleAfterPhotoFileChange}
+                    className="hidden"
+                  />
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => resolveCameraInputRef.current?.click()}
+                      className="flex-1 py-2 px-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-semibold text-[11px] cursor-pointer flex items-center justify-center gap-1"
+                    >
+                      <Camera className="w-3.5 h-3.5 shrink-0" />
+                      <span>Kamera</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => resolveGalleryInputRef.current?.click()}
+                      className="flex-1 py-2 px-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-semibold text-[11px] cursor-pointer flex items-center justify-center gap-1"
+                    >
+                      <Upload className="w-3.5 h-3.5 shrink-0" />
+                      <span>Galeri</span>
+                    </button>
+                  </div>
+                  {resolutionPhotoMeta && (
+                    <p className="text-[10px] text-emerald-700 font-medium mt-1 truncate">
+                      ✓ {resolutionPhotoMeta.timestamp} • {resolutionPhotoMeta.userName}
+                    </p>
+                  )}
                 </div>
               </div>
 
