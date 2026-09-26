@@ -71,8 +71,18 @@ export const KlienManpowerSection: React.FC = () => {
     setTimeout(() => setFeedbackToast(null), 3500);
   };
 
-  // Calculations for Total Manpower & Attendance
-  const totalCleaners = cleaners.length;
+  // Filter cleaners for selected shift
+  const currentShiftCleaners = cleaners.filter((c) => {
+    if (selectedShiftId === 'shift-all') {
+      return true;
+    }
+    return c.shiftId === selectedShiftId;
+  });
+
+  const activeShiftObj = shifts.find((s) => s.id === selectedShiftId) || shifts[0];
+
+  // Calculations for Total Manpower & Attendance (automatically changes based on selected shift)
+  const totalCleaners = currentShiftCleaners.length;
 
   const getAttendanceStatus = (c: Cleaner): AttendanceStatusCode => {
     if (c.attendance && c.attendance[currentDay]) {
@@ -82,13 +92,13 @@ export const KlienManpowerSection: React.FC = () => {
     return c.status === 'active' ? 'H' : 'L';
   };
 
-  const hadirCount = cleaners.filter((c) => getAttendanceStatus(c) === 'H').length;
-  const izinCount = cleaners.filter((c) => {
+  const hadirCount = currentShiftCleaners.filter((c) => getAttendanceStatus(c) === 'H').length;
+  const izinCount = currentShiftCleaners.filter((c) => {
     const s = getAttendanceStatus(c);
     return s === 'I' || s === 'S';
   }).length;
-  const alphaCount = cleaners.filter((c) => getAttendanceStatus(c) === 'A').length;
-  const offCount = cleaners.filter((c) => {
+  const alphaCount = currentShiftCleaners.filter((c) => getAttendanceStatus(c) === 'A').length;
+  const offCount = currentShiftCleaners.filter((c) => {
     const s = getAttendanceStatus(c);
     return s === 'L' || s === '-';
   }).length;
@@ -99,9 +109,9 @@ export const KlienManpowerSection: React.FC = () => {
   // Assuming 25 working days per standard month
   const targetWorkingDays = 25;
   const targetContractManday = totalCleaners * targetWorkingDays;
-  // Accumulated Hadir days in current month so far across all cleaners
+  // Accumulated Hadir days in current month so far across selected shift cleaners
   let accumulatedHadirDays = 0;
-  cleaners.forEach((c) => {
+  currentShiftCleaners.forEach((c) => {
     const monthAtt = c.attendanceByMonth?.[currentMonthYear] || c.attendance || {};
     Object.values(monthAtt).forEach((st) => {
       if (st === 'H') accumulatedHadirDays++;
@@ -112,16 +122,6 @@ export const KlienManpowerSection: React.FC = () => {
     accumulatedHadirDays = hadirCount * Math.min(currentDay, targetWorkingDays);
   }
   const mandayFulfillmentPercent = targetContractManday > 0 ? Math.min(100, Math.round((accumulatedHadirDays / (totalCleaners * Math.min(currentDay, targetWorkingDays) || 1)) * 100)) : 100;
-
-  // Filter cleaners for selected shift
-  const currentShiftCleaners = cleaners.filter((c) => {
-    if (selectedShiftId === 'shift-all') {
-      return true;
-    }
-    return c.shiftId === selectedShiftId;
-  });
-
-  const activeShiftObj = shifts.find((s) => s.id === selectedShiftId) || shifts[0];
 
   // Open Edit Shift Time Modal
   const openEditShift = (shift: Shift) => {
@@ -240,13 +240,24 @@ export const KlienManpowerSection: React.FC = () => {
               <span>Total Manpower & Kehadiran Harian</span>
             </h3>
             <p className="text-xs text-slate-500">
-              Monitoring ketersediaan personil operasional di {activeProject.name} per hari ini, {today.toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+              Monitoring ketersediaan personil operasional per hari ini, {today.toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
             </p>
           </div>
           <div className="flex items-center gap-2">
-            <span className="px-2.5 py-1 rounded-lg text-xs font-bold bg-sky-50 text-sky-700 border border-sky-200">
-              Site: {activeProject.name}
-            </span>
+            <Clock className="w-4 h-4 text-sky-600 shrink-0" />
+            <select
+              value={selectedShiftId}
+              onChange={(e) => setSelectedShiftId(e.target.value)}
+              aria-label="Pilih Shift dan Waktu"
+              className="px-3 py-1.5 rounded-xl text-xs font-bold bg-sky-50 text-sky-800 border border-sky-200 hover:border-sky-300 focus:outline-hidden focus:ring-2 focus:ring-sky-500 cursor-pointer transition-colors shadow-2xs"
+            >
+              {shifts.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name} ({s.startTime || '07:00'} - {s.endTime || '15:00'} WIB)
+                </option>
+              ))}
+              <option value="shift-all">Semua Shift (00:00 - 24:00 WIB)</option>
+            </select>
           </div>
         </div>
 
@@ -261,7 +272,11 @@ export const KlienManpowerSection: React.FC = () => {
             </div>
             <div>
               <div className="text-2xl font-extrabold text-slate-900">{totalCleaners}</div>
-              <p className="text-[10.5px] text-slate-500 mt-0.5">Personil Ditugaskan</p>
+              <p className="text-[10.5px] text-slate-500 mt-0.5 truncate">
+                {selectedShiftId === 'shift-all'
+                  ? 'Semua Shift (24 Jam)'
+                  : `${activeShiftObj?.name} (${activeShiftObj?.startTime || '07:00'}-${activeShiftObj?.endTime || '15:00'})`}
+              </p>
             </div>
           </div>
 
@@ -337,8 +352,8 @@ export const KlienManpowerSection: React.FC = () => {
         </div>
       </div>
 
-      {/* SECTION 2: SHIFT MANAGEMENT WITH MANUAL HOURS & ATTENDANCE BUTTONS */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
+      {/* SECTION 2: SHIFT MANAGEMENT WITH MANUAL HOURS & ATTENDANCE BUTTONS (Hidden on mobile) */}
+      <div className="hidden md:block bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
         {/* Shift Tabs Header */}
         <div className="p-4 border-b border-slate-200 flex flex-col md:flex-row md:items-center justify-between gap-3 bg-slate-50/70">
           <div>
@@ -587,8 +602,8 @@ export const KlienManpowerSection: React.FC = () => {
 
       {/* SECTION 3: TURN OVER (KARYAWAN RESIGN) & STATUS PLOTTING / MAN DAY */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Turn Over (Karyawan Resign) Container */}
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-xs p-5 flex flex-col justify-between">
+        {/* Turn Over (Karyawan Resign) Container (Hidden on mobile) */}
+        <div className="hidden md:flex bg-white rounded-2xl border border-slate-200 shadow-xs p-5 flex-col justify-between">
           <div>
             <div className="flex items-center justify-between mb-3">
               <div>
@@ -742,30 +757,32 @@ export const KlienManpowerSection: React.FC = () => {
               </div>
             </div>
 
-            {/* Plotting Readiness Stats */}
-            <h5 className="text-xs font-bold text-slate-800 uppercase tracking-wider mb-2">
-              Status Plotingan Area Kerja Petugas:
-            </h5>
-            <div className="space-y-2 max-h-[220px] overflow-y-auto pr-1">
-              {cleaners.map((c) => (
-                <div
-                  key={c.id}
-                  className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between text-xs"
-                >
-                  <div className="flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full bg-emerald-500" />
-                    <div>
-                      <span className="font-bold text-slate-800">{c.name}</span>
-                      <span className="text-[10.5px] text-slate-400 block">
-                        📍 {c.workPlotting || 'Belum diplot'}
-                      </span>
+            {/* Plotting Readiness Stats (Hidden on mobile) */}
+            <div className="hidden md:block">
+              <h5 className="text-xs font-bold text-slate-800 uppercase tracking-wider mb-2">
+                Status Plotingan Area Kerja Petugas:
+              </h5>
+              <div className="space-y-2 max-h-[220px] overflow-y-auto pr-1">
+                {cleaners.map((c) => (
+                  <div
+                    key={c.id}
+                    className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between text-xs"
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                      <div>
+                        <span className="font-bold text-slate-800">{c.name}</span>
+                        <span className="text-[10.5px] text-slate-400 block">
+                          📍 {c.workPlotting || 'Belum diplot'}
+                        </span>
+                      </div>
                     </div>
+                    <span className="text-[10px] text-slate-500 font-mono bg-white px-2 py-0.5 rounded border border-slate-200">
+                      {c.shiftName}
+                    </span>
                   </div>
-                  <span className="text-[10px] text-slate-500 font-mono bg-white px-2 py-0.5 rounded border border-slate-200">
-                    {c.shiftName}
-                  </span>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
           </div>
         </div>

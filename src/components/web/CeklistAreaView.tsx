@@ -60,6 +60,7 @@ import {
 import {
   STANDARD_TOILET_PARAMETERS,
   findMatchingSlotItem,
+  calculateShiftChecklistStats,
 } from '../../utils/checklistHelper';
 
 interface ShiftSlotDefinition {
@@ -105,12 +106,7 @@ export const CeklistAreaView: React.FC = () => {
     checklistLocations[0]?.id || 'cloc-1'
   );
   const [selectedShiftId, setSelectedShiftId] = useState<string>('shift-1');
-  const [viewMode, setViewMode] = useState<'official_table' | 'slot_details'>(() => {
-    if (typeof window !== 'undefined' && window.innerWidth < 768) {
-      return 'slot_details';
-    }
-    return 'official_table';
-  });
+  const [viewMode, setViewMode] = useState<'official_table' | 'slot_details'>('official_table');
   const [expandedHour, setExpandedHour] = useState<number | null>(new Date().getHours());
   const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
 
@@ -356,12 +352,16 @@ export const CeklistAreaView: React.FC = () => {
     });
   }, [shiftSlotDefs, currentDailyChecklist]);
 
-  // Stats calculation
-  const totalSlots = displayedSlotsWithMeta.length;
-  const cleanSlots = displayedSlotsWithMeta.filter((s) => s.status === 'clean').length;
-  const issueSlots = displayedSlotsWithMeta.filter((s) => s.status === 'has_issue').length;
-  const pendingSlots = displayedSlotsWithMeta.filter((s) => s.status === 'pending').length;
-  const cleanlinessRate = totalSlots > 0 ? Math.round((cleanSlots / totalSlots) * 100) : 0;
+  // Stats calculation based on shift hours and checklist items
+  const {
+    totalSlots,
+    cleanSlots,
+    dirtyFindingsCount,
+    cleanlinessRate,
+  } = useMemo(
+    () => calculateShiftChecklistStats(displayedSlotsWithMeta, tableColumns),
+    [displayedSlotsWithMeta, tableColumns]
+  );
 
   // Handle PDF Export tailored to active shift and filtered project location
   const handleDownloadPDF = () => {
@@ -802,7 +802,7 @@ export const CeklistAreaView: React.FC = () => {
         <div className="bg-white p-3 rounded-xl border border-rose-100 shadow-xs flex items-center justify-between">
           <div>
             <span className="text-[11px] text-rose-600 font-semibold block">Temuan Kotor (K)</span>
-            <span className="text-lg font-bold text-rose-700">{issueSlots} Jam</span>
+            <span className="text-lg font-bold text-rose-700">{dirtyFindingsCount} Kali</span>
           </div>
           <span className="w-7 h-7 rounded-lg bg-rose-100 text-rose-800 font-black flex items-center justify-center text-xs">
             K
@@ -822,9 +822,9 @@ export const CeklistAreaView: React.FC = () => {
       {/* 1. VIEW MODE: OFFICIAL FORMULIR MODEL (PERSIS CEKLIST.WEBP) */}
       {/* ============================================================ */}
       {viewMode === 'official_table' && (
-        <div className="bg-white rounded-2xl border-2 border-slate-300 shadow-md p-6 sm:p-8 space-y-6 overflow-hidden">
-          {/* OFFICIAL INSTITUTION KOP SURAT */}
-          <div className="border-b-2 border-slate-800 pb-3">
+        <div className="bg-white rounded-2xl border-2 border-slate-300 shadow-md p-4 sm:p-8 space-y-4 sm:space-y-6 overflow-hidden">
+          {/* OFFICIAL INSTITUTION KOP SURAT (Hidden on mobile) */}
+          <div className="hidden md:block border-b-2 border-slate-800 pb-3">
             <div className="flex items-center justify-between gap-4">
               {/* Left Logo (Kemenkes Style) */}
               <div className="w-16 h-16 sm:w-20 sm:h-20 flex-shrink-0 flex flex-col items-center justify-center p-1 border border-emerald-300 bg-emerald-50 rounded-xl text-center">
@@ -870,8 +870,8 @@ export const CeklistAreaView: React.FC = () => {
             <div className="mt-3 border-t-2 border-slate-900 pt-0.5 border-b border-slate-900"></div>
           </div>
 
-          {/* DOCUMENT TITLE & SUBHEADER */}
-          <div className="text-center space-y-2">
+          {/* DOCUMENT TITLE & SUBHEADER (Hidden on mobile) */}
+          <div className="hidden md:block text-center space-y-2">
             <h2 className="text-base sm:text-lg font-black text-slate-900 uppercase tracking-wide underline underline-offset-4 decoration-2">
               {isToiletCategory
                 ? 'CHECKLIST KEBERSIHAN TOILET'
@@ -928,14 +928,14 @@ export const CeklistAreaView: React.FC = () => {
 
           {/* TABLE CONTAINER - PERSIS MODEL DI GAMBAR CEKLIST.WEBP */}
           <div className="border border-slate-400 rounded-lg overflow-x-auto shadow-xs">
-            <table className="w-full border-collapse text-center text-xs">
+            <table className="w-full min-w-[960px] border-collapse text-center text-xs">
               {/* TABLE HEADER WITH ICONS */}
               <thead>
                 <tr className="bg-slate-100 border-b border-slate-400 divide-x divide-slate-300 text-slate-900">
-                  <th className="p-2 w-24 text-center font-bold text-[11px] align-middle bg-slate-200/70">
+                  <th className="px-2.5 py-2.5 w-24 text-center font-bold text-[11px] align-middle bg-slate-200/70 whitespace-nowrap">
                     Tanggal
                   </th>
-                  <th className="p-2 w-28 text-center font-bold text-[11px] align-middle bg-slate-200/70">
+                  <th className="px-2.5 py-2.5 w-28 text-center font-bold text-[11px] align-middle bg-slate-200/70 whitespace-nowrap">
                     Jam
                   </th>
 
@@ -943,24 +943,24 @@ export const CeklistAreaView: React.FC = () => {
                   {tableColumns.map((col) => (
                     <th
                       key={col.key}
-                      className="p-2 min-w-[70px] max-w-[85px] text-center align-bottom"
+                      className="px-2 py-2.5 min-w-[68px] sm:min-w-[76px] text-center align-middle"
                       title={col.name}
                     >
-                      <div className="flex flex-col items-center justify-center gap-1.5 py-1">
-                        <div className="w-8 h-8 rounded-lg bg-sky-50 border border-sky-200 flex items-center justify-center shadow-2xs">
+                      <div className="flex flex-col items-center justify-center gap-1.5">
+                        <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-sky-50 border border-sky-200 flex items-center justify-center shrink-0 shadow-2xs">
                           {col.icon}
                         </div>
-                        <span className="text-[10px] font-bold leading-tight line-clamp-2 text-slate-800">
+                        <span className="text-[10px] sm:text-[10.5px] font-bold leading-none text-slate-800 whitespace-nowrap">
                           {col.name}
                         </span>
                       </div>
                     </th>
                   ))}
 
-                  <th className="p-2 w-28 text-center font-bold text-[11px] align-middle bg-slate-200/70">
+                  <th className="px-2.5 py-2.5 w-28 text-center font-bold text-[11px] align-middle bg-slate-200/70 whitespace-nowrap">
                     Pengawas
                   </th>
-                  <th className="p-2 w-16 text-center font-bold text-[11px] align-middle bg-slate-200/70">
+                  <th className="px-2 py-2.5 w-16 text-center font-bold text-[11px] align-middle bg-slate-200/70 whitespace-nowrap">
                     Paraf
                   </th>
                 </tr>
@@ -1180,7 +1180,9 @@ export const CeklistAreaView: React.FC = () => {
               const isExpanded = expandedHour === slot.hour;
               const isCurrentHour = new Date().getHours() === slot.hour;
               const cleanCount = slot.items.filter((it) => it.status === 'clean').length;
-              const issueCount = slot.items.filter((it) => it.status === 'issue').length;
+              const issueCount = slot.items.filter(
+                (it) => it.status === 'issue' || it.status === 'dirty'
+              ).length;
               const brokenCount = slot.items.filter((it) => it.status === 'broken').length;
 
               return (
@@ -1314,7 +1316,7 @@ export const CeklistAreaView: React.FC = () => {
                                 className={`text-[10px] font-black px-1.5 py-0.5 rounded ${
                                   item.status === 'clean'
                                     ? 'bg-emerald-100 text-emerald-800'
-                                    : item.status === 'issue'
+                                    : item.status === 'issue' || item.status === 'dirty'
                                     ? 'bg-rose-100 text-rose-800'
                                     : item.status === 'broken'
                                     ? 'bg-amber-100 text-amber-800'
@@ -1323,7 +1325,7 @@ export const CeklistAreaView: React.FC = () => {
                               >
                                 {item.status === 'clean'
                                   ? 'Bersih'
-                                  : item.status === 'issue'
+                                  : item.status === 'issue' || item.status === 'dirty'
                                   ? 'Kotor'
                                   : item.status === 'broken'
                                   ? 'Rusak'
@@ -1363,7 +1365,7 @@ export const CeklistAreaView: React.FC = () => {
                                   )
                                 }
                                 className={`h-10 rounded-xl font-black text-xs flex items-center justify-center transition-all ${
-                                  item.status === 'issue'
+                                  item.status === 'issue' || item.status === 'dirty'
                                     ? 'bg-rose-600 text-white shadow-sm scale-102 ring-2 ring-rose-300'
                                     : 'bg-slate-100 text-slate-700 hover:bg-rose-50 hover:text-rose-700'
                                 }`}

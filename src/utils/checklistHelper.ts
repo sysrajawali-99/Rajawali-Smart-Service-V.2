@@ -142,3 +142,124 @@ export function ensureCompleteSlotItems(
     };
   });
 }
+
+export interface ShiftChecklistStats {
+  totalSlots: number;
+  itemsPerSlot: number;
+  totalShiftItems: number;
+  cleanSlots: number;
+  issueSlots: number;
+  pendingSlots: number;
+  cleanItemsCount: number;
+  dirtyFindingsCount: number;
+  brokenItemsCount: number;
+  checkedItemsCount: number;
+  cleanlinessRate: number;
+}
+
+/**
+ * Calculate shift checklist statistics based on total hours in shift and items checked per hour.
+ * - dirtyFindingsCount: how many times a dirty ('K') item finding occurred in the shift
+ * - cleanlinessRate: average percentage of clean ('B') items across total shift hours × checklist items
+ */
+export function calculateShiftChecklistStats(
+  slots: Array<{
+    status?: string;
+    items: HourlyCheckItemEntry[];
+  }>,
+  columns: Array<{ key: string; name: string }>
+): ShiftChecklistStats {
+  const totalSlots = slots.length;
+  const itemsPerSlot = columns.length > 0 ? columns.length : STANDARD_TOILET_PARAMETERS.length;
+  const totalShiftItems = totalSlots * itemsPerSlot;
+
+  let cleanSlots = 0;
+  let issueSlots = 0;
+  let pendingSlots = 0;
+  let cleanItemsCount = 0;
+  let dirtyFindingsCount = 0;
+  let brokenItemsCount = 0;
+  let checkedItemsCount = 0;
+
+  slots.forEach((slot) => {
+    let slotCleanCount = 0;
+    let slotDirtyCount = 0;
+    let slotBrokenCount = 0;
+    let slotCheckedCount = 0;
+
+    if (columns.length > 0) {
+      columns.forEach((col) => {
+        const matchedItem =
+          findMatchingSlotItem(slot.items, col.key) ||
+          findMatchingSlotItem(slot.items, col.name);
+        const code = matchedItem ? toBKRCode(matchedItem.status) : '-';
+
+        if (code === 'B') {
+          cleanItemsCount++;
+          checkedItemsCount++;
+          slotCleanCount++;
+          slotCheckedCount++;
+        } else if (code === 'K') {
+          dirtyFindingsCount++;
+          checkedItemsCount++;
+          slotDirtyCount++;
+          slotCheckedCount++;
+        } else if (code === 'R') {
+          brokenItemsCount++;
+          checkedItemsCount++;
+          slotBrokenCount++;
+          slotCheckedCount++;
+        }
+      });
+    } else {
+      (slot.items || []).forEach((it) => {
+        const code = toBKRCode(it.status);
+        if (code === 'B') {
+          cleanItemsCount++;
+          checkedItemsCount++;
+          slotCleanCount++;
+          slotCheckedCount++;
+        } else if (code === 'K') {
+          dirtyFindingsCount++;
+          checkedItemsCount++;
+          slotDirtyCount++;
+          slotCheckedCount++;
+        } else if (code === 'R') {
+          brokenItemsCount++;
+          checkedItemsCount++;
+          slotBrokenCount++;
+          slotCheckedCount++;
+        }
+      });
+    }
+
+    if (slotDirtyCount > 0 || slotBrokenCount > 0 || slot.status === 'has_issue') {
+      issueSlots++;
+    } else if (
+      (itemsPerSlot > 0 && slotCleanCount === itemsPerSlot) ||
+      slot.status === 'clean'
+    ) {
+      cleanSlots++;
+    } else if (slotCheckedCount === 0 && slot.status === 'pending') {
+      pendingSlots++;
+    }
+  });
+
+  const cleanlinessRate =
+    totalShiftItems > 0 ? Math.round((cleanItemsCount / totalShiftItems) * 100) : 0;
+
+  return {
+    totalSlots,
+    itemsPerSlot,
+    totalShiftItems,
+    cleanSlots,
+    issueSlots,
+    pendingSlots,
+    cleanItemsCount,
+    dirtyFindingsCount,
+    brokenItemsCount,
+    checkedItemsCount,
+    cleanlinessRate,
+  };
+}
+
