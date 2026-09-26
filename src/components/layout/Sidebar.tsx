@@ -19,6 +19,7 @@ import {
   ShieldCheck,
   Briefcase,
   Layers,
+  Sparkles,
   X,
   ChevronDown,
   ChevronRight,
@@ -50,6 +51,7 @@ export const Sidebar: React.FC = () => {
     currentUser,
     complaints,
     damageReports,
+    specialJobs,
     mobileMenuOpen,
     setMobileMenuOpen,
     hasAccess,
@@ -61,6 +63,10 @@ export const Sidebar: React.FC = () => {
 
   const openComplaintCount = complaints.filter(
     (c) => c.status === 'open' || c.status === 'in_progress'
+  ).length;
+
+  const activeSpecialJobCount = specialJobs.filter(
+    (j) => j.status === 'requested' || j.status === 'in_progress'
   ).length;
 
   const rawMenuGroups: MenuGroup[] = [
@@ -152,6 +158,13 @@ export const Sidebar: React.FC = () => {
           id: 'monthly-activity',
           label: 'Monthly Activity',
           icon: CalendarClock,
+        },
+        {
+          id: 'special-job',
+          label: 'Special Job',
+          icon: Sparkles,
+          badge: activeSpecialJobCount > 0 ? activeSpecialJobCount : undefined,
+          badgeColor: 'bg-indigo-600 text-white',
         },
         {
           id: 'master-program',

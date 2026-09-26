@@ -563,4 +563,39 @@ export interface KlienChecklistInspection {
   timestamp: string;
 }
 
+export type SpecialJobSourceType = 'supervisor_request' | 'weekly_activity' | 'monthly_activity';
+
+export type SpecialJobStatus = 'requested' | 'in_progress' | 'completed';
+
+export interface SpecialJobItem {
+  id: string;
+  ticketNo: string; // e.g. "SPJ-2026-001"
+  projectId: string;
+  title: string; // Nama / Uraian Pekerjaan Special Job
+  workMethod: string; // Metode Pengerjaan, SOP, Alat & Chemical
+  location: string; // Lokasi / Area Kerja
+  floor: string; // Lantai / Zona
+  sourceType: SpecialJobSourceType; // By Request Supervisor | Dari Weekly Activity | Dari Monthly Activity
+  sourceProgramId?: string; // ID program asli jika diambil dari Weekly/Monthly Activity
+  requestedBy: string; // Nama User / Supervisor yang me-request
+  requestedByRole: string; // Role pemohon (e.g. "Supervisor Operasional")
+  requestReason: string; // Instruksi / Alasan Request dari Supervisor
+  assignedPicName: string; // Petugas / Tim Pelaksana
+  shiftName: string; // Shift pelaksanaan
+  priority: 'normal' | 'high' | 'urgent';
+  scheduledDate: string; // YYYY-MM-DD
+  scheduledTime: string; // e.g. "09:00 - 11:00 WIB"
+  targetDurationMinutes: number;
+  status: SpecialJobStatus;
+  notes?: string;
+  photoBefore?: string;
+  photoProgress?: string;
+  photoAfter?: string;
+  completedAt?: string;
+  verifiedBySupervisor?: boolean;
+  verifiedByName?: string;
+  createdAt: string;
+}
+
+
 

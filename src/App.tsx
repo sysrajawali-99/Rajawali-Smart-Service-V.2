@@ -18,6 +18,7 @@ import { MasterCleaningProgramView } from './components/web/MasterCleaningProgra
 import { DailyActivityView } from './components/web/DailyActivityView';
 import { WeeklyActivityView } from './components/web/WeeklyActivityView';
 import { MonthlyActivityView } from './components/web/MonthlyActivityView';
+import { SpecialJobView } from './components/web/SpecialJobView';
 import { DamageReportView } from './components/web/DamageReportView';
 import { KlienModeView } from './components/web/klien/KlienModeView';
 import { LoginPage } from './components/auth/LoginPage';
@@ -89,6 +90,8 @@ const MainLayout: React.FC = () => {
         return <WeeklyActivityView />;
       case 'monthly-activity':
         return <MonthlyActivityView />;
+      case 'special-job':
+        return <SpecialJobView />;
       case 'master-program':
       case 'mcp':
         return <MasterCleaningProgramView />;

@@ -22,17 +22,19 @@ import {
 } from 'lucide-react';
 import { useCleaning } from '../../../context/CleaningContext';
 import { CleaningTask, MasterCleaningProgramItem } from '../../../types';
+import { SpecialJobView } from '../SpecialJobView';
 
 export const KlienActivitySection: React.FC = () => {
   const {
     tasks,
     masterPrograms,
+    specialJobs,
     activeProject,
     userRole,
   } = useCleaning();
 
-  // Active Sub-Tab: 'harian' | 'mingguan' | 'bulanan'
-  const [activityTab, setActivityTab] = useState<'harian' | 'mingguan' | 'bulanan'>('harian');
+  // Active Sub-Tab: 'harian' | 'mingguan' | 'bulanan' | 'special_job'
+  const [activityTab, setActivityTab] = useState<'harian' | 'mingguan' | 'bulanan' | 'special_job'>('harian');
 
   // Filters
   const [searchQuery, setSearchQuery] = useState('');
@@ -79,8 +81,8 @@ export const KlienActivitySection: React.FC = () => {
           </p>
         </div>
 
-        {/* 3 SUB TABS */}
-        <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-2xl text-xs self-start sm:self-auto">
+        {/* 4 SUB TABS */}
+        <div className="flex flex-wrap items-center gap-1 bg-slate-100 p-1 rounded-2xl text-xs self-start sm:self-auto">
           <button
             type="button"
             onClick={() => setActivityTab('harian')}
@@ -116,6 +118,18 @@ export const KlienActivitySection: React.FC = () => {
           >
             <CalendarClock className="w-3.5 h-3.5" />
             <span>Kerja Bulanan ({monthlyPrograms.length})</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setActivityTab('special_job')}
+            className={`px-3 py-1.5 rounded-xl font-semibold transition-colors flex items-center gap-1.5 cursor-pointer ${
+              activityTab === 'special_job'
+                ? 'bg-white text-indigo-700 shadow-xs'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
+            <span>Special Job ({specialJobs.length})</span>
           </button>
         </div>
       </div>
@@ -436,6 +450,9 @@ export const KlienActivitySection: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* ==================== TAB 4: SPECIAL JOB ==================== */}
+      {activityTab === 'special_job' && <SpecialJobView />}
 
       {/* DETAIL MODAL FOR DAILY TASK */}
       {selectedTask && (

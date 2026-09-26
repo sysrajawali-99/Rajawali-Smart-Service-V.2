@@ -36,6 +36,7 @@ import {
   EmployeeTurnoverRecord,
   KlienChecklistItem,
   KlienChecklistInspection,
+  SpecialJobItem,
 } from '../types';
 import { calculateShiftDuration } from '../utils/shiftUtils';
 import { normalizeFrequencyCode, getNextProgramDayStatus } from '../utils/mcpUtils';
@@ -60,6 +61,7 @@ import {
   INITIAL_EMPLOYEE_TURNOVERS,
   INITIAL_KLIEN_CHECKLIST_ITEMS,
   INITIAL_KLIEN_CHECKLIST_INSPECTIONS,
+  INITIAL_SPECIAL_JOBS,
   generate24HourSlots,
 } from '../data/initialData';
 
@@ -357,6 +359,13 @@ interface CleaningContextType {
   klienChecklistInspections: KlienChecklistInspection[];
   submitKlienChecklistInspection: (insp: Omit<KlienChecklistInspection, 'id' | 'timestamp'>) => void;
   deleteKlienChecklistInspection: (id: string) => void;
+
+  // Special Jobs (By Request Supervisor & Diambil dari Weekly/Monthly Activity)
+  specialJobs: SpecialJobItem[];
+  allSpecialJobs: SpecialJobItem[];
+  addSpecialJob: (job: Omit<SpecialJobItem, 'id' | 'ticketNo' | 'createdAt'>) => SpecialJobItem;
+  updateSpecialJob: (id: string, updates: Partial<SpecialJobItem>) => void;
+  deleteSpecialJob: (id: string) => void;
 }
 
 
@@ -815,6 +824,21 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     return INITIAL_KLIEN_CHECKLIST_INSPECTIONS;
   });
 
+  const [specialJobs, setSpecialJobs] = useState<SpecialJobItem[]>(() => {
+    const saved = localStorage.getItem('sco_special_jobs');
+    if (saved) {
+      try {
+        const parsed: SpecialJobItem[] = JSON.parse(saved);
+        const existingIds = new Set(parsed.map((j) => j.id));
+        const missing = INITIAL_SPECIAL_JOBS.filter((j) => !existingIds.has(j.id));
+        return [...parsed, ...missing];
+      } catch (e) {
+        console.error('Failed to parse special jobs', e);
+      }
+    }
+    return INITIAL_SPECIAL_JOBS;
+  });
+
   // Synchronize localStorage
   useEffect(() => {
     localStorage.setItem('sco_damage_reports', JSON.stringify(damageReports));
@@ -831,6 +855,10 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   useEffect(() => {
     localStorage.setItem('sco_klien_checklist_inspections', JSON.stringify(klienChecklistInspections));
   }, [klienChecklistInspections]);
+
+  useEffect(() => {
+    localStorage.setItem('sco_special_jobs', JSON.stringify(specialJobs));
+  }, [specialJobs]);
 
   useEffect(() => {
     localStorage.setItem('sco_master_programs', JSON.stringify(masterPrograms));
@@ -1784,6 +1812,53 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const filteredKlienChecklistInspections = klienChecklistInspections.filter(
     (insp) => (insp.projectId || 'proj-1') === safeActiveProjectId
   );
+  const filteredSpecialJobs = specialJobs.filter(
+    (job) => (job.projectId || 'proj-1') === safeActiveProjectId
+  );
+
+  const addSpecialJob = (job: Omit<SpecialJobItem, 'id' | 'ticketNo' | 'createdAt'>): SpecialJobItem => {
+    const now = new Date();
+    const ticketNo = `SPJ-${now.getFullYear()}-${String(specialJobs.length + 1).padStart(3, '0')}`;
+    const newJob: SpecialJobItem = {
+      ...job,
+      id: `spj-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      ticketNo,
+      projectId: job.projectId || safeActiveProjectId,
+      createdAt: now.toISOString(),
+    };
+    setSpecialJobs((prev) => [newJob, ...prev]);
+
+    const nowStr = now.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB';
+    const sourceLabel =
+      job.sourceType === 'weekly_activity'
+        ? 'Weekly Activity'
+        : job.sourceType === 'monthly_activity'
+        ? 'Monthly Activity'
+        : 'By Request Supervisor';
+    const notif: AppNotification = {
+      id: `notif-spj-${Date.now()}`,
+      title: `✨ Special Job Baru (${sourceLabel}): ${ticketNo}`,
+      message: `${job.requestedBy} menugaskan Special Job "${job.title}" di ${job.location} kepada ${job.assignedPicName}.`,
+      timestamp: nowStr,
+      type: job.priority === 'urgent' ? 'urgent' : 'info',
+      targetRole: ['admin', 'supervisor', 'petugas', 'klien'],
+      read: false,
+      projectId: job.projectId || safeActiveProjectId,
+    };
+    setNotifications((prev) => [notif, ...prev]);
+
+    return newJob;
+  };
+
+  const updateSpecialJob = (id: string, updates: Partial<SpecialJobItem>) => {
+    setSpecialJobs((prev) =>
+      prev.map((j) => (j.id === id ? { ...j, ...updates } : j))
+    );
+  };
+
+  const deleteSpecialJob = (id: string) => {
+    setSpecialJobs((prev) => prev.filter((j) => j.id !== id));
+  };
 
   const addEmployeeTurnover = (record: Omit<EmployeeTurnoverRecord, 'id' | 'createdAt'>) => {
     const newRecord: EmployeeTurnoverRecord = {
@@ -3250,6 +3325,12 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         klienChecklistInspections: filteredKlienChecklistInspections,
         submitKlienChecklistInspection,
         deleteKlienChecklistInspection,
+
+        specialJobs: filteredSpecialJobs,
+        allSpecialJobs: specialJobs,
+        addSpecialJob,
+        updateSpecialJob,
+        deleteSpecialJob,
       }}
     >
       {children}

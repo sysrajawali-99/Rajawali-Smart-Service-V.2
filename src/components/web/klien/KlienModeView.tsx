@@ -109,7 +109,7 @@ export const KlienModeView: React.FC<KlienModeViewProps> = ({ initialSubTab }) =
     {
       id: 'activity',
       label: 'Activity Report',
-      description: 'Kerja Harian, Mingguan, Bulanan',
+      description: 'Harian, Mingguan, Bulanan & Special Job',
       icon: CalendarRange,
     },
     {
