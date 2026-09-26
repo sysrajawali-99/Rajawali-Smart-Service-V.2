@@ -90,24 +90,14 @@ const formatIsoToIndoLong = (isoDate: string): string => {
 export const KlienActivitySection: React.FC = () => {
   const {
     tasks,
-    allTasks,
     masterPrograms,
-    allMasterPrograms,
     specialJobs,
-    allSpecialJobs,
     activeProject,
-    allProjects,
     companyProfile,
-    updateTaskStatus,
-    toggleMasterProgramDay,
-    updateSpecialJob,
   } = useCleaning();
 
   // 4 Mode Kartu State
   const [activeCardMode, setActiveCardMode] = useState<KlienActivityCardMode>('daily_activity');
-
-  // Scope filter: 'all_locations' (Semua Lokasi Kerja) or 'active_project' (Proyek Aktif saja)
-  const [locationScope, setLocationScope] = useState<'all_locations' | 'active_project'>('all_locations');
 
   // Filter Tanggal (dd/mm/yyyy) State - Default 2026-09-26 (26/09/2026)
   const [selectedDateIso, setSelectedDateIso] = useState<string>('2026-09-26');
@@ -159,11 +149,9 @@ export const KlienActivitySection: React.FC = () => {
     setTimeout(() => setToastMsg(null), 3500);
   };
 
-  // Project name lookup helper
-  const getProjectNameById = (projectId?: string) => {
-    if (!projectId) return activeProject.name;
-    const found = allProjects.find((p) => p.id === projectId);
-    return found ? found.name : activeProject.name;
+  // Project name lookup helper (hanya sesuai project user login)
+  const getProjectNameById = () => {
+    return activeProject.name;
   };
 
   // Status Badge Helper (Menunggu Tindakan | Sedang Dikerjakan | Selesai)
@@ -193,10 +181,10 @@ export const KlienActivitySection: React.FC = () => {
     }
   };
 
-  // Build Unified Daily Activity Items from all work locations (or active project)
+  // Build Unified Daily Activity Items strictly from activeProject (sesuai user login)
   const unifiedDailyItems = useMemo<UnifiedDailyActivityItem[]>(() => {
-    const sourceTasks = locationScope === 'all_locations' ? allTasks : tasks;
-    const sourcePrograms = locationScope === 'all_locations' ? allMasterPrograms : masterPrograms;
+    const sourceTasks = tasks;
+    const sourcePrograms = masterPrograms;
 
     const fromTasks: UnifiedDailyActivityItem[] = sourceTasks.map((t) => {
       const normalizedStatus: 'completed' | 'in_progress' | 'pending' =
@@ -209,8 +197,8 @@ export const KlienActivitySection: React.FC = () => {
       return {
         id: `task-${t.id}`,
         origin: 'task',
-        projectId: t.projectId || activeProject.id,
-        projectName: getProjectNameById(t.projectId),
+        projectId: activeProject.id,
+        projectName: activeProject.name,
         locationName: t.areaName || 'Area Operasional',
         floorOrZone: t.buildingFloor || '-',
         workDescription: t.workDescription || `Pembersihan rutin ${t.areaName}`,
@@ -257,8 +245,8 @@ export const KlienActivitySection: React.FC = () => {
       return {
         id: `mcp-${p.id}`,
         origin: 'mcp_daily',
-        projectId: p.projectId || activeProject.id,
-        projectName: getProjectNameById(p.projectId),
+        projectId: activeProject.id,
+        projectName: activeProject.name,
         locationName: p.location || 'Area Gedung',
         floorOrZone: 'Program Harian (MCP - D)',
         workDescription: p.workDescription,
@@ -274,21 +262,17 @@ export const KlienActivitySection: React.FC = () => {
 
     return [...fromTasks, ...fromMcp];
   }, [
-    locationScope,
-    allTasks,
     tasks,
-    allMasterPrograms,
     masterPrograms,
     selectedDayNumber,
     selectedDateDdMmYyyy,
     activeProject,
-    allProjects,
   ]);
 
-  // Special Jobs based on scope
+  // Special Jobs strictly for activeProject (sesuai user login)
   const scopedSpecialJobs = useMemo<SpecialJobItem[]>(() => {
-    return locationScope === 'all_locations' ? allSpecialJobs : specialJobs;
-  }, [locationScope, allSpecialJobs, specialJobs]);
+    return specialJobs;
+  }, [specialJobs]);
 
   // Summary Per Lokasi Kerja (for Daily Activity dari semua lokasi kerja)
   const locationSummaries = useMemo<KlienLocationSummaryRow[]>(() => {
@@ -376,37 +360,11 @@ export const KlienActivitySection: React.FC = () => {
     });
   }, [unifiedDailyItems, selectedLocationFilter, dailyStatusFilter, searchQuery]);
 
-  // Quick Complete Handler for Mode 3 (Sedang Dikerjakan)
-  const handleQuickCompleteDailyItem = (item: UnifiedDailyActivityItem) => {
-    if (item.origin === 'task' && item.rawTask) {
-      updateTaskStatus(item.rawTask.id, 'completed');
-      showToast(`Pekerjaan Daily Activity "${item.locationName}" berhasil diselesaikan!`);
-    } else if (item.origin === 'mcp_daily' && item.rawProgram) {
-      toggleMasterProgramDay(item.rawProgram.id, selectedDayNumber, 'done');
-      showToast(`Program Harian "${item.workDescription}" berhasil diselesaikan!`);
-    }
-  };
-
-  const handleQuickCompleteSpecialJob = (job: SpecialJobItem) => {
-    const nowTime =
-      new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB';
-    updateSpecialJob(job.id, {
-      status: 'completed',
-      completedAt: `${selectedDateDdMmYyyy} • ${nowTime}`,
-      completionNotes:
-        job.completionNotes || 'Pekerjaan Special Job telah diselesaikan sesuai standar operasional.',
-    });
-    showToast(`Special Job "${job.title}" berhasil diselesaikan!`);
-  };
-
   // Export PDF Handler
   const handleDownloadPDFReport = (
     reportMode: 'combined' | 'daily_all_locations' | 'special_job'
   ) => {
-    const scopeLabel =
-      locationScope === 'all_locations'
-        ? `Semua Lokasi Kerja (${allProjects.length} Site Proyek)`
-        : `Lokasi Proyek ${activeProject.name}`;
+    const scopeLabel = `Lokasi Proyek ${activeProject.name}`;
 
     const dailyRows: KlienActivityDailyRow[] = unifiedDailyItems.map((i) => ({
       locationName: i.locationName,
@@ -532,7 +490,7 @@ export const KlienActivitySection: React.FC = () => {
             </p>
           </div>
 
-          {/* PILL FILTER BAR (PERSIS SEPERTI MODEL SCREENSHOT + FILTER DD/MM/YYYY & LOKASI) */}
+          {/* PILL FILTER BAR (FILTER TANGGAL DD/MM/YYYY - HANYA PROYEK SESUAI USER LOGIN) */}
           <div className="flex flex-wrap items-center gap-2.5">
             {/* Pill Filter Tanggal (dd/mm/yyyy) */}
             <div className="flex items-center gap-2">
@@ -549,7 +507,7 @@ export const KlienActivitySection: React.FC = () => {
 
                 <div className="flex items-center gap-1.5">
                   <span className="text-xs font-extrabold text-sky-900 tracking-tight">
-                    {selectedDateDdMmYyyy}
+                    Periode
                   </span>
                   <span className="text-sky-300">|</span>
                   <input
@@ -574,23 +532,11 @@ export const KlienActivitySection: React.FC = () => {
               </div>
             </div>
 
-            {/* Pill Filter Cakupan Lokasi Kerja */}
-            <select
-              value={locationScope}
-              onChange={(e) => {
-                setLocationScope(e.target.value as 'all_locations' | 'active_project');
-                setSelectedLocationFilter('all');
-              }}
-              aria-label="Pilih Cakupan Lokasi Kerja"
-              className="px-3.5 py-1.5 rounded-full text-xs font-extrabold bg-sky-50/90 text-sky-900 border border-sky-200 hover:border-sky-300 focus:outline-none focus:ring-2 focus:ring-sky-500 cursor-pointer transition-colors shadow-2xs"
-            >
-              <option value="all_locations">
-                Semua Lokasi Kerja ({allProjects.length} Site • {locationSummaries.length} Area)
-              </option>
-              <option value="active_project">
-                Lokasi Site Aktif ({activeProject.name})
-              </option>
-            </select>
+            {/* Badge Lokasi Proyek Sesuai User Login (Tanpa Dropdown Pilih Lokasi Kerja) */}
+            <div className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-extrabold bg-slate-100 text-slate-700 border border-slate-200 shadow-2xs">
+              <Building2 className="w-3.5 h-3.5 text-sky-600 shrink-0" />
+              <span>{activeProject.name}</span>
+            </div>
           </div>
         </div>
 
@@ -839,7 +785,7 @@ export const KlienActivitySection: React.FC = () => {
             </div>
           </div>
 
-          {/* FILTER BAR (TERMASUK FILTER TANGGAL DD/MM/YYYY, LOKASI & STATUS) */}
+          {/* FILTER BAR (PENCARIAN, FILTER TANGGAL DD/MM/YYYY & STATUS — TANPA DROPDOWN PILIH LOKASI KERJA) */}
           <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-xs flex flex-col xl:flex-row items-stretch xl:items-center justify-between gap-3">
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 flex-1">
               <div className="relative flex-1">
@@ -848,7 +794,7 @@ export const KlienActivitySection: React.FC = () => {
                   type="text"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Cari detail pekerjaan harian, lokasi kerja, petugas..."
+                  placeholder="Cari detail pekerjaan harian, area gedung, petugas..."
                   className="w-full pl-9 pr-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-sky-500/20"
                 />
               </div>
@@ -869,20 +815,6 @@ export const KlienActivitySection: React.FC = () => {
                   className="text-xs font-semibold text-slate-800 bg-transparent focus:outline-none cursor-pointer"
                 />
               </div>
-
-              <select
-                value={selectedLocationFilter}
-                onChange={(e) => setSelectedLocationFilter(e.target.value)}
-                aria-label="Filter Lokasi Kerja"
-                className="px-3 py-2 text-xs font-semibold bg-slate-50 border border-slate-200 rounded-xl text-slate-700 focus:outline-none cursor-pointer"
-              >
-                <option value="all">Semua Area Kerja ({availableLocationNames.length} Lokasi)</option>
-                {availableLocationNames.map((locName) => (
-                  <option key={locName} value={locName}>
-                    {locName}
-                  </option>
-                ))}
-              </select>
             </div>
 
             <div className="flex flex-wrap items-center gap-1 bg-slate-100 p-1 rounded-xl text-xs">
@@ -1078,7 +1010,7 @@ export const KlienActivitySection: React.FC = () => {
             </div>
           </div>
 
-          <SpecialJobView readOnlyStatus={false} />
+          <SpecialJobView readOnlyStatus={true} />
         </div>
       )}
 
@@ -1095,9 +1027,9 @@ export const KlienActivitySection: React.FC = () => {
                 </h4>
               </div>
               <p className="text-xs text-amber-800 mt-1">
-                Tanggal: <strong>{selectedDateDdMmYyyy}</strong> • Gabungan pekerjaan yang sedang berlangsung dari{' '}
+                Tanggal: <strong>{selectedDateDdMmYyyy}</strong> • Gabungan pekerjaan yang sedang berlangsung di <strong>{activeProject.name}</strong> dari{' '}
                 <strong>Daily Activity ({inProgressDailyCount})</strong> dan{' '}
-                <strong>Special Job ({inProgressSpecialCount})</strong>, lengkap dengan filter sumber pekerjaan dan tombol cepat <strong>Selesaikan</strong>.
+                <strong>Special Job ({inProgressSpecialCount})</strong> sesuai status yang diupdate oleh petugas lapangan.
               </p>
             </div>
 
@@ -1194,24 +1126,19 @@ export const KlienActivitySection: React.FC = () => {
                         </div>
                       </div>
 
-                      {/* Footer with Quick Complete Button ("Selesaikan") + Detail Lengkap */}
+                      {/* Footer: Status Pekerjaan (Read-Only dari Petugas) + Detail Lengkap */}
                       <div className="p-3 bg-slate-50/80 border-t border-slate-100 flex items-center justify-between gap-2">
-                        <button
-                          type="button"
-                          onClick={() => setSelectedDailyItem(item)}
-                          className="py-1.5 px-3 bg-white hover:bg-slate-100 text-slate-700 text-xs font-semibold rounded-lg border border-slate-200 transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
-                        >
-                          <Eye className="w-3.5 h-3.5 text-slate-500" />
-                          <span>Detail Lengkap</span>
-                        </button>
+                        <div className="shrink-0">
+                          {getDailyStatusBadge(item.status)}
+                        </div>
 
                         <button
                           type="button"
-                          onClick={() => handleQuickCompleteDailyItem(item)}
-                          className="py-1.5 px-3.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg transition-colors flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs"
+                          onClick={() => setSelectedDailyItem(item)}
+                          className="py-1.5 px-3.5 bg-white hover:bg-slate-100 text-slate-700 text-xs font-semibold rounded-lg border border-slate-200 transition-colors flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs"
                         >
-                          <CheckCheck className="w-3.5 h-3.5" />
-                          <span>Selesaikan</span>
+                          <Eye className="w-3.5 h-3.5 text-slate-500" />
+                          <span>Detail Lengkap</span>
                         </button>
                       </div>
                     </div>
@@ -1280,24 +1207,19 @@ export const KlienActivitySection: React.FC = () => {
                         </div>
                       </div>
 
-                      {/* Footer with Quick Complete Button ("Selesaikan") + Detail Lengkap */}
+                      {/* Footer: Status Pekerjaan (Read-Only dari Petugas) + Detail Lengkap */}
                       <div className="p-3 bg-slate-50/80 border-t border-slate-100 flex items-center justify-between gap-2">
-                        <button
-                          type="button"
-                          onClick={() => setSelectedSpecialDetail(job)}
-                          className="py-1.5 px-3 bg-white hover:bg-slate-100 text-slate-700 text-xs font-semibold rounded-lg border border-slate-200 transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
-                        >
-                          <Eye className="w-3.5 h-3.5 text-slate-500" />
-                          <span>Detail Lengkap</span>
-                        </button>
+                        <div className="shrink-0">
+                          {getDailyStatusBadge('in_progress')}
+                        </div>
 
                         <button
                           type="button"
-                          onClick={() => handleQuickCompleteSpecialJob(job)}
-                          className="py-1.5 px-3.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg transition-colors flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs"
+                          onClick={() => setSelectedSpecialDetail(job)}
+                          className="py-1.5 px-3.5 bg-white hover:bg-slate-100 text-slate-700 text-xs font-semibold rounded-lg border border-slate-200 transition-colors flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs"
                         >
-                          <CheckCheck className="w-3.5 h-3.5" />
-                          <span>Selesaikan</span>
+                          <Eye className="w-3.5 h-3.5 text-slate-500" />
+                          <span>Detail Lengkap</span>
                         </button>
                       </div>
                     </div>
@@ -1694,6 +1616,16 @@ export const KlienActivitySection: React.FC = () => {
             </div>
 
             <div className="flex items-center justify-between gap-2 pt-2 border-t border-slate-100">
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-slate-500 font-medium">Status Pekerjaan:</span>
+                {getDailyStatusBadge(
+                  selectedSpecialDetail.status === 'completed'
+                    ? 'completed'
+                    : selectedSpecialDetail.status === 'in_progress'
+                    ? 'in_progress'
+                    : 'pending'
+                )}
+              </div>
               <button
                 type="button"
                 onClick={() => setSelectedSpecialDetail(null)}
@@ -1701,19 +1633,6 @@ export const KlienActivitySection: React.FC = () => {
               >
                 Tutup
               </button>
-              {selectedSpecialDetail.status !== 'completed' && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    handleQuickCompleteSpecialJob(selectedSpecialDetail);
-                    setSelectedSpecialDetail(null);
-                  }}
-                  className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl cursor-pointer flex items-center gap-1.5"
-                >
-                  <CheckCheck className="w-4 h-4" />
-                  <span>Selesaikan</span>
-                </button>
-              )}
             </div>
           </div>
         </div>
