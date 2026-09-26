@@ -346,6 +346,8 @@ export interface AppNotification {
   read: boolean;
   taskId?: string;
   projectId?: string;
+  isNewComplaint?: boolean;
+  complaintId?: string;
 }
 
 export type OfflineSyncActionType =

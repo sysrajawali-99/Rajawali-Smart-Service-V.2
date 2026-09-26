@@ -23,6 +23,7 @@ export const Header: React.FC = () => {
     setUserRole,
     notifications,
     dismissNotification,
+    acknowledgeComplaintNotifications,
     clearAllNotifications,
     triggerDeadlinePushNotification,
     activeProject,
@@ -448,9 +449,31 @@ export const Header: React.FC = () => {
                           <p className="text-[11px] text-slate-600 mt-0.5 leading-relaxed">
                             {notif.message}
                           </p>
-                          <span className="text-[10px] text-slate-400 mt-1 block">
-                            {notif.timestamp}
-                          </span>
+                          <div className="flex items-center justify-between gap-2 mt-1.5">
+                            <span className="text-[10px] text-slate-400">
+                              {notif.timestamp}
+                            </span>
+                            {(notif.isNewComplaint ||
+                              notif.title.includes('Komplain Baru') ||
+                              notif.title.includes('Keluhan Baru')) && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  acknowledgeComplaintNotifications();
+                                  setShowNotifDropdown(false);
+                                  setActiveTab(
+                                    userRole === 'klien' || activeTab.startsWith('klien-')
+                                      ? 'klien-keluhan'
+                                      : 'complaint'
+                                  );
+                                }}
+                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-rose-600 hover:bg-rose-700 text-white text-[10px] font-bold transition-colors cursor-pointer"
+                              >
+                                <span>Buka Keluhan</span>
+                                <ChevronRight className="w-3 h-3" />
+                              </button>
+                            )}
+                          </div>
                         </div>
                         <button
                           onClick={() => dismissNotification(notif.id)}

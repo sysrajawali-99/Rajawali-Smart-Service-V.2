@@ -50,13 +50,10 @@ export const KlienComplaintSection: React.FC = () => {
   // Selected Complaint for Detail View
   const [selectedComplaint, setSelectedComplaint] = useState<Complaint | null>(null);
 
-  // Modal: Buat Keluhan Baru
+  // Modal: Buat Keluhan Baru (Isian Manual: Lokasi/Area, Keluhan, Ambil/Upload Foto)
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [newAreaId, setNewAreaId] = useState(areas[0]?.id || 'area-1');
-  const [newCategory, setNewCategory] = useState('Kebersihan Lantai & Noda');
-  const [newPriority, setNewPriority] = useState<PriorityLevel>('high');
+  const [newAreaLocation, setNewAreaLocation] = useState('');
   const [newDescription, setNewDescription] = useState('');
-  const [newSlaHours, setNewSlaHours] = useState(2);
   const [newPhotoBefore, setNewPhotoBefore] = useState('');
   const [newPhotoMeta, setNewPhotoMeta] = useState<{
     timestamp: string;
@@ -222,10 +219,7 @@ export const KlienComplaintSection: React.FC = () => {
     setIsProcessingPhoto(true);
     setPhotoError(null);
     try {
-      const selectedAreaObj = areas.find((a) => a.id === newAreaId);
-      const locLabel = selectedAreaObj
-        ? `${selectedAreaObj.name} (${selectedAreaObj.floor})`
-        : undefined;
+      const locLabel = newAreaLocation.trim() || undefined;
       const result = await processPhotoWithTimestamp(file, locLabel);
       setNewPhotoBefore(result.dataUrl);
       setNewPhotoMeta({ timestamp: result.timestamp, userName: result.userName });
@@ -260,28 +254,34 @@ export const KlienComplaintSection: React.FC = () => {
   // Submit New Complaint
   const handleCreateComplaint = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!newAreaLocation.trim()) {
+      setPhotoError('Lokasi / Area wajib diisi secara manual.');
+      return;
+    }
     if (!newDescription.trim()) {
-      setPhotoError('Deskripsi keluhan wajib diisi.');
+      setPhotoError('Isian Keluhan wajib diisi secara manual.');
       return;
     }
 
     submitNewComplaint({
       reporterName: currentUser?.name || 'Klien Gedung',
       reporterRole: userRole === 'klien' ? 'Klien Gedung' : 'Pengawas Operasional',
-      areaId: newAreaId,
-      category: newCategory,
-      description: newDescription,
-      priority: newPriority,
-      slaHours: Number(newSlaHours) || 2,
+      areaName: newAreaLocation.trim(),
+      floor: activeProject?.name || 'Area Operasional',
+      category: 'Keluhan Operasional',
+      description: newDescription.trim(),
+      priority: 'high',
+      slaHours: 2,
       photoBefore:
         newPhotoBefore ||
         'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?w=600&auto=format&fit=crop&q=80',
     });
 
-    showToast(`Tiket keluhan berhasil dibuat dengan SLA ${newSlaHours} Jam.`);
+    showToast('Tiket keluhan berhasil dikirim — durasi penanganan sedang berjalan.');
     setShowCreateModal(false);
 
     // Reset Form
+    setNewAreaLocation('');
     setNewDescription('');
     setNewPhotoBefore('');
     setNewPhotoMeta(null);
@@ -639,8 +639,7 @@ export const KlienComplaintSection: React.FC = () => {
                       <ComplaintCountdown
                         deadlineTimestamp={ticket.deadlineTimestamp}
                         status={ticket.status}
-                        slaDeadline={ticket.slaDeadline}
-                        compact
+                        slaHours={ticket.slaHours}
                       />
                     </div>
                   ) : (
@@ -778,8 +777,16 @@ export const KlienComplaintSection: React.FC = () => {
                   <span className="font-semibold text-slate-700">{selectedComplaint.reporterName}</span>
                 </div>
                 <div>
-                  <span className="text-slate-400 block">Petugas Penangan</span>
-                  <span className="font-semibold text-slate-700">{selectedComplaint.assignedCleanerName || 'Tim Kebersihan'}</span>
+                  <span className="text-slate-400 block">Durasi Penanganan</span>
+                  <div className="mt-0.5">
+                    <ComplaintCountdown
+                      deadlineTimestamp={selectedComplaint.deadlineTimestamp}
+                      status={selectedComplaint.status}
+                      slaHours={selectedComplaint.slaHours}
+                      resolvedAt={selectedComplaint.resolvedAt}
+                      size="sm"
+                    />
+                  </div>
                 </div>
               </div>
             </div>
@@ -839,81 +846,34 @@ export const KlienComplaintSection: React.FC = () => {
 
             <form onSubmit={handleCreateComplaint} className="space-y-3.5 text-xs">
               <div>
-                <label className="font-bold text-slate-700 block mb-1">Pilih Lokasi Area *</label>
-                <select
-                  value={newAreaId}
-                  onChange={(e) => setNewAreaId(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500/20"
-                >
-                  {areas.map((a) => (
-                    <option key={a.id} value={a.id}>
-                      {a.name} ({a.floor})
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="font-bold text-slate-700 block mb-1">Kategori Masalah</label>
-                  <select
-                    value={newCategory}
-                    onChange={(e) => setNewCategory(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500/20"
-                  >
-                    <option value="Kebersihan Lantai & Noda">Kebersihan Lantai & Noda</option>
-                    <option value="Sanitasi Kloset & Bau">Sanitasi Kloset & Bau</option>
-                    <option value="Tempat Sampah Penuh">Tempat Sampah Penuh</option>
-                    <option value="Kaca / Cermin Kotor">Kaca / Cermin Kotor</option>
-                    <option value="Kehabisan Sabun / Tisu">Kehabisan Sabun / Tisu</option>
-                    <option value="Lainnya">Lainnya</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="font-bold text-slate-700 block mb-1">Prioritas</label>
-                  <select
-                    value={newPriority}
-                    onChange={(e) => setNewPriority(e.target.value as any)}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500/20"
-                  >
-                    <option value="urgent">Mendesak / Urgent (1 Jam)</option>
-                    <option value="high">Tinggi (2 Jam)</option>
-                    <option value="medium">Sedang (4 Jam)</option>
-                    <option value="low">Rendah (8 Jam)</option>
-                  </select>
-                </div>
+                <label className="font-bold text-slate-700 block mb-1">Lokasi / Area *</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Ketik manual lokasi / area (contoh: Toilet Pria Lt. 1, Lobby Utama...)"
+                  value={newAreaLocation}
+                  onChange={(e) => setNewAreaLocation(e.target.value)}
+                  className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500"
+                />
               </div>
 
               <div>
-                <label className="font-bold text-slate-700 block mb-1">Deskripsi Keluhan *</label>
+                <label className="font-bold text-slate-700 block mb-1">Keluhan *</label>
                 <textarea
                   rows={3}
                   required
-                  placeholder="Jelaskan kondisi kotor/keluhan yang perlu segera ditangani..."
+                  placeholder="Ketik manual rincian keluhan yang perlu segera ditangani..."
                   value={newDescription}
                   onChange={(e) => setNewDescription(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500/20 resize-none"
+                  className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 resize-none"
                 />
               </div>
 
-              <div>
-                <label className="font-bold text-slate-700 block mb-1">Target Durasi SLA (Jam)</label>
-                <input
-                  type="number"
-                  min={1}
-                  max={24}
-                  value={newSlaHours}
-                  onChange={(e) => setNewSlaHours(Number(e.target.value))}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500/20"
-                />
-              </div>
-
-              {/* FOTO BUKTI (OPSIONAL) DENGAN TIMESTAMP OTOMATIS & NAMA USER */}
+              {/* AMBIL FOTO / UPLOAD FOTO DENGAN TIMESTAMP OTOMATIS & NAMA USER */}
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <label className="font-bold text-slate-700 block">
-                    Foto Bukti (Opsional)
+                    Ambil Foto / Upload Foto
                   </label>
                   <span className="text-[10.5px] font-semibold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">
                     Otomatis Timestamp &amp; User: {currentUser?.name || 'User Login'}
@@ -1000,6 +960,11 @@ export const KlienComplaintSection: React.FC = () => {
                     )}
                   </div>
                 )}
+              </div>
+
+              <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-amber-50/80 border border-amber-200/80 text-[11px] text-amber-800">
+                <Clock className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                <span>Durasi penanganan otomatis berjalan saat keluhan tiket dikirim.</span>
               </div>
 
               <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">

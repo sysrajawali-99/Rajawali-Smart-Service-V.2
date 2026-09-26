@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, AlertCircle, Camera, Upload, Trash2, Clock, Check } from 'lucide-react';
+import { X, AlertCircle, Camera, Upload, Trash2, Clock, User, Plus } from 'lucide-react';
 import { useCleaning } from '../../context/CleaningContext';
-import { PriorityLevel } from '../../types';
 
 interface NewComplaintModalProps {
   isOpen: boolean;
@@ -9,22 +8,18 @@ interface NewComplaintModalProps {
 }
 
 export const NewComplaintModal: React.FC<NewComplaintModalProps> = ({ isOpen, onClose }) => {
-  const { areas, submitNewComplaint, userRole } = useCleaning();
+  const { submitNewComplaint, userRole, currentUser, activeProject } = useCleaning();
 
-  const [reporterName, setReporterName] = useState(
-    userRole === 'klien' ? 'Ibu Ratna Dewi (PT Mega Finansial)' : 'Pengguna Gedung'
-  );
-  const [areaId, setAreaId] = useState(areas[0]?.id || '');
-  const [category, setCategory] = useState('Kebersihan Lantai / Tumpahan');
-  const [priority, setPriority] = useState<PriorityLevel>('high');
-  const [slaHours, setSlaHours] = useState<number>(2);
+  const [areaLocation, setAreaLocation] = useState('');
   const [description, setDescription] = useState('');
   const [photoBefore, setPhotoBefore] = useState('');
-  const [isCustomHours, setIsCustomHours] = useState(false);
+  const [photoMeta, setPhotoMeta] = useState<{ timestamp: string; userName: string } | null>(null);
+  const [isProcessingPhoto, setIsProcessingPhoto] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const cameraInputRef = useRef<HTMLInputElement | null>(null);
+  const galleryInputRef = useRef<HTMLInputElement | null>(null);
 
-  // Close on Escape key
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
@@ -45,45 +40,153 @@ export const NewComplaintModal: React.FC<NewComplaintModalProps> = ({ isOpen, on
 
   if (!isOpen) return null;
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
+  const processPhotoWithTimestamp = (
+    file: File,
+    locationLabel?: string
+  ): Promise<{ dataUrl: string; timestamp: string; userName: string }> => {
+    return new Promise((resolve, reject) => {
       const reader = new FileReader();
-      reader.onloadend = () => {
-        setPhotoBefore(reader.result as string);
+      reader.onerror = () => reject(new Error('Gagal membaca file foto.'));
+      reader.onload = () => {
+        const baseDataUrl = reader.result as string;
+        const img = new Image();
+        img.onload = () => {
+          const now = new Date();
+          const dateFormatted = now.toLocaleDateString('id-ID', {
+            day: '2-digit',
+            month: '2-digit',
+            year: 'numeric',
+          });
+          const timeFormatted =
+            now.toLocaleTimeString('id-ID', {
+              hour: '2-digit',
+              minute: '2-digit',
+              second: '2-digit',
+            }) + ' WIB';
+          const fullTimestamp = `${dateFormatted} • ${timeFormatted}`;
+          const loggedInUser = currentUser?.name || 'User Login';
+
+          const canvas = document.createElement('canvas');
+          const maxDim = 1280;
+          let targetW = img.width || 800;
+          let targetH = img.height || 600;
+          if (targetW > maxDim || targetH > maxDim) {
+            if (targetW >= targetH) {
+              targetH = Math.round((targetH * maxDim) / targetW);
+              targetW = maxDim;
+            } else {
+              targetW = Math.round((targetW * maxDim) / targetH);
+              targetH = maxDim;
+            }
+          }
+
+          canvas.width = targetW;
+          canvas.height = targetH;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) {
+            resolve({ dataUrl: baseDataUrl, timestamp: fullTimestamp, userName: loggedInUser });
+            return;
+          }
+
+          ctx.drawImage(img, 0, 0, targetW, targetH);
+
+          const bannerHeight = Math.max(76, Math.floor(targetH * 0.16));
+          const bannerY = targetH - bannerHeight;
+
+          const gradient = ctx.createLinearGradient(0, bannerY, 0, targetH);
+          gradient.addColorStop(0, 'rgba(15, 23, 42, 0.55)');
+          gradient.addColorStop(0.35, 'rgba(15, 23, 42, 0.88)');
+          gradient.addColorStop(1, 'rgba(15, 23, 42, 0.96)');
+          ctx.fillStyle = gradient;
+          ctx.fillRect(0, bannerY, targetW, bannerHeight);
+
+          ctx.fillStyle = '#f59e0b';
+          ctx.fillRect(0, bannerY, targetW, Math.max(2, Math.floor(targetH * 0.004)));
+
+          const padX = Math.max(14, Math.floor(targetW * 0.025));
+          const fontSizePrimary = Math.max(13, Math.floor(targetW * 0.024));
+          const fontSizeSecondary = Math.max(11, Math.floor(targetW * 0.019));
+
+          let textY = bannerY + Math.floor(bannerHeight * 0.36);
+          ctx.font = `bold ${fontSizePrimary}px monospace`;
+          ctx.fillStyle = '#fde047';
+          ctx.fillText(`🕒 ${fullTimestamp}`, padX, textY);
+
+          textY += Math.floor(bannerHeight * 0.32);
+          ctx.font = `bold ${fontSizeSecondary}px sans-serif`;
+          ctx.fillStyle = '#ffffff';
+          ctx.fillText(`👤 User: ${loggedInUser}`, padX, textY);
+
+          textY += Math.floor(bannerHeight * 0.24);
+          ctx.font = `normal ${Math.max(10, fontSizeSecondary - 2)}px sans-serif`;
+          ctx.fillStyle = '#cbd5e1';
+          const locInfo = locationLabel
+            ? `${activeProject?.name || 'Gedung'} • ${locationLabel}`
+            : activeProject?.name || 'Gedung';
+          ctx.fillText(`📍 ${locInfo}`, padX, textY);
+
+          const stampedDataUrl = canvas.toDataURL('image/jpeg', 0.88);
+          resolve({
+            dataUrl: stampedDataUrl,
+            timestamp: fullTimestamp,
+            userName: loggedInUser,
+          });
+        };
+        img.onerror = () => reject(new Error('Format gambar tidak dapat diproses.'));
+        img.src = baseDataUrl;
       };
       reader.readAsDataURL(file);
+    });
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsProcessingPhoto(true);
+    setErrorMsg(null);
+    try {
+      const result = await processPhotoWithTimestamp(file, areaLocation.trim() || undefined);
+      setPhotoBefore(result.dataUrl);
+      setPhotoMeta({ timestamp: result.timestamp, userName: result.userName });
+    } catch {
+      setErrorMsg('Gagal memproses foto. Silakan pilih file gambar lain.');
+    } finally {
+      setIsProcessingPhoto(false);
+      e.target.value = '';
     }
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!areaLocation.trim()) {
+      setErrorMsg('Lokasi / Area wajib diisi secara manual.');
+      return;
+    }
     if (!description.trim()) {
-      alert('Mohon isi deskripsi komplain');
+      setErrorMsg('Isian Keluhan wajib diisi secara manual.');
       return;
     }
 
     submitNewComplaint({
-      reporterName,
+      reporterName: currentUser?.name || 'Klien Gedung',
       reporterRole: userRole === 'klien' ? 'Tenant Gedung' : 'Pengawas Internal',
-      areaId,
-      category,
-      priority,
-      slaHours: Math.max(1, slaHours || 1),
-      description,
+      areaName: areaLocation.trim(),
+      floor: activeProject?.name || 'Area Operasional',
+      category: 'Keluhan Operasional',
+      priority: 'high',
+      slaHours: 2,
+      description: description.trim(),
       photoBefore: photoBefore.trim() || undefined,
     });
 
+    setAreaLocation('');
+    setDescription('');
+    setPhotoBefore('');
+    setPhotoMeta(null);
+    setErrorMsg(null);
     onClose();
   };
-
-  const slaOptions: { hours: number; priority: PriorityLevel; label: string; desc: string }[] = [
-    { hours: 1, priority: 'urgent', label: '1 Jam', desc: 'Darurat / Kilat' },
-    { hours: 2, priority: 'high', label: '2 Jam', desc: 'Prioritas Tinggi' },
-    { hours: 4, priority: 'medium', label: '4 Jam', desc: 'Standar Sedang' },
-    { hours: 8, priority: 'low', label: '8 Jam', desc: 'Reguler Harian' },
-    { hours: 24, priority: 'low', label: '24 Jam', desc: 'Pengerjaan Ringan' },
-  ];
 
   return (
     <div
@@ -96,17 +199,17 @@ export const NewComplaintModal: React.FC<NewComplaintModalProps> = ({ isOpen, on
         onClick={(e) => e.stopPropagation()}
         className="bg-white rounded-2xl sm:rounded-3xl shadow-2xl max-w-lg w-full overflow-hidden border border-slate-200 animate-in fade-in zoom-in-95 duration-150 flex flex-col max-h-[94dvh]"
       >
-        <div className="p-4 sm:p-5 border-b border-slate-100 flex items-center justify-between bg-rose-50/70 shrink-0">
+        <div className="p-4 sm:p-5 border-b border-slate-100 flex items-center justify-between bg-amber-50/70 shrink-0">
           <div className="flex items-center gap-3 min-w-0">
-            <div className="w-10 h-10 rounded-xl bg-rose-100 text-rose-600 flex items-center justify-center shrink-0">
+            <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-600 flex items-center justify-center shrink-0">
               <AlertCircle className="w-5 h-5" />
             </div>
             <div className="min-w-0">
               <h3 className="font-bold text-slate-900 text-sm sm:text-base leading-snug">
-                Buat Tiket Komplain Kebersihan
+                Ajukan Keluhan Baru
               </h3>
               <p className="text-xs text-slate-500 truncate">
-                Laporkan kendala kebersihan dan tentukan batas waktu SLA penanganan
+                Tiket langsung masuk antrian prioritas operasional
               </p>
             </div>
           </div>
@@ -115,257 +218,150 @@ export const NewComplaintModal: React.FC<NewComplaintModalProps> = ({ isOpen, on
             type="button"
             onClick={onClose}
             aria-label="Tutup Tiket Komplain"
-            className="p-2 rounded-full text-slate-500 hover:text-slate-900 bg-rose-100/70 hover:bg-rose-200 active:bg-rose-300 transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center shrink-0 cursor-pointer"
+            className="p-2 rounded-full text-slate-500 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 transition-colors min-w-[36px] min-h-[36px] flex items-center justify-center shrink-0 cursor-pointer"
           >
-            <X className="w-5 h-5" />
+            <X className="w-4 h-4" />
           </button>
         </div>
 
         <form onSubmit={handleSubmit} className="p-4 sm:p-6 space-y-4 text-xs overflow-y-auto overscroll-contain flex-1">
           <div>
-            <label className="block font-semibold text-slate-700 mb-1">Nama Pelapor & Unit</label>
+            <label className="block font-bold text-slate-700 mb-1">Lokasi / Area *</label>
             <input
               type="text"
-              value={reporterName}
-              onChange={(e) => setReporterName(e.target.value)}
-              className="w-full px-3 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500 text-sm"
               required
+              placeholder="Ketik manual lokasi / area (contoh: Toilet Pria Lt. 1, Lobby Utama...)"
+              value={areaLocation}
+              onChange={(e) => setAreaLocation(e.target.value)}
+              className="w-full px-3 py-2.5 bg-slate-50 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 text-xs"
             />
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="block font-semibold text-slate-700 mb-1">Lokasi Area</label>
-              <select
-                value={areaId}
-                onChange={(e) => setAreaId(e.target.value)}
-                className="w-full px-3 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500 bg-white text-sm"
-              >
-                {areas.map((a) => (
-                  <option key={a.id} value={a.id}>
-                    {a.name} ({a.floor})
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="block font-semibold text-slate-700 mb-1">Kategori Masalah</label>
-              <select
-                value={category}
-                onChange={(e) => setCategory(e.target.value)}
-                className="w-full px-3 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500 bg-white text-sm"
-              >
-                <option value="Kebersihan Lantai / Tumpahan">Kebersihan Lantai / Tumpahan</option>
-                <option value="Stok Habis & Air Kran">Stok Habis (Sabun/Tisu/Air)</option>
-                <option value="Tempat Sampah Penuh">Tempat Sampah Penuh / Bau</option>
-                <option value="Aroma & Sirkulasi Udara">Aroma & Bau Tak Sedap</option>
-                <option value="Kaca / Jendela Kotor">Kaca / Jendela Kotor</option>
-                <option value="Lainnya">Lainnya</option>
-              </select>
-            </div>
-          </div>
-
-          {/* Tingkat Urgensi / SLA dengan durasi dalam hitungan jam */}
           <div>
-            <div className="flex items-center justify-between mb-1.5">
-              <label className="block font-semibold text-slate-700">
-                Tingkat Urgensi / SLA (Batas Waktu Penanganan)
-              </label>
-              <span className="text-[11px] font-bold text-rose-700 bg-rose-50 px-2 py-0.5 rounded-md border border-rose-200">
-                Target: {slaHours} Jam
-              </span>
-            </div>
-
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-2">
-              {slaOptions.map((opt) => (
-                <button
-                  key={opt.hours}
-                  type="button"
-                  onClick={() => {
-                    setSlaHours(opt.hours);
-                    setPriority(opt.priority);
-                    setIsCustomHours(false);
-                  }}
-                  className={`p-2.5 rounded-xl border text-left transition-all min-h-[52px] flex flex-col justify-between cursor-pointer ${
-                    slaHours === opt.hours && !isCustomHours
-                      ? 'bg-rose-50 border-rose-500 text-rose-900 ring-2 ring-rose-400 font-bold'
-                      : 'border-slate-200 text-slate-700 hover:bg-slate-50'
-                  }`}
-                >
-                  <div className="flex items-center justify-between w-full">
-                    <span className="text-xs font-bold flex items-center gap-1">
-                      <Clock className="w-3 h-3 text-slate-400" />
-                      {opt.label}
-                    </span>
-                    {slaHours === opt.hours && !isCustomHours && (
-                      <Check className="w-3.5 h-3.5 text-rose-600" />
-                    )}
-                  </div>
-                  <span className="text-[10px] text-slate-500 font-normal">
-                    {opt.desc}
-                  </span>
-                </button>
-              ))}
-
-              {/* Custom Hours Button */}
-              <button
-                type="button"
-                onClick={() => setIsCustomHours(true)}
-                className={`p-2.5 rounded-xl border text-left transition-all min-h-[52px] flex flex-col justify-between cursor-pointer ${
-                  isCustomHours
-                    ? 'bg-rose-50 border-rose-500 text-rose-900 ring-2 ring-rose-400 font-bold'
-                    : 'border-slate-200 text-slate-700 hover:bg-slate-50'
-                }`}
-              >
-                <span className="text-xs font-bold">Kustom Jam...</span>
-                <span className="text-[10px] text-slate-500 font-normal">Tentukan durasi bebas</span>
-              </button>
-            </div>
-
-            {/* Custom Hours Input field */}
-            {isCustomHours && (
-              <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 flex items-center gap-3 animate-in fade-in duration-150">
-                <span className="text-xs font-semibold text-slate-700">Durasi Penanganan:</span>
-                <div className="inline-flex items-center gap-1.5 bg-white border border-slate-300 rounded-lg px-2.5 py-1">
-                  <input
-                    type="number"
-                    min="1"
-                    max="72"
-                    value={slaHours}
-                    onChange={(e) => {
-                      const val = parseInt(e.target.value) || 1;
-                      setSlaHours(Math.max(1, val));
-                      if (val <= 1) setPriority('urgent');
-                      else if (val <= 2) setPriority('high');
-                      else if (val <= 6) setPriority('medium');
-                      else setPriority('low');
-                    }}
-                    className="w-14 text-sm font-bold text-slate-800 text-center outline-none"
-                  />
-                  <span className="text-xs font-semibold text-slate-600">Jam</span>
-                </div>
-                <span className="text-[11px] text-slate-400">
-                  (Countdown dihitung mundur dari waktu tiket dibuat)
-                </span>
-              </div>
-            )}
-          </div>
-
-          <div>
-            <label className="block font-semibold text-slate-700 mb-1">Deskripsi Detail Keluhan</label>
+            <label className="block font-bold text-slate-700 mb-1">Keluhan *</label>
             <textarea
               rows={3}
+              required
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="Jelaskan kendala kebersihan yang ditemukan secara spesifik..."
-              className="w-full px-3 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500 resize-none text-sm"
-              required
+              placeholder="Ketik manual rincian keluhan yang perlu segera ditangani..."
+              className="w-full px-3 py-2.5 bg-slate-50 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 resize-none text-xs"
             />
           </div>
 
-          {/* Lampiran Foto Keluhan (Opsional) - Dihubungkan ke penanganan keluhan tanpa contoh foto */}
-          <div>
-            <div className="flex items-center justify-between mb-1">
-              <label className="block font-semibold text-slate-700">
-                Foto Keluhan <span className="text-slate-400 font-normal">(Opsional)</span>
+          {/* Ambil Foto / Upload Foto */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="block font-bold text-slate-700">
+                Ambil Foto / Upload Foto
               </label>
-              <span className="text-[10px] text-slate-500">
-                Terhubung langsung dengan verifikasi penanganan
+              <span className="text-[10.5px] font-semibold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">
+                Otomatis Timestamp &amp; User: {currentUser?.name || 'User Login'}
               </span>
             </div>
 
             <input
               type="file"
-              ref={fileInputRef}
+              ref={cameraInputRef}
+              accept="image/*"
+              capture="environment"
+              onChange={handleFileUpload}
+              className="hidden"
+            />
+            <input
+              type="file"
+              ref={galleryInputRef}
               accept="image/*"
               onChange={handleFileUpload}
               className="hidden"
             />
 
-            {!photoBefore ? (
-              <div className="space-y-2">
-                <div
-                  onClick={() => fileInputRef.current?.click()}
-                  className="p-4 rounded-xl border-2 border-dashed border-slate-300 hover:border-rose-400 hover:bg-rose-50/30 transition-all cursor-pointer flex flex-col items-center justify-center gap-1.5 text-center group"
-                >
-                  <div className="w-9 h-9 rounded-full bg-slate-100 group-hover:bg-rose-100 flex items-center justify-center text-slate-500 group-hover:text-rose-600 transition-colors">
-                    <Camera className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <span className="text-xs font-bold text-slate-700 group-hover:text-rose-600">
-                      Ambil Foto / Unggah dari Perangkat
-                    </span>
-                    <p className="text-[10px] text-slate-400">
-                      Mendukung kamera HP, tangkapan layar, JPG, PNG
-                    </p>
-                  </div>
-                </div>
+            <div className="grid grid-cols-2 gap-2.5">
+              <button
+                type="button"
+                disabled={isProcessingPhoto}
+                onClick={() => cameraInputRef.current?.click()}
+                className="py-2.5 px-3 bg-amber-600 hover:bg-amber-700 disabled:opacity-60 text-white rounded-xl font-bold flex items-center justify-center gap-1.5 shadow-2xs transition-colors cursor-pointer"
+              >
+                <Camera className="w-4 h-4 shrink-0" />
+                <span>{isProcessingPhoto ? 'Memproses...' : 'Ambil Foto Kamera'}</span>
+              </button>
 
-                <div className="flex items-center gap-2">
-                  <span className="text-[10px] text-slate-400 uppercase tracking-wider">Atau Link URL:</span>
-                  <input
-                    type="text"
-                    value={photoBefore}
-                    onChange={(e) => setPhotoBefore(e.target.value)}
-                    placeholder="https://contoh.com/foto-bukti.jpg (opsional)"
-                    className="flex-1 px-3 py-1.5 rounded-lg border border-slate-200 text-[11px] focus:outline-none focus:border-rose-400"
+              <button
+                type="button"
+                disabled={isProcessingPhoto}
+                onClick={() => galleryInputRef.current?.click()}
+                className="py-2.5 px-3 bg-slate-100 hover:bg-slate-200 disabled:opacity-60 text-slate-700 border border-slate-200 rounded-xl font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+              >
+                <Upload className="w-4 h-4 shrink-0" />
+                <span>Upload Foto / Galeri</span>
+              </button>
+            </div>
+
+            {errorMsg && (
+              <p className="text-[11px] font-semibold text-rose-600 bg-rose-50 px-3 py-1.5 rounded-lg border border-rose-200">
+                {errorMsg}
+              </p>
+            )}
+
+            {photoBefore && (
+              <div className="p-2.5 rounded-2xl bg-slate-50 border border-slate-200 space-y-2">
+                <div className="relative h-44 rounded-xl overflow-hidden bg-slate-900 border border-slate-200">
+                  <img
+                    src={photoBefore}
+                    alt="Pratinjau Foto Bukti Keluhan"
+                    className="w-full h-full object-contain"
                   />
-                </div>
-              </div>
-            ) : (
-              <div className="relative rounded-xl overflow-hidden border border-slate-200 bg-slate-100 max-h-48 flex items-center justify-center group">
-                <img
-                  src={photoBefore}
-                  alt="Foto Keluhan Bukti Awal"
-                  className="w-full h-40 object-cover"
-                  referrerPolicy="no-referrer"
-                />
-                <div className="absolute inset-0 bg-slate-900/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
                   <button
                     type="button"
-                    onClick={() => fileInputRef.current?.click()}
-                    className="px-3 py-1.5 rounded-lg bg-white/95 text-slate-800 text-xs font-semibold hover:bg-white flex items-center gap-1 cursor-pointer shadow-md"
-                  >
-                    <Upload className="w-3.5 h-3.5" />
-                    <span>Ganti Foto</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setPhotoBefore('')}
-                    className="px-3 py-1.5 rounded-lg bg-rose-600 text-white text-xs font-semibold hover:bg-rose-700 flex items-center gap-1 cursor-pointer shadow-md"
+                    onClick={() => {
+                      setPhotoBefore('');
+                      setPhotoMeta(null);
+                    }}
+                    title="Hapus Foto"
+                    className="absolute top-2 right-2 p-1.5 rounded-full bg-rose-600/90 hover:bg-rose-700 text-white shadow-md cursor-pointer"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
-                    <span>Hapus</span>
                   </button>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setPhotoBefore('')}
-                  aria-label="Hapus foto"
-                  className="absolute top-2 right-2 p-1 rounded-full bg-slate-900/70 hover:bg-slate-900 text-white text-xs cursor-pointer"
-                >
-                  <X className="w-4 h-4" />
-                </button>
+
+                {photoMeta && (
+                  <div className="flex flex-wrap items-center justify-between gap-2 px-2.5 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200 text-[11px] text-emerald-900">
+                    <span className="font-bold flex items-center gap-1">
+                      <Clock className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                      <span>{photoMeta.timestamp}</span>
+                    </span>
+                    <span className="font-bold flex items-center gap-1">
+                      <User className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                      <span>User: {photoMeta.userName}</span>
+                    </span>
+                  </div>
+                )}
               </div>
             )}
           </div>
 
-          <div className="pt-3 flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-2 border-t border-slate-100">
+          <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-amber-50/80 border border-amber-200/80 text-[11px] text-amber-800">
+            <Clock className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+            <span>Durasi penanganan otomatis berjalan saat keluhan tiket dikirim.</span>
+          </div>
+
+          <div className="pt-3 flex items-center justify-end gap-2 border-t border-slate-100">
             <button
               id="cancel-complaint-btn"
               type="button"
               onClick={onClose}
-              className="px-5 py-2.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-100 font-semibold min-h-[44px] flex items-center justify-center cursor-pointer"
+              className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold cursor-pointer"
             >
-              Batal / Tutup
+              Batal
             </button>
             <button
               id="submit-complaint-btn"
               type="submit"
-              className="px-5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 active:bg-rose-800 text-white font-bold transition-colors shadow-xs min-h-[44px] flex items-center justify-center cursor-pointer"
+              className="px-5 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-semibold shadow-xs flex items-center gap-1.5 cursor-pointer"
             >
-              Kirim Tiket Komplain
+              <Plus className="w-4 h-4" />
+              <span>Kirim Tiket Keluhan</span>
             </button>
           </div>
         </form>
@@ -373,4 +369,3 @@ export const NewComplaintModal: React.FC<NewComplaintModalProps> = ({ isOpen, on
     </div>
   );
 };
-

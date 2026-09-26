@@ -255,11 +255,13 @@ interface CleaningContextType {
     payload: {
       reporterName: string;
       reporterRole: string;
-      areaId: string;
-      category: string;
+      areaId?: string;
+      areaName?: string;
+      floor?: string;
+      category?: string;
       description: string;
-      priority: PriorityLevel;
-      slaHours: number;
+      priority?: PriorityLevel;
+      slaHours?: number;
       photoBefore?: string;
     }
   ) => void;
@@ -290,6 +292,7 @@ interface CleaningContextType {
   deleteShift: (id: string) => void;
   toggleClockInOut: (cleanerId: string) => void;
   dismissNotification: (id: string) => void;
+  acknowledgeComplaintNotifications: () => void;
   clearAllNotifications: () => void;
   triggerDeadlinePushNotification: () => void;
   resetToInitialData: () => void;
@@ -2342,16 +2345,24 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const submitNewComplaint = (payload: {
     reporterName: string;
     reporterRole: string;
-    areaId: string;
-    category: string;
+    areaId?: string;
+    areaName?: string;
+    floor?: string;
+    category?: string;
     description: string;
-    priority: PriorityLevel;
-    slaHours: number;
+    priority?: PriorityLevel;
+    slaHours?: number;
     photoBefore?: string;
   }) => {
-    const area = areas.find((a) => a.id === payload.areaId);
+    const area = payload.areaId ? areas.find((a) => a.id === payload.areaId) : undefined;
+    const resolvedAreaName =
+      payload.areaName?.trim() || area?.name || payload.areaId?.trim() || 'Area Gedung';
+    const resolvedFloor =
+      payload.floor?.trim() || area?.floor || activeProject?.name || 'Area Operasional';
+    const resolvedCategory = payload.category?.trim() || 'Keluhan Operasional';
+    const resolvedPriority: PriorityLevel = payload.priority || 'high';
     const nowStr = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB';
-    const hours = payload.slaHours && payload.slaHours > 0 ? payload.slaHours : 1;
+    const hours = payload.slaHours && payload.slaHours > 0 ? payload.slaHours : 2;
     const slaMins = Math.round(hours * 60);
     const deadlineMs = Date.now() + hours * 3600 * 1000;
     const deadlineStr =
@@ -2366,12 +2377,12 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       ticketNumber: `TKT-${Math.floor(1000 + Math.random() * 9000)}`,
       reporterName: payload.reporterName,
       reporterRole: payload.reporterRole,
-      areaId: payload.areaId,
-      areaName: area?.name || 'Area Gedung',
-      floor: area?.floor || 'Lantai 1',
-      category: payload.category,
+      areaId: payload.areaId || `manual-${Date.now()}`,
+      areaName: resolvedAreaName,
+      floor: resolvedFloor,
+      category: resolvedCategory,
       description: payload.description,
-      priority: payload.priority,
+      priority: resolvedPriority,
       status: 'open',
       createdAt: `Hari ini, ${nowStr}`,
       photoBefore: payload.photoBefore,
@@ -2380,20 +2391,22 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       slaDeadline: deadlineStr,
       deadlineTimestamp: deadlineMs,
       assignedCleanerId: area?.cleanerId,
-      assignedCleanerName: area?.cleanerName,
+      assignedCleanerName: area?.cleanerName || 'Tim Operasional',
     };
 
     setComplaints((prev) => [newTicket, ...prev]);
 
     const notif: AppNotification = {
-      id: `notif-${Date.now()}`,
-      title: '🚨 Komplain Baru Diterima!',
-      message: `${payload.reporterName} melaporkan: "${payload.category}" di ${area?.name}. SLA penanganan: ${hours} Jam (${slaMins} menit).`,
+      id: `notif-complaint-${Date.now()}`,
+      title: '🚨 Keluhan Baru Diterima!',
+      message: `${payload.reporterName} melaporkan keluhan "${payload.description}" di ${resolvedAreaName}. SLA penanganan: ${hours} Jam (${slaMins} menit).`,
       timestamp: nowStr,
       type: 'urgent',
-      targetRole: ['admin', 'supervisor', 'petugas'],
+      targetRole: ['admin', 'supervisor', 'petugas', 'klien'],
       read: false,
       projectId: area?.projectId || safeActiveProjectId,
+      isNewComplaint: true,
+      complaintId: newTicket.id,
     };
     setNotifications((prev) => [notif, ...prev]);
   };
@@ -2890,6 +2903,18 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setNotifications((prev) => prev.filter((n) => n.id !== id));
   };
 
+  const acknowledgeComplaintNotifications = () => {
+    setNotifications((prev) =>
+      prev.map((n) =>
+        n.isNewComplaint ||
+        n.title.includes('Komplain Baru') ||
+        n.title.includes('Keluhan Baru')
+          ? { ...n, read: true }
+          : n
+      )
+    );
+  };
+
   const clearAllNotifications = () => {
     setNotifications([]);
   };
@@ -3303,6 +3328,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         deleteShift,
         toggleClockInOut,
         dismissNotification,
+        acknowledgeComplaintNotifications,
         clearAllNotifications,
         triggerDeadlinePushNotification,
         resetToInitialData,

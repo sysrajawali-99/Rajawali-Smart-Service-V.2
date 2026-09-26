@@ -2091,7 +2091,7 @@ export const INITIAL_NOTIFICATIONS: AppNotification[] = [
     timestamp: '10:15 WIB',
     type: 'urgent',
     targetRole: ['admin', 'supervisor', 'petugas'],
-    read: false,
+    read: true,
     projectId: 'proj-1',
   },
   {
