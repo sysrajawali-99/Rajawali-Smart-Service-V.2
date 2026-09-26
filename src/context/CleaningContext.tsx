@@ -214,6 +214,7 @@ interface CleaningContextType {
   bulkExportToMonthlyReport: (taskIds: string[], targetMonth?: string) => void;
   exportTasksToMonthlyReport: (taskIds: string[], targetMonth?: string) => void;
   updateTaskWorkDescription: (taskId: string, description: string) => void;
+  updateTaskStatus: (taskId: string, status: TaskStatus) => void;
   submitTaskCompletion: (
     taskId: string,
     payload: {
@@ -2144,6 +2145,21 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     );
   };
 
+  const updateTaskStatus = (taskId: string, status: TaskStatus) => {
+    const nowStr = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB';
+    setTasks((prev) =>
+      prev.map((t) => {
+        if (t.id !== taskId) return t;
+        return {
+          ...t,
+          status,
+          ...(status === 'in_progress' && !t.startTime ? { startTime: nowStr } : {}),
+          ...(status === 'completed' ? { completedTime: nowStr } : {}),
+        };
+      })
+    );
+  };
+
   const submitTaskCompletion = (
     taskId: string,
     payload: {
@@ -3250,6 +3266,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         bulkExportToMonthlyReport,
         exportTasksToMonthlyReport: bulkExportToMonthlyReport,
         updateTaskWorkDescription,
+        updateTaskStatus,
         submitTaskCompletion,
         submitQCInspection,
         submitNewComplaint,

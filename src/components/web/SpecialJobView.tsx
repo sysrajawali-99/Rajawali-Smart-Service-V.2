@@ -33,7 +33,11 @@ import {
 } from '../../types';
 import { normalizeFrequencyCode } from '../../utils/mcpUtils';
 
-export const SpecialJobView: React.FC = () => {
+export interface SpecialJobViewProps {
+  readOnlyStatus?: boolean;
+}
+
+export const SpecialJobView: React.FC<SpecialJobViewProps> = ({ readOnlyStatus = false }) => {
   const {
     specialJobs,
     addSpecialJob,
@@ -613,9 +617,9 @@ export const SpecialJobView: React.FC = () => {
     switch (status) {
       case 'requested':
         return (
-          <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200 flex items-center gap-1.5">
-            <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse" />
-            Request Baru
+          <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-rose-50 text-rose-700 border border-rose-200 flex items-center gap-1.5">
+            <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse" />
+            {readOnlyStatus ? 'Menunggu Tindakan' : 'Request Baru'}
           </span>
         );
       case 'in_progress':
@@ -645,8 +649,8 @@ export const SpecialJobView: React.FC = () => {
         </div>
       )}
 
-      {/* HEADER & ACTION BUTTONS */}
-      <div className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5 shadow-xs flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+      {/* HEADER & ACTION BUTTONS (Disembunyikan saat mode ponsel) */}
+      <div className="hidden md:flex bg-white rounded-2xl border border-slate-200 p-4 sm:p-5 shadow-xs flex-col lg:flex-row lg:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2.5 mb-1">
             <div className="w-10 h-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center shadow-xs shrink-0">
@@ -764,7 +768,7 @@ export const SpecialJobView: React.FC = () => {
         >
           <div className="flex items-center justify-between gap-1 mb-1">
             <div className="text-[11px] font-bold text-indigo-800 uppercase tracking-wider">
-              Request Baru
+              {readOnlyStatus ? 'Menunggu Tindakan' : 'Request Baru'}
             </div>
             {statusFilter === 'requested' && (
               <span className="w-2 h-2 rounded-full bg-indigo-600 animate-pulse shrink-0" />
@@ -1014,7 +1018,8 @@ export const SpecialJobView: React.FC = () => {
                         </span>
                       )}
                     </div>
-                    {!job.verifiedBySupervisor &&
+                    {!readOnlyStatus &&
+                      !job.verifiedBySupervisor &&
                       (userRole === 'supervisor' || userRole === 'admin') && (
                         <button
                           type="button"
@@ -1030,52 +1035,68 @@ export const SpecialJobView: React.FC = () => {
 
               {/* Card Footer Actions */}
               <div className="p-3 bg-slate-50/90 border-t border-slate-100 flex items-center justify-between gap-2">
-                <button
-                  type="button"
-                  onClick={() => setSelectedJob(job)}
-                  className="py-1.5 px-3 bg-white hover:bg-slate-100 text-slate-700 text-xs font-semibold rounded-lg border border-slate-200 transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
-                >
-                  <Eye className="w-3.5 h-3.5 text-slate-500" />
-                  <span>Detail</span>
-                </button>
-
-                <div className="flex items-center gap-1.5">
-                  {job.status === 'requested' && (
+                {readOnlyStatus ? (
+                  <>
+                    <div className="shrink-0">{getStatusBadge(job.status)}</div>
                     <button
                       type="button"
-                      onClick={() => handleStartJob(job)}
-                      className="py-1.5 px-3 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-lg transition-colors flex items-center gap-1 cursor-pointer"
+                      onClick={() => setSelectedJob(job)}
+                      className="py-1.5 px-3.5 bg-white hover:bg-slate-100 text-slate-700 text-xs font-semibold rounded-lg border border-slate-200 transition-colors flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs"
                     >
-                      <Play className="w-3.5 h-3.5" />
-                      <span>Kerjakan</span>
+                      <Eye className="w-3.5 h-3.5 text-slate-500" />
+                      <span>Detail Lengkap</span>
                     </button>
-                  )}
-
-                  {job.status !== 'completed' && (
+                  </>
+                ) : (
+                  <>
                     <button
                       type="button"
-                      onClick={() => handleOpenComplete(job)}
-                      className="py-1.5 px-3 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-lg transition-colors flex items-center gap-1 cursor-pointer"
+                      onClick={() => setSelectedJob(job)}
+                      className="py-1.5 px-3 bg-white hover:bg-slate-100 text-slate-700 text-xs font-semibold rounded-lg border border-slate-200 transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
                     >
-                      <CheckCircle2 className="w-3.5 h-3.5" />
-                      <span>Selesaikan</span>
+                      <Eye className="w-3.5 h-3.5 text-slate-500" />
+                      <span>Detail Lengkap</span>
                     </button>
-                  )}
 
-                  {(userRole === 'admin' || userRole === 'supervisor') && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        deleteSpecialJob(job.id);
-                        showToast(`Special Job ${job.ticketNo} dihapus.`);
-                      }}
-                      title="Hapus Special Job"
-                      className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  )}
-                </div>
+                    <div className="flex items-center gap-1.5">
+                      {job.status === 'requested' && (
+                        <button
+                          type="button"
+                          onClick={() => handleStartJob(job)}
+                          className="py-1.5 px-3 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-lg transition-colors flex items-center gap-1 cursor-pointer"
+                        >
+                          <Play className="w-3.5 h-3.5" />
+                          <span>Kerjakan</span>
+                        </button>
+                      )}
+
+                      {job.status !== 'completed' && (
+                        <button
+                          type="button"
+                          onClick={() => handleOpenComplete(job)}
+                          className="py-1.5 px-3 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-lg transition-colors flex items-center gap-1 cursor-pointer"
+                        >
+                          <CheckCircle2 className="w-3.5 h-3.5" />
+                          <span>Selesaikan</span>
+                        </button>
+                      )}
+
+                      {(userRole === 'admin' || userRole === 'supervisor') && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            deleteSpecialJob(job.id);
+                            showToast(`Special Job ${job.ticketNo} dihapus.`);
+                          }}
+                          title="Hapus Special Job"
+                          className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
+                  </>
+                )}
               </div>
             </div>
           ))}
@@ -1839,23 +1860,41 @@ export const SpecialJobView: React.FC = () => {
             )}
 
             <div className="flex items-center justify-between pt-2 border-t border-slate-100">
-              <button
-                type="button"
-                onClick={() => setSelectedJob(null)}
-                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-xl cursor-pointer"
-              >
-                Tutup
-              </button>
+              {readOnlyStatus ? (
+                <>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-slate-500 font-medium">Status Pekerjaan:</span>
+                    {getStatusBadge(selectedJob.status)}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedJob(null)}
+                    className="px-5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-xl cursor-pointer"
+                  >
+                    Tutup
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedJob(null)}
+                    className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-xl cursor-pointer"
+                  >
+                    Tutup
+                  </button>
 
-              {selectedJob.status !== 'completed' && (
-                <button
-                  type="button"
-                  onClick={() => handleOpenComplete(selectedJob)}
-                  className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-xl cursor-pointer flex items-center gap-1.5"
-                >
-                  <CheckCircle2 className="w-4 h-4" />
-                  <span>Selesaikan Pekerjaan</span>
-                </button>
+                  {selectedJob.status !== 'completed' && (
+                    <button
+                      type="button"
+                      onClick={() => handleOpenComplete(selectedJob)}
+                      className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-xl cursor-pointer flex items-center gap-1.5"
+                    >
+                      <CheckCircle2 className="w-4 h-4" />
+                      <span>Selesaikan Pekerjaan</span>
+                    </button>
+                  )}
+                </>
               )}
             </div>
           </div>

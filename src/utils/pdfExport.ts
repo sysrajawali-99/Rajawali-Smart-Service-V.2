@@ -6,6 +6,7 @@ import {
   ProjectLocation,
   CleaningTask,
   MasterCleaningProgramItem,
+  SpecialJobItem,
   CompanyProfile,
   DEFAULT_COMPANY_PROFILE,
 } from '../types';
@@ -1914,4 +1915,413 @@ export const exportMonthlyActivityToPDF = (
   const cleanProject = project.name.replace(/[^a-zA-Z0-9]/g, '_');
   doc.save(`Monthly_Activity_${cleanProject}_${year}_${month}.pdf`);
 };
+
+// ==========================================
+// 7. EXPORT KLIEN ACTIVITY REPORT TO PDF
+//    (DAILY ACTIVITY SEMUA LOKASI, SPECIAL JOB & SEDANG DIKERJAKAN)
+// ==========================================
+
+export interface KlienActivityDailyRow {
+  locationName: string;
+  projectName: string;
+  workDescription: string;
+  picName: string;
+  shiftOrTime: string;
+  status: 'completed' | 'in_progress' | 'pending';
+}
+
+export interface KlienLocationSummaryRow {
+  locationName: string;
+  projectName: string;
+  completedCount: number;
+  inProgressCount: number;
+  pendingCount: number;
+  totalCount: number;
+}
+
+export interface ExportKlienActivityReportPDFOptions {
+  reportMode: 'combined' | 'daily_all_locations' | 'special_job';
+  project: ProjectLocation;
+  scopeLabel: string;
+  dateLabel: string;
+  dailyItems: KlienActivityDailyRow[];
+  locationSummaries: KlienLocationSummaryRow[];
+  specialJobs: SpecialJobItem[];
+  kopSurat?: KopSuratConfig;
+}
+
+export const exportKlienActivityReportToPDF = (
+  options: ExportKlienActivityReportPDFOptions
+): void => {
+  const {
+    reportMode,
+    project,
+    scopeLabel,
+    dateLabel,
+    dailyItems,
+    locationSummaries,
+    specialJobs,
+    kopSurat = getProjectKop(project),
+  } = options;
+
+  const doc = new jsPDF({
+    orientation: 'landscape',
+    unit: 'mm',
+    format: 'a4',
+  });
+
+  const pageWidth = doc.internal.pageSize.getWidth(); // 297mm
+  const pageHeight = doc.internal.pageSize.getHeight(); // 210mm
+  const marginX = 12;
+  const usableWidth = pageWidth - marginX * 2;
+
+  // 1. KOP SURAT RESMI
+  drawKopSurat(doc, kopSurat, pageWidth, marginX, 7);
+
+  // 2. DOCUMENT TITLE
+  const docTitle =
+    reportMode === 'daily_all_locations'
+      ? 'LAPORAN DAILY ACTIVITY DARI SEMUA LOKASI KERJA'
+      : reportMode === 'special_job'
+      ? 'LAPORAN PELAKSANAAN SPECIAL JOB (REQUEST SUPERVISOR, WEEKLY & MONTHLY)'
+      : 'LAPORAN EKSEKUTIF ACTIVITY REPORT (DAILY ACTIVITY & SPECIAL JOB)';
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(12);
+  doc.setTextColor(15, 35, 80);
+  doc.text(docTitle, pageWidth / 2, 35.5, { align: 'center' });
+
+  doc.setFontSize(8.5);
+  doc.setTextColor(51, 65, 85);
+  doc.text(
+    `CAKUPAN LOKASI: ${scopeLabel.toUpperCase()}   •   PERIODE: ${dateLabel.toUpperCase()}`,
+    pageWidth / 2,
+    40.5,
+    { align: 'center' }
+  );
+
+  // Compute Summary Metrics
+  const completedDaily = dailyItems.filter((d) => d.status === 'completed').length;
+  const inProgressDaily = dailyItems.filter((d) => d.status === 'in_progress').length;
+  const totalDaily = dailyItems.length;
+
+  const completedSpecial = specialJobs.filter((s) => s.status === 'completed').length;
+  const inProgressSpecial = specialJobs.filter((s) => s.status === 'in_progress').length;
+  const totalSpecial = specialJobs.length;
+
+  const totalInProgress = inProgressDaily + inProgressSpecial;
+
+  // 3. EXECUTIVE SUMMARY BAR (4 MODE KARTU SUMMARY)
+  doc.setFillColor(248, 250, 252);
+  doc.setDrawColor(203, 213, 225);
+  doc.roundedRect(marginX, 44, usableWidth, 10, 1.5, 1.5, 'FD');
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(7.8);
+  doc.setTextColor(30, 41, 59);
+  doc.text(
+    `Daily Activity Semua Lokasi (Selesai / Total): ${completedDaily} / ${totalDaily} Pekerjaan   |   Special Job (Selesai / Total): ${completedSpecial} / ${totalSpecial} Pekerjaan   |   Sedang Dikerjakan: ${totalInProgress} Pekerjaan`,
+    marginX + 4,
+    50.2
+  );
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(7);
+  doc.setTextColor(100, 116, 139);
+  doc.text(
+    `Dicetak: ${new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}`,
+    pageWidth - marginX - 4,
+    50.2,
+    { align: 'right' }
+  );
+
+  let currentY = 57;
+
+  // SECTION A: REKAPITULASI DAILY ACTIVITY PER LOKASI KERJA & RINCIAN DAILY ACTIVITY
+  if (reportMode === 'combined' || reportMode === 'daily_all_locations') {
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8.5);
+    doc.setTextColor(29, 78, 216);
+    doc.text(
+      `A. REKAPITULASI DAILY ACTIVITY DARI SEMUA LOKASI KERJA (${completedDaily} / ${totalDaily} PEKERJAAN SELESAI)`,
+      marginX,
+      currentY
+    );
+
+    const locHeaders = [
+      'No',
+      'Lokasi Kerja / Area',
+      'Site Proyek',
+      'Pekerjaan Selesai / Total Pekerjaan',
+      'Sedang Dikerjakan',
+      'Menunggu Tindakan',
+      'Persentase Capaian',
+    ];
+
+    const locRows = locationSummaries.map((loc, idx) => {
+      const pct = loc.totalCount > 0 ? Math.round((loc.completedCount / loc.totalCount) * 100) : 0;
+      return [
+        (idx + 1).toString(),
+        loc.locationName,
+        loc.projectName,
+        `${loc.completedCount} / ${loc.totalCount} Pekerjaan`,
+        `${loc.inProgressCount} Pekerjaan`,
+        `${loc.pendingCount} Pekerjaan`,
+        `${pct}% Selesai`,
+      ];
+    });
+
+    autoTable(doc, {
+      startY: currentY + 2,
+      margin: { left: marginX, right: marginX },
+      head: [locHeaders],
+      body: locRows,
+      theme: 'grid',
+      styles: {
+        fontSize: 7.2,
+        cellPadding: 1.8,
+        valign: 'middle',
+        textColor: [30, 41, 59],
+        lineColor: [203, 213, 225],
+        lineWidth: 0.18,
+      },
+      headStyles: {
+        fillColor: [30, 64, 175],
+        textColor: [255, 255, 255],
+        fontStyle: 'bold',
+        fontSize: 7.5,
+        halign: 'center',
+      },
+      columnStyles: {
+        0: { cellWidth: 10, halign: 'center', fontStyle: 'bold' },
+        1: { cellWidth: 75, fontStyle: 'bold' },
+        2: { cellWidth: 55 },
+        3: { cellWidth: 45, halign: 'center', fontStyle: 'bold' },
+        4: { cellWidth: 30, halign: 'center' },
+        5: { cellWidth: 30, halign: 'center' },
+        6: { cellWidth: 28, halign: 'center', fontStyle: 'bold' },
+      },
+    });
+
+    // @ts-ignore
+    currentY = ((doc as any).lastAutoTable?.finalY || currentY + 30) + 6;
+
+    if (currentY > pageHeight - 45) {
+      doc.addPage();
+      currentY = 18;
+    }
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8.5);
+    doc.setTextColor(29, 78, 216);
+    doc.text('B. RINCIAN PEKERJAAN DAILY ACTIVITY SEMUA LOKASI KERJA', marginX, currentY);
+
+    const dailyHeaders = [
+      'No',
+      'Lokasi Kerja / Area',
+      'Site Proyek',
+      'Uraian Pekerjaan Daily Activity',
+      'Petugas / PIC',
+      'Jadwal / Shift',
+      'Status Pelaksanaan',
+    ];
+
+    const dailyRows = dailyItems.map((item, idx) => [
+      (idx + 1).toString(),
+      item.locationName,
+      item.projectName,
+      item.workDescription,
+      item.picName,
+      item.shiftOrTime,
+      item.status === 'completed'
+        ? 'SELESAI'
+        : item.status === 'in_progress'
+        ? 'SEDANG DIKERJAKAN'
+        : 'MENUNGGU TINDAKAN',
+    ]);
+
+    autoTable(doc, {
+      startY: currentY + 2,
+      margin: { left: marginX, right: marginX },
+      head: [dailyHeaders],
+      body: dailyRows,
+      theme: 'grid',
+      styles: {
+        fontSize: 7,
+        cellPadding: 1.8,
+        valign: 'middle',
+        textColor: [30, 41, 59],
+        lineColor: [203, 213, 225],
+        lineWidth: 0.18,
+      },
+      headStyles: {
+        fillColor: [37, 99, 235],
+        textColor: [255, 255, 255],
+        fontStyle: 'bold',
+        fontSize: 7.3,
+        halign: 'center',
+      },
+      columnStyles: {
+        0: { cellWidth: 9, halign: 'center', fontStyle: 'bold' },
+        1: { cellWidth: 46, fontStyle: 'bold' },
+        2: { cellWidth: 40 },
+        3: { cellWidth: 85 },
+        4: { cellWidth: 32 },
+        5: { cellWidth: 30, halign: 'center' },
+        6: { cellWidth: 31, halign: 'center', fontStyle: 'bold' },
+      },
+    });
+
+    // @ts-ignore
+    currentY = ((doc as any).lastAutoTable?.finalY || currentY + 35) + 7;
+  }
+
+  // SECTION C: RINCIAN SPECIAL JOB
+  if (reportMode === 'combined' || reportMode === 'special_job') {
+    if (currentY > pageHeight - 45) {
+      doc.addPage();
+      currentY = 18;
+    }
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8.5);
+    doc.setTextColor(79, 70, 229);
+    const sectionPrefix = reportMode === 'combined' ? 'C.' : 'A.';
+    doc.text(
+      `${sectionPrefix} DAFTAR PELAKSANAAN SPECIAL JOB (${completedSpecial} / ${totalSpecial} PEKERJAAN SELESAI)`,
+      marginX,
+      currentY
+    );
+
+    const specialHeaders = [
+      'No',
+      'No. Tiket',
+      'Sumber Pekerjaan',
+      'Judul & Uraian Special Job',
+      'Lokasi Kerja',
+      'Request Oleh (SPV)',
+      'Petugas Pelaksana',
+      'Status Pengerjaan',
+    ];
+
+    const specialRows = specialJobs.map((job, idx) => [
+      (idx + 1).toString(),
+      job.ticketNo,
+      job.sourceType === 'supervisor_request'
+        ? 'By Request Supervisor'
+        : job.sourceType === 'weekly_activity'
+        ? 'Dari Weekly Activity'
+        : 'Dari Monthly Activity',
+      job.title,
+      `${job.location} (${job.floor})`,
+      job.requestedBy,
+      job.assignedPicName,
+      job.status === 'completed'
+        ? 'SELESAI'
+        : job.status === 'in_progress'
+        ? 'SEDANG DIKERJAKAN'
+        : 'MENUNGGU TINDAKAN',
+    ]);
+
+    autoTable(doc, {
+      startY: currentY + 2,
+      margin: { left: marginX, right: marginX },
+      head: [specialHeaders],
+      body: specialRows,
+      theme: 'grid',
+      styles: {
+        fontSize: 7,
+        cellPadding: 1.8,
+        valign: 'middle',
+        textColor: [30, 41, 59],
+        lineColor: [203, 213, 225],
+        lineWidth: 0.18,
+      },
+      headStyles: {
+        fillColor: [79, 70, 229],
+        textColor: [255, 255, 255],
+        fontStyle: 'bold',
+        fontSize: 7.3,
+        halign: 'center',
+      },
+      columnStyles: {
+        0: { cellWidth: 8, halign: 'center', fontStyle: 'bold' },
+        1: { cellWidth: 25, halign: 'center', fontStyle: 'bold' },
+        2: { cellWidth: 34 },
+        3: { cellWidth: 68 },
+        4: { cellWidth: 42 },
+        5: { cellWidth: 35 },
+        6: { cellWidth: 32 },
+        7: { cellWidth: 29, halign: 'center', fontStyle: 'bold' },
+      },
+    });
+
+    // @ts-ignore
+    currentY = ((doc as any).lastAutoTable?.finalY || currentY + 35) + 8;
+  }
+
+  // 5. SIGNATURES
+  if (currentY > pageHeight - 38) {
+    doc.addPage();
+    currentY = 22;
+  }
+
+  const colW = usableWidth / 3;
+  const sigY = currentY;
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(7.5);
+  doc.setTextColor(51, 65, 85);
+
+  doc.text('Dibuat Oleh,', marginX + colW * 0.5, sigY, { align: 'center' });
+  doc.text('Supervisor Cleaning Service', marginX + colW * 0.5, sigY + 4, { align: 'center' });
+  doc.setFont('helvetica', 'bold');
+  doc.text('( Hendra Wijaya )', marginX + colW * 0.5, sigY + 19, { align: 'center' });
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(6.5);
+  doc.text('Operational Team', marginX + colW * 0.5, sigY + 22.5, { align: 'center' });
+
+  doc.setFontSize(7.5);
+  doc.text('Diverifikasi Oleh,', marginX + colW * 1.5, sigY, { align: 'center' });
+  doc.text('Quality Control (QC)', marginX + colW * 1.5, sigY + 4, { align: 'center' });
+  doc.setFont('helvetica', 'bold');
+  doc.text('( Agus Prasetyo )', marginX + colW * 1.5, sigY + 19, { align: 'center' });
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(6.5);
+  doc.text('Facility QC Inspector', marginX + colW * 1.5, sigY + 22.5, { align: 'center' });
+
+  doc.setFontSize(7.5);
+  doc.text('Disetujui Oleh,', marginX + colW * 2.5, sigY, { align: 'center' });
+  doc.text('Building Management / Klien', marginX + colW * 2.5, sigY + 4, { align: 'center' });
+  doc.setFont('helvetica', 'bold');
+  doc.text(`( ${project.managerName} )`, marginX + colW * 2.5, sigY + 19, { align: 'center' });
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(6.5);
+  doc.text(`Pengelola ${project.name}`, marginX + colW * 2.5, sigY + 22.5, { align: 'center' });
+
+  // Running Footer
+  const totalPages = doc.getNumberOfPages();
+  for (let p = 1; p <= totalPages; p++) {
+    doc.setPage(p);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(6);
+    doc.setTextColor(148, 163, 184);
+    doc.text(
+      `Dokumen Resmi Activity Report Klien Mode  •  PT Rajawali Talenta Indonesia  •  ${scopeLabel}  •  Halaman ${p} dari ${totalPages}`,
+      pageWidth / 2,
+      pageHeight - 6,
+      { align: 'center' }
+    );
+  }
+
+  const cleanScope = scopeLabel.replace(/[^a-zA-Z0-9]/g, '_');
+  const suffix =
+    reportMode === 'daily_all_locations'
+      ? 'Daily_Activity_Semua_Lokasi'
+      : reportMode === 'special_job'
+      ? 'Special_Job'
+      : 'Activity_Report_Lengkap';
+  doc.save(`Laporan_${suffix}_${cleanScope}.pdf`);
+};
+
 
