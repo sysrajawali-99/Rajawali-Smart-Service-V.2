@@ -163,100 +163,146 @@ export const KlienComplaintSection: React.FC = () => {
         </div>
       )}
 
-      {/* HEADER */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div>
-          <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-            <AlertCircle className="w-5 h-5 text-amber-600" />
-            <span>Pusat Keluhan & Komplain (SLA Tracking)</span>
-          </h3>
-          <p className="text-xs text-slate-500">
-            Pipeline penanganan tiket keluhan dari pembuatan, proses pengerjaan, hingga penyelesaian di {activeProject.name}.
-          </p>
+      {/* HEADER & 4 MODEL KARTU (BUAT KELUHAN BARU, TIKET BARU, DI KERJAKAN, DI SELESAIKAN) */}
+      <div>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3.5">
+          <div>
+            <h3 className="text-lg sm:text-xl font-extrabold text-slate-900 flex items-center gap-2">
+              <AlertCircle className="w-5 h-5 text-amber-600 shrink-0" />
+              <span>Pusat Keluhan &amp; Komplain (SLA Tracking)</span>
+            </h3>
+            <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
+              Pipeline penanganan tiket keluhan dari pembuatan, proses pengerjaan, hingga penyelesaian di{' '}
+              <strong className="font-semibold text-slate-700">{activeProject.name}</strong>.
+            </p>
+          </div>
         </div>
 
-        <button
-          type="button"
-          onClick={() => setShowCreateModal(true)}
-          className="inline-flex items-center gap-2 px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold rounded-xl shadow-sm transition-colors cursor-pointer self-start sm:self-auto"
-        >
-          <Plus className="w-4 h-4" />
-          <span>Buat Keluhan Baru</span>
-        </button>
-      </div>
+        {/* 4 KARTU UTAMA SESUAI MODEL KARTU */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
+          {/* Kartu 1: Buat Keluhan Baru */}
+          <button
+            type="button"
+            onClick={() => setShowCreateModal(true)}
+            className="text-left p-4 sm:p-5 rounded-3xl border border-slate-200/90 bg-white hover:border-sky-300 hover:bg-sky-50/30 shadow-xs transition-all cursor-pointer flex flex-col justify-between min-h-[142px] active:scale-[0.99] group"
+          >
+            <div className="flex items-start justify-between gap-2 mb-2">
+              <span className="text-[11px] sm:text-xs font-bold text-slate-600 group-hover:text-sky-800 uppercase tracking-wider leading-snug">
+                BUAT KELUHAN
+                <span className="block text-[10px] font-semibold text-slate-400 mt-0.5">
+                  BARU (SLA)
+                </span>
+              </span>
+              <div className="w-9 h-9 rounded-xl bg-sky-100 text-sky-700 group-hover:bg-sky-600 group-hover:text-white transition-colors flex items-center justify-center shrink-0">
+                <Plus className="w-4 h-4" />
+              </div>
+            </div>
 
-      {/* PIPELINE STAGE CARDS */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
-        {/* Stage 1: Di Buat */}
-        <div
-          onClick={() => setPipelineTab(pipelineTab === 'open' ? 'all' : 'open')}
-          className={`p-4 rounded-2xl border transition-all cursor-pointer ${
-            pipelineTab === 'open'
-              ? 'bg-rose-50/90 border-rose-300 ring-2 ring-rose-500/20 shadow-sm'
-              : 'bg-white hover:bg-rose-50/40 border-slate-200 shadow-xs'
-          }`}
-        >
-          <div className="flex items-center justify-between mb-2">
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-xl bg-rose-100 text-rose-700 flex items-center justify-center">
+            <div>
+              <div className="text-xl sm:text-2xl font-extrabold text-slate-900 group-hover:text-sky-700 tracking-tight flex items-center gap-1">
+                <span>+ Buat Baru</span>
+              </div>
+              <p className="text-[11px] sm:text-xs text-slate-500 mt-1 font-medium truncate">
+                Ajukan tiket komplain baru
+              </p>
+            </div>
+          </button>
+
+          {/* Kartu 2: Tiket Baru */}
+          <button
+            type="button"
+            onClick={() => setPipelineTab(pipelineTab === 'open' ? 'all' : 'open')}
+            className={`text-left p-4 sm:p-5 rounded-3xl border transition-all cursor-pointer flex flex-col justify-between min-h-[142px] active:scale-[0.99] ${
+              pipelineTab === 'open'
+                ? 'bg-rose-50/90 border-rose-500 ring-2 ring-rose-500/25 shadow-md'
+                : 'bg-rose-50/70 hover:bg-rose-50 border-rose-200 shadow-xs'
+            }`}
+          >
+            <div className="flex items-start justify-between gap-2 mb-2">
+              <span className="text-[11px] sm:text-xs font-bold text-rose-800 uppercase tracking-wider leading-snug">
+                TIKET BARU
+                <span className="block text-[10px] font-semibold text-rose-700/80 mt-0.5">
+                  ANTRIAN MASUK
+                </span>
+              </span>
+              <div className="w-9 h-9 rounded-xl bg-rose-200/80 text-rose-800 flex items-center justify-center shrink-0">
                 <AlertCircle className="w-4 h-4" />
               </div>
-              <div>
-                <span className="text-xs font-bold text-slate-800 block">1. Di Buat</span>
-                <span className="text-[10.5px] text-slate-500">Tiket baru / antrian</span>
+            </div>
+
+            <div>
+              <div className="text-2xl sm:text-3xl font-extrabold text-rose-700 tabular-nums tracking-tight">
+                {diBuatList.length}
+              </div>
+              <p className="text-[11px] sm:text-xs text-rose-600 mt-1 font-medium truncate">
+                Menunggu tindakan petugas
+              </p>
+            </div>
+          </button>
+
+          {/* Kartu 3: Di Kerjakan */}
+          <button
+            type="button"
+            onClick={() => setPipelineTab(pipelineTab === 'in_progress' ? 'all' : 'in_progress')}
+            className={`text-left p-4 sm:p-5 rounded-3xl border transition-all cursor-pointer flex flex-col justify-between min-h-[142px] active:scale-[0.99] ${
+              pipelineTab === 'in_progress'
+                ? 'bg-amber-50/90 border-amber-500 ring-2 ring-amber-500/25 shadow-md'
+                : 'bg-amber-50/70 hover:bg-amber-50 border-amber-200 shadow-xs'
+            }`}
+          >
+            <div className="flex items-start justify-between gap-2 mb-2">
+              <span className="text-[11px] sm:text-xs font-bold text-amber-800 uppercase tracking-wider leading-snug">
+                DI KERJAKAN
+                <span className="block text-[10px] font-semibold text-amber-700/80 mt-0.5">
+                  DALAM PROSES SLA
+                </span>
+              </span>
+              <div className="w-9 h-9 rounded-xl bg-amber-200/80 text-amber-800 flex items-center justify-center shrink-0">
+                <Clock className="w-4 h-4" />
               </div>
             </div>
-            <span className="text-xl font-extrabold text-rose-600 tabular-nums">{diBuatList.length}</span>
-          </div>
-          <p className="text-[11px] text-slate-500">Menunggu personil memulai tindakan di lokasi.</p>
-        </div>
 
-        {/* Stage 2: Di Kerjakan */}
-        <div
-          onClick={() => setPipelineTab(pipelineTab === 'in_progress' ? 'all' : 'in_progress')}
-          className={`p-4 rounded-2xl border transition-all cursor-pointer ${
-            pipelineTab === 'in_progress'
-              ? 'bg-amber-50/90 border-amber-300 ring-2 ring-amber-500/20 shadow-sm'
-              : 'bg-white hover:bg-amber-50/40 border-slate-200 shadow-xs'
-          }`}
-        >
-          <div className="flex items-center justify-between mb-2">
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center">
-                <Hourglass className="w-4 h-4" />
+            <div>
+              <div className="text-2xl sm:text-3xl font-extrabold text-amber-700 tabular-nums tracking-tight">
+                {diKerjakanList.length}
               </div>
-              <div>
-                <span className="text-xs font-bold text-slate-800 block">2. Di Kerjakan</span>
-                <span className="text-[10.5px] text-slate-500">Dalam proses SLA</span>
-              </div>
+              <p className="text-[11px] sm:text-xs text-amber-600 mt-1 font-medium truncate">
+                Sedang ditangani di lokasi
+              </p>
             </div>
-            <span className="text-xl font-extrabold text-amber-600 tabular-nums">{diKerjakanList.length}</span>
-          </div>
-          <p className="text-[11px] text-slate-500">Petugas sedang berada di lokasi membersihkan.</p>
-        </div>
+          </button>
 
-        {/* Stage 3: Di Selesaikan */}
-        <div
-          onClick={() => setPipelineTab(pipelineTab === 'resolved' ? 'all' : 'resolved')}
-          className={`p-4 rounded-2xl border transition-all cursor-pointer ${
-            pipelineTab === 'resolved'
-              ? 'bg-emerald-50/90 border-emerald-300 ring-2 ring-emerald-500/20 shadow-sm'
-              : 'bg-white hover:bg-emerald-50/40 border-slate-200 shadow-xs'
-          }`}
-        >
-          <div className="flex items-center justify-between mb-2">
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center">
+          {/* Kartu 4: Di Selesaikan */}
+          <button
+            type="button"
+            onClick={() => setPipelineTab(pipelineTab === 'resolved' ? 'all' : 'resolved')}
+            className={`text-left p-4 sm:p-5 rounded-3xl border transition-all cursor-pointer flex flex-col justify-between min-h-[142px] active:scale-[0.99] ${
+              pipelineTab === 'resolved'
+                ? 'bg-emerald-50/90 border-emerald-500 ring-2 ring-emerald-500/25 shadow-md'
+                : 'bg-emerald-50/70 hover:bg-emerald-50 border-emerald-200 shadow-xs'
+            }`}
+          >
+            <div className="flex items-start justify-between gap-2 mb-2">
+              <span className="text-[11px] sm:text-xs font-bold text-emerald-800 uppercase tracking-wider leading-snug">
+                DI SELESAIKAN
+                <span className="block text-[10px] font-semibold text-emerald-700/80 mt-0.5">
+                  TUNTAS &amp; TERVALIDASI
+                </span>
+              </span>
+              <div className="w-9 h-9 rounded-xl bg-emerald-200/80 text-emerald-800 flex items-center justify-center shrink-0">
                 <CheckCircle2 className="w-4 h-4" />
               </div>
-              <div>
-                <span className="text-xs font-bold text-slate-800 block">3. Di Selesaikan</span>
-                <span className="text-[10.5px] text-slate-500">Tuntas & tervalidasi</span>
-              </div>
             </div>
-            <span className="text-xl font-extrabold text-emerald-600 tabular-nums">{diSelesaikanList.length}</span>
-          </div>
-          <p className="text-[11px] text-slate-500">Pekerjaan selesai disertai foto hasil akhir.</p>
+
+            <div>
+              <div className="text-2xl sm:text-3xl font-extrabold text-emerald-700 tabular-nums tracking-tight">
+                {diSelesaikanList.length}
+              </div>
+              <p className="text-[11px] sm:text-xs text-emerald-600 mt-1 font-medium truncate">
+                Pekerjaan selesai &amp; bukti foto
+              </p>
+            </div>
+          </button>
         </div>
       </div>
 
@@ -273,7 +319,7 @@ export const KlienComplaintSection: React.FC = () => {
           />
         </div>
 
-        <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl text-xs w-full sm:w-auto justify-center">
+        <div className="flex flex-wrap items-center gap-1 bg-slate-100 p-1 rounded-xl text-xs w-full sm:w-auto justify-center">
           <button
             type="button"
             onClick={() => setPipelineTab('all')}
@@ -290,7 +336,7 @@ export const KlienComplaintSection: React.FC = () => {
               pipelineTab === 'open' ? 'bg-white text-rose-700 shadow-xs' : 'text-slate-600'
             }`}
           >
-            Di Buat ({diBuatList.length})
+            Tiket Baru ({diBuatList.length})
           </button>
           <button
             type="button"
