@@ -129,7 +129,7 @@ export const CeklistAreaView: React.FC = () => {
       ...prev,
       institutionLine1: companyProfile.companyName || prev.institutionLine1,
       institutionLine2: companyProfile.documentHeaderTitle || prev.institutionLine2,
-      logoUrl: companyProfile.logoUrl || prev.logoUrl,
+      logoUrl: companyProfile.logoUrl ?? '',
       addressLine1: `${companyProfile.address}, ${companyProfile.city}`,
       contactLine: `Hotline: ${companyProfile.phone} | Email: ${companyProfile.email} | Web: ${companyProfile.website}`,
       companyName: companyProfile.companyName,
@@ -435,7 +435,11 @@ export const CeklistAreaView: React.FC = () => {
   return (
     <div className="space-y-6">
       {/* Top Banner & Control Center */}
-      <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-xs flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+      <div
+        className={`bg-white rounded-2xl p-5 border border-slate-200 shadow-xs flex-col lg:flex-row lg:items-center justify-between gap-4 ${
+          userRole === 'supervisor' || userRole === 'petugas' ? 'hidden' : 'flex'
+        }`}
+      >
         <div>
           <div className="flex items-center gap-2.5">
             <div className="w-10 h-10 rounded-xl bg-sky-50 border border-sky-200 text-sky-700 flex items-center justify-center">
@@ -513,72 +517,26 @@ export const CeklistAreaView: React.FC = () => {
         </div>
       </div>
 
-      {/* FILTER & SETUP BAR: PROYEK, AREA KERJA, TANGGAL, JAM KERJA / SHIFT */}
-      <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-xs space-y-4">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          {/* 1. PILIHAN PROYEK (DITENTUKAN SUPER ADMIN) */}
-          <div className="space-y-1.5">
-            <div className="flex items-center justify-between">
-              <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1">
-                <Building2 className="w-3.5 h-3.5 text-sky-700" />
-                <span>{userRole === 'admin' ? '1. Proyek (Super Admin):' : '1. Lokasi Proyek Ditugaskan:'}</span>
-              </label>
-              <span className="text-[10px] font-bold text-sky-700 bg-sky-50 px-1.5 py-0.2 rounded border border-sky-200">
-                Site Aktif
-              </span>
-            </div>
-            {userRole === 'admin' || allowedProjects.length > 1 ? (
-              <div className="relative">
-                <select
-                  value={activeProject?.id}
-                  onChange={(e) => {
-                    const newProjId = e.target.value;
-                    setActiveProjectId(newProjId);
-                  }}
-                  className="w-full pl-3 pr-8 py-2 bg-sky-50/60 border border-sky-200 rounded-xl text-xs font-bold text-slate-900 focus:ring-2 focus:ring-sky-500 appearance-none cursor-pointer"
-                >
-                  {(userRole === 'admin' ? projects : allowedProjects).map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name} ({p.clientName})
-                    </option>
-                  ))}
-                </select>
-                <ChevronDown className="w-3.5 h-3.5 text-sky-700 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-              </div>
-            ) : (
-              <div className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 flex items-center justify-between">
-                <span className="truncate">{activeProject?.name || 'Menara Mandiri Tower A'}</span>
-                <span className="text-[10px] text-amber-800 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded font-medium shrink-0">
-                  🔒 Ditugaskan
-                </span>
-              </div>
-            )}
-            <p className="text-[10.5px] text-slate-500 truncate">
-              {activeProject?.type === 'office'
-                ? 'Gedung Perkantoran'
-                : activeProject?.type === 'airport'
-                ? 'Bandara Udara'
-                : 'Fasilitas Komersial'}{' '}
-              • {activeProject?.totalFloors || 1} Lantai • {activeProject?.city || 'Jakarta'}
-            </p>
-          </div>
-
-          {/* 2. PILIHAN AREA KERJA (HANYA AREA PROYEK INI, AREA LAIN DISEMBUNYIKAN) */}
+      {/* FILTER & SETUP BAR: AREA PROYEK, SHIFT & WAKTU, TANGGAL CEKLIST */}
+      <div className="bg-white rounded-2xl p-4 sm:p-5 border border-slate-200 shadow-xs space-y-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 sm:gap-4">
+          {/* 1. DROPDOWN AREA PROYEK */}
           <div className="space-y-1.5">
             <div className="flex items-center justify-between">
               <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1">
                 <MapPin className="w-3.5 h-3.5 text-emerald-700" />
-                <span>2. Area Kerja:</span>
+                <span>Area Proyek:</span>
               </label>
-              <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-200">
-                {checklistLocations.length} Area
+              <span className="hidden md:inline-block text-[10px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-200">
+                {checklistLocations.length} Area Terdaftar
               </span>
             </div>
             <div className="relative">
               <select
                 value={selectedLocationId}
                 onChange={(e) => setSelectedLocationId(e.target.value)}
-                className="w-full pl-3 pr-8 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:ring-2 focus:ring-sky-500 appearance-none cursor-pointer"
+                aria-label="Pilih Area Proyek"
+                className="w-full pl-3 pr-8 py-2 bg-emerald-50/50 border border-emerald-200 rounded-xl text-xs font-bold text-slate-900 focus:ring-2 focus:ring-sky-500 appearance-none cursor-pointer"
               >
                 {checklistLocations.map((loc) => (
                   <option key={loc.id} value={loc.id}>
@@ -586,53 +544,21 @@ export const CeklistAreaView: React.FC = () => {
                   </option>
                 ))}
               </select>
-              <ChevronDown className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <ChevronDown className="w-3.5 h-3.5 text-emerald-700 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
             </div>
-            <p className="text-[10.5px] text-slate-500 truncate">
+            <p className="hidden md:block text-[10.5px] text-slate-500 truncate">
               Kategori: <strong className="capitalize">{currentLocation?.category || 'Toilet'}</strong> • Kode: {currentLocation?.code || '-'}
             </p>
           </div>
 
-          {/* 3. PILIHAN TANGGAL */}
-          <div className="space-y-1.5">
-            <div className="flex items-center justify-between">
-              <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1">
-                <Calendar className="w-3.5 h-3.5 text-sky-700" />
-                <span>3. Tanggal Ceklist:</span>
-              </label>
-              <div className="flex items-center gap-1">
-                <button
-                  type="button"
-                  onClick={() => setSelectedDate('2026-09-13')}
-                  className="text-[10px] font-semibold text-slate-500 hover:text-sky-700 underline"
-                  title="Gunakan tanggal data awal"
-                >
-                  Default (13 Sep)
-                </button>
-              </div>
-            </div>
-            <div className="relative flex items-center">
-              <Calendar className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 pointer-events-none" />
-              <input
-                type="date"
-                value={selectedDate}
-                onChange={(e) => setSelectedDate(e.target.value)}
-                className="w-full pl-8 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:ring-2 focus:ring-sky-500"
-              />
-            </div>
-            <p className="text-[10.5px] text-slate-500 truncate">
-              {formattedSelectedDate}
-            </p>
-          </div>
-
-          {/* 4. PILIHAN JAM KERJA / SHIFT (SETUP MENU SHIFT) */}
+          {/* 2. PILIHAN JAM KERJA / SHIFT */}
           <div className="space-y-1.5">
             <div className="flex items-center justify-between">
               <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1">
                 <Clock className="w-3.5 h-3.5 text-amber-600" />
-                <span>4. Jam Kerja / Shift:</span>
+                <span>Shift & Waktu:</span>
               </label>
-              <span className="text-[10px] font-bold text-amber-800 bg-amber-50 px-1.5 py-0.2 rounded border border-amber-200">
+              <span className="hidden md:inline-block text-[10px] font-bold text-amber-800 bg-amber-50 px-1.5 py-0.2 rounded border border-amber-200">
                 {shiftSlotHours.length} Jam Aktif
               </span>
             </div>
@@ -640,6 +566,7 @@ export const CeklistAreaView: React.FC = () => {
               <select
                 value={selectedShiftId}
                 onChange={(e) => setSelectedShiftId(e.target.value)}
+                aria-label="Pilih Shift dan Waktu"
                 className="w-full pl-3 pr-8 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:ring-2 focus:ring-sky-500 appearance-none cursor-pointer"
               >
                 {shifts.map((s) => (
@@ -653,16 +580,49 @@ export const CeklistAreaView: React.FC = () => {
               </select>
               <ChevronDown className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
             </div>
-            <p className="text-[10.5px] text-slate-500 truncate">
+            <p className="hidden md:block text-[10.5px] text-slate-500 truncate">
               {activeShift
                 ? `${activeShift.description || 'Pembersihan operasional'}`
                 : 'Pemantauan checklist kebersihan 24 jam penuh'}
             </p>
           </div>
+
+          {/* 3. PILIHAN TANGGAL CEKLIST */}
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between">
+              <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1">
+                <Calendar className="w-3.5 h-3.5 text-sky-700" />
+                <span>Tanggal Ceklist:</span>
+              </label>
+              <button
+                type="button"
+                onClick={() => setSelectedDate('2026-09-13')}
+                className="hidden md:inline-block text-[10px] font-semibold text-slate-500 hover:text-sky-700 underline cursor-pointer"
+              >
+                Default (13 Sep)
+              </button>
+            </div>
+            <div className="relative flex items-center">
+              <Calendar className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 pointer-events-none" />
+              <input
+                type="date"
+                value={selectedDate}
+                onChange={(e) => setSelectedDate(e.target.value)}
+                className="w-full pl-8 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:ring-2 focus:ring-sky-500"
+              />
+            </div>
+            <p className="hidden md:block text-[10.5px] text-slate-500 truncate">
+              {formattedSelectedDate}
+            </p>
+          </div>
         </div>
 
         {/* Quick Pills for Fast Area & Shift Switching */}
-        <div className="pt-3 border-t border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs">
+        <div
+          className={`pt-3 border-t border-slate-100 flex-col md:flex-row md:items-center justify-between gap-3 text-xs ${
+            userRole === 'supervisor' || userRole === 'petugas' ? 'hidden lg:flex' : 'flex'
+          }`}
+        >
           {/* Shift Pills */}
           <div className="flex flex-wrap items-center gap-1.5">
             <span className="text-[11px] font-bold text-slate-400 mr-1">Shift Cepat:</span>
@@ -757,7 +717,11 @@ export const CeklistAreaView: React.FC = () => {
 
         {/* Location selector pills for fast 1-click area navigation */}
         {checklistLocations.length > 1 && (
-          <div className="pt-2 flex items-center gap-1.5 overflow-x-auto pb-1 text-xs">
+          <div
+            className={`pt-2 items-center gap-1.5 overflow-x-auto pb-1 text-xs ${
+              userRole === 'supervisor' || userRole === 'petugas' ? 'hidden lg:flex' : 'flex'
+            }`}
+          >
             <span className="text-[11px] font-bold text-slate-400 mr-1 whitespace-nowrap">Area Proyek:</span>
             {checklistLocations.map((loc) => {
               const isSelected = selectedLocationId === loc.id;
@@ -826,14 +790,26 @@ export const CeklistAreaView: React.FC = () => {
           {/* OFFICIAL INSTITUTION KOP SURAT (Hidden on mobile) */}
           <div className="hidden md:block border-b-2 border-slate-800 pb-3">
             <div className="flex items-center justify-between gap-4">
-              {/* Left Logo (Kemenkes Style) */}
-              <div className="w-16 h-16 sm:w-20 sm:h-20 flex-shrink-0 flex flex-col items-center justify-center p-1 border border-emerald-300 bg-emerald-50 rounded-xl text-center">
-                <div className="w-8 h-8 rounded-full bg-emerald-600 flex items-center justify-center text-white font-black text-sm shadow-xs">
-                  +
-                </div>
-                <span className="text-[8px] sm:text-[9px] font-bold text-emerald-800 mt-1 uppercase tracking-tighter">
-                  Kemenkes RI
-                </span>
+              {/* Left Logo (Sesuai Profil Perusahaan & Kop Surat Dokumen dari Super Admin) */}
+              <div className="w-16 h-16 sm:w-20 sm:h-20 shrink-0 flex items-center justify-center p-1.5 border border-slate-200 bg-white rounded-xl shadow-2xs overflow-hidden">
+                {companyProfile.logoUrl || activeKop.logoUrl ? (
+                  <img
+                    src={companyProfile.logoUrl || activeKop.logoUrl}
+                    alt={companyProfile.companyName || 'Logo Perusahaan'}
+                    className="w-full h-full object-contain"
+                    referrerPolicy="no-referrer"
+                  />
+                ) : (
+                  <div className="w-full h-full rounded-lg bg-sky-700 text-white flex flex-col items-center justify-center font-bold text-xs leading-tight text-center p-1">
+                    <span>
+                      {(companyProfile.companyName || activeKop.institutionLine1 || 'RTI')
+                        .replace(/^PT\.?\s*/i, '')
+                        .slice(0, 3)
+                        .toUpperCase()}
+                    </span>
+                    <span className="text-[7px] opacity-80 font-semibold mt-0.5">OFFICIAL</span>
+                  </div>
+                )}
               </div>
 
               {/* Center Kop Surat Text */}
@@ -855,15 +831,8 @@ export const CeklistAreaView: React.FC = () => {
                 </p>
               </div>
 
-              {/* Right Logo (RSMH / Akreditasi) */}
-              <div className="w-16 h-16 sm:w-20 sm:h-20 flex-shrink-0 flex flex-col items-center justify-center p-1 border border-sky-300 bg-sky-50 rounded-xl text-center">
-                <div className="w-8 h-8 rounded-full bg-sky-600 flex items-center justify-center text-white font-black text-xs shadow-xs">
-                  RS
-                </div>
-                <span className="text-[8px] sm:text-[9px] font-bold text-sky-900 mt-1 uppercase tracking-tighter">
-                  Akreditasi A
-                </span>
-              </div>
+              {/* Spacer penyeimbang kanan agar teks kop tetap rata tengah sempurna (Tanpa Logo Akreditasi A) */}
+              <div className="w-16 sm:w-20 shrink-0" aria-hidden="true" />
             </div>
 
             {/* Double Horizontal Rule */}
@@ -907,23 +876,6 @@ export const CeklistAreaView: React.FC = () => {
                 </div>
               </div>
             </div>
-          </div>
-
-          {/* MOBILE SWIPE HINT BANNER */}
-          <div className="md:hidden flex items-center justify-between gap-2 p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900 shadow-2xs">
-            <div className="flex items-center gap-2">
-              <Smartphone className="w-4 h-4 text-amber-600 shrink-0" />
-              <span className="text-[11px] leading-tight">
-                Tampilan tabel lebar: Geser ke samping, atau beralih ke <strong>Mode Ponsel</strong> untuk pengisian cepat per kartu.
-              </span>
-            </div>
-            <button
-              type="button"
-              onClick={() => setViewMode('slot_details')}
-              className="shrink-0 px-2.5 py-1.5 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-lg text-[11px] shadow-xs"
-            >
-              Mode Ponsel
-            </button>
           </div>
 
           {/* TABLE CONTAINER - PERSIS MODEL DI GAMBAR CEKLIST.WEBP */}
@@ -1535,7 +1487,7 @@ export const CeklistAreaView: React.FC = () => {
                       : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
-                  Kop RSUP Dr. Mohammad Hoesin (Sesuai Gambar)
+                  Kop Profil Perusahaan ({companyProfile.companyName || 'Resmi'})
                 </button>
                 <button
                   type="button"

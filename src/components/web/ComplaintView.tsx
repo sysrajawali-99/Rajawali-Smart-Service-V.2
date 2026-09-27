@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   AlertCircle,
   Plus,
@@ -15,6 +15,8 @@ import {
   Edit3,
   XCircle,
   Trash2,
+  Calendar,
+  ChevronDown,
 } from 'lucide-react';
 import { useCleaning } from '../../context/CleaningContext';
 import { Complaint, PriorityLevel } from '../../types';
@@ -28,6 +30,8 @@ import { ReviewExtensionModal } from '../modals/ReviewExtensionModal';
 export const ComplaintView: React.FC = () => {
   const {
     complaints,
+    areas,
+    activeProject,
     startHandlingComplaint,
     requestComplaintExtension,
     respondToComplaintExtension,
@@ -37,6 +41,9 @@ export const ComplaintView: React.FC = () => {
   } = useCleaning();
 
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [areaFilter, setAreaFilter] = useState<string>('all');
+  const [priorityFilter, setPriorityFilter] = useState<string>('all');
+  const [selectedComplaintDate, setSelectedComplaintDate] = useState<string>('2026-09-13');
   const [search, setSearch] = useState('');
   const [showNewModal, setShowNewModal] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -53,14 +60,61 @@ export const ComplaintView: React.FC = () => {
 
   const [viewingDocumentation, setViewingDocumentation] = useState<Complaint | null>(null);
 
+  const availableComplaintAreas = useMemo(() => {
+    const locSet = new Set<string>();
+    complaints.forEach((c) => {
+      if (c.areaName) locSet.add(c.areaName);
+    });
+    areas.forEach((a) => {
+      if (a.name) locSet.add(a.name);
+    });
+    return Array.from(locSet);
+  }, [complaints, areas]);
+
+  const formattedComplaintDate = useMemo(() => {
+    if (!selectedComplaintDate) return 'Semua Tanggal Tiket Komplain';
+    try {
+      const [y, m, d] = selectedComplaintDate.split('-').map(Number);
+      const dateObj = new Date(y, m - 1, d);
+      return dateObj.toLocaleDateString('id-ID', {
+        weekday: 'long',
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric',
+      });
+    } catch {
+      return selectedComplaintDate;
+    }
+  }, [selectedComplaintDate]);
+
   const filtered = complaints.filter((c) => {
     const matchStatus = statusFilter === 'all' || c.status === statusFilter;
+    const matchArea = areaFilter === 'all' || c.areaName === areaFilter;
+    const matchPriority = priorityFilter === 'all' || c.priority === priorityFilter;
+
+    let matchDate = true;
+    if (selectedComplaintDate) {
+      const [y, m, d] = selectedComplaintDate.split('-');
+      const ddMmYyyy = d && m && y ? `${d}/${m}/${y}` : '';
+      const rawCreated = (c.createdAt || '').toLowerCase();
+      if (
+        selectedComplaintDate === '2026-09-13' &&
+        (rawCreated.includes('hari ini') || rawCreated.includes('kemarin') || !rawCreated.match(/\d{4}/))
+      ) {
+        matchDate = true;
+      } else {
+        matchDate =
+          rawCreated.includes(selectedComplaintDate.toLowerCase()) ||
+          (Boolean(ddMmYyyy) && rawCreated.includes(ddMmYyyy.toLowerCase()));
+      }
+    }
+
     const matchSearch =
       c.ticketNumber.toLowerCase().includes(search.toLowerCase()) ||
       c.reporterName.toLowerCase().includes(search.toLowerCase()) ||
       c.areaName.toLowerCase().includes(search.toLowerCase()) ||
       c.description.toLowerCase().includes(search.toLowerCase());
-    return matchStatus && matchSearch;
+    return matchStatus && matchArea && matchPriority && matchDate && matchSearch;
   });
 
   const getPriorityBadge = (priority: PriorityLevel, slaHours?: number) => {
@@ -108,6 +162,103 @@ export const ComplaintView: React.FC = () => {
           <Plus className="w-4 h-4" />
           <span>Buat Tiket Komplain</span>
         </button>
+      </div>
+
+      {/* MENU FILTER: AREA PROYEK, PRIORITAS & SLA WAKTU, TANGGAL KOMPLAIN */}
+      <div className="bg-white rounded-2xl p-4 sm:p-5 border border-slate-200 shadow-xs space-y-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 sm:gap-4">
+          {/* 1. DROPDOWN AREA PROYEK */}
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between">
+              <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1">
+                <MapPin className="w-3.5 h-3.5 text-emerald-700" />
+                <span>Area Proyek:</span>
+              </label>
+              <span className="hidden md:inline-block text-[10px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-200">
+                {availableComplaintAreas.length} Area Terdaftar
+              </span>
+            </div>
+            <div className="relative">
+              <select
+                value={areaFilter}
+                onChange={(e) => setAreaFilter(e.target.value)}
+                aria-label="Pilih Area Proyek"
+                className="w-full pl-3 pr-8 py-2 bg-emerald-50/50 border border-emerald-200 rounded-xl text-xs font-bold text-slate-900 focus:ring-2 focus:ring-sky-500 appearance-none cursor-pointer"
+              >
+                <option value="all">Semua Area Proyek ({availableComplaintAreas.length} Area)</option>
+                {availableComplaintAreas.map((loc) => (
+                  <option key={loc} value={loc}>
+                    {loc}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown className="w-3.5 h-3.5 text-emerald-700 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+            </div>
+            <p className="hidden md:block text-[10.5px] text-slate-500 truncate">
+              Proyek: <strong>{activeProject.name}</strong> • Menampilkan {filtered.length} tiket komplain
+            </p>
+          </div>
+
+          {/* 2. PILIHAN PRIORITAS & SLA WAKTU */}
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between">
+              <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1">
+                <Clock className="w-3.5 h-3.5 text-amber-600" />
+                <span>Prioritas & SLA Waktu:</span>
+              </label>
+              <span className="hidden md:inline-block text-[10px] font-bold text-amber-800 bg-amber-50 px-1.5 py-0.2 rounded border border-amber-200">
+                {complaints.length} Total Tiket
+              </span>
+            </div>
+            <div className="relative">
+              <select
+                value={priorityFilter}
+                onChange={(e) => setPriorityFilter(e.target.value)}
+                aria-label="Pilih Prioritas dan SLA Waktu"
+                className="w-full pl-3 pr-8 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:ring-2 focus:ring-sky-500 appearance-none cursor-pointer"
+              >
+                <option value="all">Semua Prioritas & SLA (Batas 1 - 8 Jam)</option>
+                <option value="urgent">Darurat / Urgent (Batas SLA 1 Jam)</option>
+                <option value="high">Prioritas Tinggi (Batas SLA 2 Jam)</option>
+                <option value="medium">Prioritas Sedang (Batas SLA 4 Jam)</option>
+                <option value="low">Prioritas Standar (Batas SLA 8 Jam)</option>
+              </select>
+              <ChevronDown className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+            </div>
+            <p className="hidden md:block text-[10.5px] text-slate-500 truncate">
+              Filter berdasarkan tingkat urgensi & batas waktu penyelesaian SLA
+            </p>
+          </div>
+
+          {/* 3. PILIHAN TANGGAL KOMPLAIN */}
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between">
+              <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1">
+                <Calendar className="w-3.5 h-3.5 text-sky-700" />
+                <span>Tanggal Komplain:</span>
+              </label>
+              <button
+                type="button"
+                onClick={() => setSelectedComplaintDate(selectedComplaintDate ? '' : '2026-09-13')}
+                className="hidden md:inline-block text-[10px] font-semibold text-slate-500 hover:text-sky-700 underline cursor-pointer"
+              >
+                {selectedComplaintDate ? 'Semua Tanggal' : 'Default (13 Sep)'}
+              </button>
+            </div>
+            <div className="relative flex items-center">
+              <Calendar className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 pointer-events-none" />
+              <input
+                type="date"
+                value={selectedComplaintDate}
+                onChange={(e) => setSelectedComplaintDate(e.target.value)}
+                className="w-full pl-8 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:ring-2 focus:ring-sky-500"
+              />
+            </div>
+            <p className="hidden md:block text-[10.5px] text-slate-500 truncate">
+              {formattedComplaintDate}
+            </p>
+          </div>
+        </div>
       </div>
 
       {/* Filter & Search */}

@@ -62,11 +62,21 @@ export const DailyActivityView: React.FC = () => {
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [filterLocation, setFilterLocation] = useState<string>('all');
 
-  // Mobile vs Table View Mode
+  // Mobile & Tablet vs Desktop Table View Mode
   const [viewMode, setViewMode] = useState<'cards' | 'table'>(() =>
-    typeof window !== 'undefined' && window.innerWidth < 768 ? 'cards' : 'table'
+    typeof window !== 'undefined' && window.innerWidth < 1024 ? 'cards' : 'table'
   );
   const [expandedCardId, setExpandedCardId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const handleResize = () => {
+      if (window.innerWidth < 1024) {
+        setViewMode('cards');
+      }
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   // Modal State for adding/editing Daily Activity
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -486,8 +496,119 @@ export const DailyActivityView: React.FC = () => {
         </div>
       </div>
 
-      {/* Date Navigator Bar with Day Chips */}
-      <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs space-y-3.5">
+      {/* MENU FILTER: AREA PROYEK, STATUS PEKERJAAN, TANGGAL ACTIVITY */}
+      <div className="bg-white rounded-2xl p-4 sm:p-5 border border-slate-200 shadow-xs space-y-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 sm:gap-4">
+          {/* 1. DROPDOWN AREA PROYEK */}
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between">
+              <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1">
+                <MapPin className="w-3.5 h-3.5 text-emerald-700" />
+                <span>Area Proyek:</span>
+              </label>
+              <span className="hidden md:inline-block text-[10px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-200">
+                {availableLocations.length} Area Terdaftar
+              </span>
+            </div>
+            <div className="relative">
+              <select
+                value={filterLocation}
+                onChange={(e) => setFilterLocation(e.target.value)}
+                aria-label="Pilih Area Proyek"
+                className="w-full pl-3 pr-8 py-2 bg-emerald-50/50 border border-emerald-200 rounded-xl text-xs font-bold text-slate-900 focus:ring-2 focus:ring-sky-500 appearance-none cursor-pointer"
+              >
+                <option value="all">Semua Area Proyek ({availableLocations.length} Area)</option>
+                {availableLocations.map((loc) => (
+                  <option key={loc} value={loc}>
+                    {loc}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown className="w-3.5 h-3.5 text-emerald-700 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+            </div>
+            <p className="hidden md:block text-[10.5px] text-slate-500 truncate">
+              Proyek: <strong>{activeProject.name}</strong> • Menampilkan {dailyPrograms.length} pekerjaan
+            </p>
+          </div>
+
+          {/* 2. PILIHAN STATUS PEKERJAAN */}
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between">
+              <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1">
+                <Clock className="w-3.5 h-3.5 text-amber-600" />
+                <span>Status & Siklus:</span>
+              </label>
+              <span className="hidden md:inline-block text-[10px] font-bold text-amber-800 bg-amber-50 px-1.5 py-0.2 rounded border border-amber-200">
+                {stats.total} Program Harian
+              </span>
+            </div>
+            <div className="relative">
+              <select
+                value={filterStatus}
+                onChange={(e) => setFilterStatus(e.target.value)}
+                aria-label="Pilih Status Pekerjaan"
+                className="w-full pl-3 pr-8 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:ring-2 focus:ring-sky-500 appearance-none cursor-pointer"
+              >
+                <option value="all">Semua Status Pekerjaan ({stats.total} Program)</option>
+                <option value="planned">R : Rencana Terjadwal ({stats.countR} Tugas)</option>
+                <option value="in_progress">P : Sedang Dikerjakan / Progres ({stats.countP} Tugas)</option>
+                <option value="rescheduled">T : Tertunda / Reschedule ({stats.countT} Tugas)</option>
+                <option value="done">S : Selesai Dikerjakan ({stats.countS} Tugas)</option>
+                <option value="none">- : Off / Tidak Terjadwal ({stats.countNone} Tugas)</option>
+              </select>
+              <ChevronDown className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+            </div>
+            <p className="hidden md:block text-[10.5px] text-slate-500 truncate">
+              Filter status pengerjaan Daily Activity pada tanggal terpilih
+            </p>
+          </div>
+
+          {/* 3. PILIHAN TANGGAL ACTIVITY */}
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between">
+              <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1">
+                <CalendarIcon className="w-3.5 h-3.5 text-sky-700" />
+                <span>Tanggal Activity:</span>
+              </label>
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedYear(2026);
+                  setSelectedMonth(9);
+                  setSelectedDay(15);
+                }}
+                className="hidden md:inline-block text-[10px] font-semibold text-slate-500 hover:text-sky-700 underline cursor-pointer"
+              >
+                Default (15 Sep)
+              </button>
+            </div>
+            <div className="relative flex items-center">
+              <CalendarIcon className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 pointer-events-none" />
+              <input
+                type="date"
+                value={`${selectedYear}-${String(selectedMonth).padStart(2, '0')}-${String(safeSelectedDay).padStart(2, '0')}`}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  if (!val) return;
+                  const [y, m, d] = val.split('-').map(Number);
+                  if (y && m && d) {
+                    setSelectedYear(y);
+                    setSelectedMonth(m);
+                    setSelectedDay(d);
+                  }
+                }}
+                className="w-full pl-8 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:ring-2 focus:ring-sky-500"
+              />
+            </div>
+            <p className="hidden md:block text-[10.5px] text-slate-500 truncate">
+              {formattedFullDate}
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* Date Navigator Bar with Day Chips (Hidden on Mobile & Tablet) */}
+      <div className="hidden lg:block bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs space-y-3.5">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
           {/* Month & Year Selector + Prev/Next Day */}
           <div className="flex items-center gap-2 flex-wrap">
@@ -607,8 +728,8 @@ export const DailyActivityView: React.FC = () => {
         </div>
       </div>
 
-      {/* KPI Stats Cards for Selected Date */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2.5">
+      {/* KPI Stats Cards for Selected Date (Hidden on Mobile & Tablet) */}
+      <div className="hidden lg:grid lg:grid-cols-7 gap-2.5">
         {/* Total Tasks */}
         <div className="bg-white p-3 rounded-2xl border border-slate-200/80 shadow-xs">
           <p className="text-[10px] font-semibold text-slate-500">Total Program (D)</p>
@@ -689,8 +810,8 @@ export const DailyActivityView: React.FC = () => {
         </div>
       </div>
 
-      {/* Petunjuk Status Tanggal */}
-      <div className="bg-slate-900 text-white p-4 rounded-2xl shadow-sm border border-slate-800">
+      {/* Petunjuk Status Tanggal (Hidden on Mobile & Tablet) */}
+      <div className="hidden lg:block bg-slate-900 text-white p-4 rounded-2xl shadow-sm border border-slate-800">
         <div className="flex items-center gap-2 mb-2.5">
           <HelpCircle className="w-4 h-4 text-blue-400" />
           <h3 className="text-xs font-bold uppercase tracking-wider text-slate-200">
@@ -758,8 +879,8 @@ export const DailyActivityView: React.FC = () => {
         </p>
       </div>
 
-      {/* Filter & Search Controls */}
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs">
+      {/* Filter & Search Controls (Hidden on Mobile & Tablet) */}
+      <div className="hidden lg:flex flex-col sm:flex-row items-center justify-between gap-3 bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs">
         <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
           {/* Status Filter */}
           <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-xl text-xs">

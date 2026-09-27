@@ -206,6 +206,26 @@ interface CleaningContextType {
 
   // Actions
   toggleTaskChecklist: (taskId: string, checklistId: string) => void;
+  updateTaskMeta: (
+    taskId: string,
+    updates: Partial<
+      Pick<
+        CleaningTask,
+        | 'shift'
+        | 'areaId'
+        | 'areaName'
+        | 'buildingFloor'
+        | 'taskDate'
+        | 'monthPeriod'
+        | 'cleanerId'
+        | 'cleanerName'
+        | 'scheduledTime'
+        | 'deadlineTime'
+      >
+    >
+  ) => void;
+  addTaskChecklistItem: (taskId: string, label: string) => void;
+  addCleaningTask: (payload: Omit<CleaningTask, 'id'>) => void;
   updateTaskSupply: (taskId: string, supplyId: string, amount: number) => void;
   updateTaskRemark: (taskId: string, remarks: string) => void;
   updateTaskPhotos: (taskId: string, before?: string, progress?: string, after?: string) => void;
@@ -2032,6 +2052,64 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     );
   };
 
+  const updateTaskMeta = (
+    taskId: string,
+    updates: Partial<
+      Pick<
+        CleaningTask,
+        | 'shift'
+        | 'areaId'
+        | 'areaName'
+        | 'buildingFloor'
+        | 'taskDate'
+        | 'monthPeriod'
+        | 'cleanerId'
+        | 'cleanerName'
+        | 'scheduledTime'
+        | 'deadlineTime'
+      >
+    >
+  ) => {
+    setTasks((prev) =>
+      prev.map((task) => {
+        if (task.id !== taskId) return task;
+        return {
+          ...task,
+          ...updates,
+        };
+      })
+    );
+  };
+
+  const addTaskChecklistItem = (taskId: string, label: string) => {
+    const trimmed = label.trim();
+    if (!trimmed) return;
+    setTasks((prev) =>
+      prev.map((task) => {
+        if (task.id !== taskId) return task;
+        const newItem: TaskChecklistItem = {
+          id: `chk-${Date.now()}-${Math.floor(Math.random() * 100)}`,
+          label: trimmed,
+          checked: false,
+        };
+        return {
+          ...task,
+          checklistArea: [...task.checklistArea, newItem],
+        };
+      })
+    );
+  };
+
+  const addCleaningTask = (payload: Omit<CleaningTask, 'id'>) => {
+    const newId = `task-${Date.now().toString().slice(-4)}`;
+    const newTask: CleaningTask = {
+      ...payload,
+      id: newId,
+      projectId: payload.projectId || safeActiveProjectId,
+    };
+    setTasks((prev) => [newTask, ...prev]);
+  };
+
   const updateTaskSupply = (taskId: string, supplyId: string, amount: number) => {
     // No-op (Inventory removed)
   };
@@ -3299,6 +3377,9 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
         // Operations
         toggleTaskChecklist,
+        updateTaskMeta,
+        addTaskChecklistItem,
+        addCleaningTask,
         updateTaskSupply,
         updateTaskRemark,
         updateTaskPhotos,

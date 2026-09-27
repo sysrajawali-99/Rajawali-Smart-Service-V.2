@@ -23,6 +23,7 @@ import {
   ArrowDownToLine,
   Check,
   FileText,
+  ChevronDown,
 } from 'lucide-react';
 import { useCleaning } from '../../context/CleaningContext';
 import {
@@ -59,6 +60,9 @@ export const SpecialJobView: React.FC<SpecialJobViewProps> = ({ readOnlyStatus =
   const [sourceFilter, setSourceFilter] = useState<'all' | SpecialJobSourceType>('all');
   const [selectedMonth, setSelectedMonth] = useState<string>('all');
   const [selectedYear, setSelectedYear] = useState<string>('all');
+  const [locationFilter, setLocationFilter] = useState<string>('all');
+  const [shiftFilter, setShiftFilter] = useState<string>('all');
+  const [dateFilter, setDateFilter] = useState<string>('2026-09-26');
 
   // Detail Modal
   const [selectedJob, setSelectedJob] = useState<SpecialJobItem | null>(null);
@@ -184,9 +188,23 @@ export const SpecialJobView: React.FC<SpecialJobViewProps> = ({ readOnlyStatus =
     return Array.from(years).sort((a, b) => b - a);
   }, [specialJobs]);
 
+  const availableJobLocations = useMemo(() => {
+    const locSet = new Set<string>();
+    specialJobs.forEach((j) => {
+      if (j.location) locSet.add(j.location);
+    });
+    areas.forEach((a) => {
+      if (a.name) locSet.add(a.name);
+    });
+    return Array.from(locSet);
+  }, [specialJobs, areas]);
+
   const periodFilteredJobs = useMemo(() => {
     return specialJobs.filter((item) => {
       const dateStr = item.scheduledDate || (item.createdAt ? item.createdAt.split('T')[0] : '');
+      if (dateFilter && dateStr && dateStr !== dateFilter) {
+        return false;
+      }
       if (!dateStr) return selectedMonth === 'all' && selectedYear === 'all';
       const parts = dateStr.split('-');
       if (parts.length >= 2) {
@@ -197,13 +215,15 @@ export const SpecialJobView: React.FC<SpecialJobViewProps> = ({ readOnlyStatus =
       }
       return true;
     });
-  }, [specialJobs, selectedMonth, selectedYear]);
+  }, [specialJobs, selectedMonth, selectedYear, dateFilter]);
 
   // Filtered Special Jobs
   const filteredJobs = useMemo(() => {
     return periodFilteredJobs.filter((item) => {
       const matchStatus = statusFilter === 'all' || item.status === statusFilter;
       const matchSource = sourceFilter === 'all' || item.sourceType === sourceFilter;
+      const matchLocation = locationFilter === 'all' || item.location === locationFilter;
+      const matchShift = shiftFilter === 'all' || item.shiftName === shiftFilter;
       const q = searchQuery.toLowerCase().trim();
       const matchQuery =
         !q ||
@@ -214,9 +234,9 @@ export const SpecialJobView: React.FC<SpecialJobViewProps> = ({ readOnlyStatus =
         (item.requestedBy || '').toLowerCase().includes(q) ||
         (item.assignedPicName || '').toLowerCase().includes(q);
 
-      return matchStatus && matchSource && matchQuery;
+      return matchStatus && matchSource && matchLocation && matchShift && matchQuery;
     });
-  }, [periodFilteredJobs, statusFilter, sourceFilter, searchQuery]);
+  }, [periodFilteredJobs, statusFilter, sourceFilter, locationFilter, shiftFilter, searchQuery]);
 
   // Counts for 4 KPI Cards
   const totalCount = periodFilteredJobs.length;
@@ -425,6 +445,9 @@ export const SpecialJobView: React.FC<SpecialJobViewProps> = ({ readOnlyStatus =
       photoBefore: newPhotoBefore || undefined,
     });
 
+    if (dateFilter && dateFilter !== newScheduledDate) {
+      setDateFilter(newScheduledDate);
+    }
     showToast(`Special Job "${created.ticketNo}" berhasil ditambahkan.`);
     setShowCreateModal(false);
   };
@@ -501,6 +524,9 @@ export const SpecialJobView: React.FC<SpecialJobViewProps> = ({ readOnlyStatus =
       importedCount++;
     });
 
+    if (dateFilter && dateFilter !== importScheduledDate) {
+      setDateFilter(importScheduledDate);
+    }
     showToast(
       `${importedCount} pekerjaan dari Weekly/Monthly Activity berhasil diambil menjadi Special Job.`
     );
@@ -734,6 +760,106 @@ export const SpecialJobView: React.FC<SpecialJobViewProps> = ({ readOnlyStatus =
         </div>
       </div>
 
+      {/* MENU FILTER: AREA PROYEK, SHIFT & WAKTU, TANGGAL SPECIAL JOB */}
+      <div className="bg-white rounded-2xl p-4 sm:p-5 border border-slate-200 shadow-xs space-y-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 sm:gap-4">
+          {/* 1. DROPDOWN AREA PROYEK */}
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between">
+              <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1">
+                <MapPin className="w-3.5 h-3.5 text-emerald-700" />
+                <span>Area Proyek:</span>
+              </label>
+              <span className="hidden md:inline-block text-[10px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-200">
+                {availableJobLocations.length} Area Terdaftar
+              </span>
+            </div>
+            <div className="relative">
+              <select
+                value={locationFilter}
+                onChange={(e) => setLocationFilter(e.target.value)}
+                aria-label="Pilih Area Proyek"
+                className="w-full pl-3 pr-8 py-2 bg-emerald-50/50 border border-emerald-200 rounded-xl text-xs font-bold text-slate-900 focus:ring-2 focus:ring-sky-500 appearance-none cursor-pointer"
+              >
+                <option value="all">Semua Area Proyek ({availableJobLocations.length} Area)</option>
+                {availableJobLocations.map((loc) => (
+                  <option key={loc} value={loc}>
+                    {loc}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown className="w-3.5 h-3.5 text-emerald-700 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+            </div>
+            <p className="hidden md:block text-[10.5px] text-slate-500 truncate">
+              Proyek: <strong>{activeProject.name}</strong> • Menampilkan {filteredJobs.length} Special Job
+            </p>
+          </div>
+
+          {/* 2. PILIHAN JAM KERJA / SHIFT */}
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between">
+              <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1">
+                <Clock className="w-3.5 h-3.5 text-amber-600" />
+                <span>Shift & Waktu:</span>
+              </label>
+              <span className="hidden md:inline-block text-[10px] font-bold text-amber-800 bg-amber-50 px-1.5 py-0.2 rounded border border-amber-200">
+                {shifts.length} Shift Aktif
+              </span>
+            </div>
+            <div className="relative">
+              <select
+                value={shiftFilter}
+                onChange={(e) => setShiftFilter(e.target.value)}
+                aria-label="Pilih Shift dan Waktu"
+                className="w-full pl-3 pr-8 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:ring-2 focus:ring-sky-500 appearance-none cursor-pointer"
+              >
+                <option value="all">
+                  Semua Shift & Waktu (24 Jam Penuh: 00:00 - 24:00 WIB)
+                </option>
+                {shifts.map((s) => (
+                  <option key={s.id} value={s.name}>
+                    {s.name} ({s.startTime} - {s.endTime} WIB • {s.durationText || `${s.workHoursDuration || 8} Jam`})
+                  </option>
+                ))}
+              </select>
+              <ChevronDown className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+            </div>
+            <p className="hidden md:block text-[10.5px] text-slate-500 truncate">
+              Filter penugasan Special Job berdasarkan jadwal shift operasional
+            </p>
+          </div>
+
+          {/* 3. PILIHAN TANGGAL SPECIAL JOB */}
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between">
+              <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1">
+                <Calendar className="w-3.5 h-3.5 text-sky-700" />
+                <span>Tanggal Special Job:</span>
+              </label>
+              <button
+                type="button"
+                onClick={() => setDateFilter(dateFilter ? '' : '2026-09-26')}
+                className="hidden md:inline-block text-[10px] font-semibold text-slate-500 hover:text-sky-700 underline cursor-pointer"
+              >
+                {dateFilter ? 'Semua Tanggal' : 'Default (26 Sep)'}
+              </button>
+            </div>
+            <div className="relative flex items-center">
+              <Calendar className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 pointer-events-none" />
+              <input
+                type="date"
+                value={dateFilter}
+                onChange={(e) => setDateFilter(e.target.value)}
+                className="w-full pl-8 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:ring-2 focus:ring-sky-500"
+              />
+            </div>
+            <p className="hidden md:block text-[10.5px] text-slate-500 truncate">
+              {dateFilter ? `Menampilkan jadwal tanggal ${dateFilter}` : 'Menampilkan semua tanggal Special Job'}
+            </p>
+          </div>
+        </div>
+      </div>
+
       {/* 4 INTERACTIVE KPI STATUS CARDS */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <button
@@ -913,6 +1039,9 @@ export const SpecialJobView: React.FC<SpecialJobViewProps> = ({ readOnlyStatus =
               onClick={() => {
                 setStatusFilter('all');
                 setSourceFilter('all');
+                setLocationFilter('all');
+                setShiftFilter('all');
+                setDateFilter('');
                 setSelectedMonth('all');
                 setSelectedYear('all');
                 setSearchQuery('');
