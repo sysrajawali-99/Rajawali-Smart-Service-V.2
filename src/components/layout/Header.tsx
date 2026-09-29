@@ -13,9 +13,11 @@ import {
   ChevronRight,
   X,
   Lock,
+  Database,
 } from 'lucide-react';
 import { useCleaning } from '../../context/CleaningContext';
 import { UserRole } from '../../types';
+import { SupabaseStatusModal } from '../modals/SupabaseStatusModal';
 
 export const Header: React.FC = () => {
   const {
@@ -37,11 +39,13 @@ export const Header: React.FC = () => {
     toggleMobileMenu,
     currentUser,
     logout,
+    supabaseStatus,
   } = useCleaning();
 
   const [showNotifDropdown, setShowNotifDropdown] = useState(false);
   const [showRoleDropdown, setShowRoleDropdown] = useState(false);
   const [showProjectDropdown, setShowProjectDropdown] = useState(false);
+  const [showSupabaseModal, setShowSupabaseModal] = useState(false);
 
   const unreadNotifs = notifications.filter((n) => !n.read);
 
@@ -356,6 +360,29 @@ export const Header: React.FC = () => {
             </div>
           )}
 
+          {/* Supabase Status Button */}
+          <button
+            onClick={() => setShowSupabaseModal(true)}
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-semibold transition-colors cursor-pointer shadow-2xs ${
+              supabaseStatus.isConfigured && (supabaseStatus.status === 'CONNECTED' || supabaseStatus.status === 'SUBSCRIBED')
+                ? 'bg-emerald-50 border-emerald-200 text-emerald-700 hover:bg-emerald-100'
+                : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
+            }`}
+            title="Status Supabase Realtime & Setup Vercel"
+          >
+            <Database className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+            <span className="hidden xl:inline text-[11px]">
+              {supabaseStatus.isConfigured ? 'Supabase' : 'Supabase'}
+            </span>
+            <span
+              className={`w-2 h-2 rounded-full shrink-0 ${
+                supabaseStatus.isConfigured && (supabaseStatus.status === 'CONNECTED' || supabaseStatus.status === 'SUBSCRIBED')
+                  ? 'bg-emerald-500 animate-pulse'
+                  : 'bg-amber-400'
+              }`}
+            />
+          </button>
+
           {/* Direct Logout Button for all users */}
           <button
             id="header-logout-button"
@@ -490,6 +517,11 @@ export const Header: React.FC = () => {
           </div>
         </div>
       </div>
+
+      <SupabaseStatusModal
+        isOpen={showSupabaseModal}
+        onClose={() => setShowSupabaseModal(false)}
+      />
     </header>
   );
 };

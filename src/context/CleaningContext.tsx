@@ -7,6 +7,7 @@ import {
   Shift,
   CleaningSchedule,
   CleaningTask,
+  TaskStatus,
   QCInspection,
   Complaint,
   ComplaintExtensionRequest,
@@ -71,6 +72,18 @@ import {
   getNextChecklistStatus,
 } from '../utils/checklistHelper';
 import confetti from 'canvas-confetti';
+import {
+  isSupabaseConfigured,
+  fetchSupabaseTasks,
+  upsertSupabaseTask,
+  fetchSupabaseComplaints,
+  upsertSupabaseComplaint,
+  fetchSupabaseDamageReports,
+  upsertSupabaseDamageReport,
+  fetchSupabaseSpecialJobs,
+  upsertSupabaseSpecialJob,
+  subscribeToSupabaseRealtime,
+} from '../lib/supabaseService';
 
 interface CleaningContextType {
   userRole: UserRole;
@@ -87,6 +100,14 @@ interface CleaningContextType {
   setActiveTab: (tab: string) => void;
   selectedTaskId: string | null;
   setSelectedTaskId: (id: string | null) => void;
+
+  // Supabase Realtime Sync
+  supabaseStatus: {
+    isConfigured: boolean;
+    status: string;
+    lastSyncedAt: string | null;
+  };
+  syncToSupabase: () => Promise<void>;
 
   // Connection & Offline Queue
   isOnline: boolean;
@@ -168,7 +189,7 @@ interface CleaningContextType {
   masterPrograms: MasterCleaningProgramItem[];
   allMasterPrograms: MasterCleaningProgramItem[];
   addMasterProgram: (item: Omit<MasterCleaningProgramItem, 'id' | 'createdAt' | 'updatedAt'>) => void;
-  updateMasterProgram: (id: string, updates: Partial<MasterCleaningProgramItem>) => void;
+  updateMasterProgram: (idOrItem: string | MasterCleaningProgramItem, updates?: Partial<MasterCleaningProgramItem>) => void;
   deleteMasterProgram: (id: string) => void;
   toggleMasterProgramDay: (programId: string, day: number, forcedStatus?: ProgramDayStatus) => void;
   batchSetMasterProgramDays: (programId: string, days: number[], status: ProgramDayStatus) => void;
@@ -261,6 +282,10 @@ interface CleaningContextType {
         suppliesCompleteness: number;
       };
       auditParameters?: QCInspection['auditParameters'];
+      qualityScale?: number;
+      qualityCategory?: string;
+      sessionWeight?: number;
+      sessionContribution?: number;
       notes: string;
       recommendations?: string[];
       photoProof?: string;
@@ -884,6 +909,287 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     localStorage.setItem('sco_special_jobs', JSON.stringify(specialJobs));
   }, [specialJobs]);
 
+  // ==================== SUPABASE REALTIME STATE & SYNC ====================
+  const [supabaseStatus, setSupabaseStatus] = useState<{
+    isConfigured: boolean;
+    status: string;
+    lastSyncedAt: string | null;
+  }>({
+    isConfigured: isSupabaseConfigured(),
+    status: isSupabaseConfigured() ? 'CONNECTING' : 'LOCAL_STORAGE',
+    lastSyncedAt: null,
+  });
+
+  const syncToSupabase = async () => {
+    if (!isSupabaseConfigured()) return;
+    try {
+      setSupabaseStatus((prev) => ({ ...prev, status: 'SYNCING' }));
+      for (const t of tasks) {
+        await upsertSupabaseTask(t);
+      }
+      for (const c of complaints) {
+        await upsertSupabaseComplaint(c);
+      }
+      for (const d of damageReports) {
+        await upsertSupabaseDamageReport(d);
+      }
+      for (const s of specialJobs) {
+        await upsertSupabaseSpecialJob(s);
+      }
+      const nowStr = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB';
+      setSupabaseStatus({
+        isConfigured: true,
+        status: 'CONNECTED',
+        lastSyncedAt: nowStr,
+      });
+    } catch (e) {
+      console.warn('[Supabase Sync Error]', e);
+      setSupabaseStatus((prev) => ({ ...prev, status: 'ERROR' }));
+    }
+  };
+
+  useEffect(() => {
+    if (!isSupabaseConfigured()) return;
+
+    let isMounted = true;
+    async function loadInitialSupabaseData() {
+      try {
+        const [remoteTasks, remoteComplaints, remoteDamage, remoteSpecial] = await Promise.all([
+          fetchSupabaseTasks(),
+          fetchSupabaseComplaints(),
+          fetchSupabaseDamageReports(),
+          fetchSupabaseSpecialJobs(),
+        ]);
+        if (!isMounted) return;
+        if (remoteTasks && remoteTasks.length > 0) setTasks(remoteTasks);
+        if (remoteComplaints && remoteComplaints.length > 0) setComplaints(remoteComplaints);
+        if (remoteDamage && remoteDamage.length > 0) setDamageReports(remoteDamage);
+        if (remoteSpecial && remoteSpecial.length > 0) setSpecialJobs(remoteSpecial);
+
+        const nowStr = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB';
+        setSupabaseStatus({
+          isConfigured: true,
+          status: 'CONNECTED',
+          lastSyncedAt: nowStr,
+        });
+      } catch (err) {
+        console.warn('[Supabase] Initial fetch error:', err);
+      }
+    }
+    loadInitialSupabaseData();
+
+    const unsubscribe = subscribeToSupabaseRealtime({
+      onStatusChange: (status) => {
+        if (!isMounted) return;
+        setSupabaseStatus((prev) => ({
+          ...prev,
+          status: status === 'SUBSCRIBED' ? 'CONNECTED' : status,
+          lastSyncedAt: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB',
+        }));
+      },
+      onTaskChange: (payload) => {
+        if (!isMounted) return;
+        if (payload.eventType === 'INSERT' && payload.new) {
+          const newTask: CleaningTask = {
+            id: payload.new.id,
+            areaId: payload.new.area_id || '',
+            areaName: payload.new.area_name || payload.new.title,
+            buildingFloor: 'Lt. 1',
+            cleanerId: payload.new.cleaner_id || '',
+            cleanerName: payload.new.cleaner_name || '',
+            shift: 'Pagi (06:00 - 14:00)',
+            scheduledTime: payload.new.scheduled_time || '08:00',
+            deadlineTime: payload.new.deadline_time || '10:00',
+            status: payload.new.status || 'pending',
+            checklistArea: payload.new.checklist_items || [],
+            suppliesUsed: payload.new.supplies_used || [],
+            photoBefore: payload.new.photo_before,
+            photoProgress: payload.new.photo_progress,
+            photoAfter: payload.new.photo_after,
+            photoProof: payload.new.photo_proof,
+            completedTime: payload.new.completed_time,
+            completedAt: payload.new.completed_at,
+            remarks: payload.new.remarks,
+            workDescription: payload.new.title,
+          };
+          setTasks((prev) => {
+            if (prev.some((t) => t.id === newTask.id)) return prev;
+            return [newTask, ...prev];
+          });
+        } else if (payload.eventType === 'UPDATE' && payload.new) {
+          setTasks((prev) =>
+            prev.map((t) =>
+              t.id === payload.new.id
+                ? {
+                    ...t,
+                    status: payload.new.status || t.status,
+                    completedTime: payload.new.completed_time || t.completedTime,
+                    completedAt: payload.new.completed_at || t.completedAt,
+                    photoBefore: payload.new.photo_before || t.photoBefore,
+                    photoProgress: payload.new.photo_progress || t.photoProgress,
+                    photoAfter: payload.new.photo_after || t.photoAfter,
+                    photoProof: payload.new.photo_proof || t.photoProof,
+                    remarks: payload.new.remarks || t.remarks,
+                  }
+                : t
+            )
+          );
+        } else if (payload.eventType === 'DELETE' && payload.old) {
+          setTasks((prev) => prev.filter((t) => t.id !== payload.old.id));
+        }
+      },
+      onComplaintChange: (payload) => {
+        if (!isMounted) return;
+        if (payload.eventType === 'INSERT' && payload.new) {
+          const hours = 2;
+          const now = Date.now();
+          const newComplaint: Complaint = {
+            id: payload.new.id,
+            projectId: payload.new.project_id || 'proj-1',
+            ticketNumber: payload.new.ticket_no || payload.new.id,
+            reporterName: payload.new.reporter_name || 'Pelapor',
+            reporterRole: payload.new.reporter_role || 'Staff',
+            areaId: 'area-1',
+            areaName: payload.new.location || 'Area',
+            floor: 'Lt. 1',
+            category: payload.new.category || 'kebersihan',
+            description: payload.new.description || payload.new.title || '',
+            priority: payload.new.priority || 'medium',
+            status: payload.new.status || 'open',
+            createdAt: payload.new.reported_at || payload.new.created_at || 'Hari ini, 08:00 WIB',
+            resolvedAt: payload.new.resolved_at,
+            assignedCleanerName: payload.new.assigned_to,
+            resolutionNotes: payload.new.resolution_notes,
+            slaHours: hours,
+            slaMinutes: hours * 60,
+            slaDeadline: '10:00 WIB',
+            deadlineTimestamp: now + hours * 3600 * 1000,
+          };
+          setComplaints((prev) => {
+            if (prev.some((c) => c.id === newComplaint.id)) return prev;
+            return [newComplaint, ...prev];
+          });
+        } else if (payload.eventType === 'UPDATE' && payload.new) {
+          setComplaints((prev) =>
+            prev.map((c) =>
+              c.id === payload.new.id
+                ? {
+                    ...c,
+                    status: payload.new.status || c.status,
+                    resolvedAt: payload.new.resolved_at || c.resolvedAt,
+                    assignedCleanerName: payload.new.assigned_to || c.assignedCleanerName,
+                    resolutionNotes: payload.new.resolution_notes || c.resolutionNotes,
+                  }
+                : c
+            )
+          );
+        } else if (payload.eventType === 'DELETE' && payload.old) {
+          setComplaints((prev) => prev.filter((c) => c.id !== payload.old.id));
+        }
+      },
+      onDamageReportChange: (payload) => {
+        if (!isMounted) return;
+        if (payload.eventType === 'INSERT' && payload.new) {
+          const newReport: FacilityDamageReport = {
+            id: payload.new.id,
+            ticketNo: payload.new.ticket_no || payload.new.id,
+            projectId: payload.new.project_id || 'proj-1',
+            itemName: payload.new.item_name || 'Fasilitas',
+            category: 'mekanikal',
+            locationName: payload.new.area_name || 'Area Gedung',
+            floor: 'Lantai GF',
+            damageLevel: payload.new.severity || 'sedang',
+            chronology: payload.new.description || '',
+            impact: 'Perlu penanganan teknisi',
+            actionTaken: 'Dipasang barikade pengaman',
+            status: payload.new.status || 'dilaporkan',
+            reportDate: (payload.new.reported_at || new Date().toISOString()).split('T')[0],
+            reporterName: payload.new.reporter_name || 'Petugas',
+            targetDepartment: 'Engineering & Maintenance',
+            photoBefore: (payload.new.photo_urls && payload.new.photo_urls[0]) || undefined,
+            technicianNotes: payload.new.repair_notes,
+            priority: 'medium',
+          };
+          setDamageReports((prev) => {
+            if (prev.some((d) => d.id === newReport.id)) return prev;
+            return [newReport, ...prev];
+          });
+        } else if (payload.eventType === 'UPDATE' && payload.new) {
+          setDamageReports((prev) =>
+            prev.map((d) =>
+              d.id === payload.new.id
+                ? {
+                    ...d,
+                    status: payload.new.status || d.status,
+                    technicianNotes: payload.new.repair_notes || d.technicianNotes,
+                  }
+                : d
+            )
+          );
+        } else if (payload.eventType === 'DELETE' && payload.old) {
+          setDamageReports((prev) => prev.filter((d) => d.id !== payload.old.id));
+        }
+      },
+      onSpecialJobChange: (payload) => {
+        if (!isMounted) return;
+        if (payload.eventType === 'INSERT' && payload.new) {
+          const newJob: SpecialJobItem = {
+            id: payload.new.id,
+            ticketNo: payload.new.ticket_no || payload.new.id,
+            projectId: payload.new.project_id || 'proj-1',
+            title: payload.new.title,
+            workDescription: payload.new.work_description || payload.new.title,
+            workMethod: payload.new.work_method || 'SOP Pembersihan Khusus',
+            location: payload.new.location || 'Area Khusus',
+            floor: payload.new.floor || 'Lt. 1',
+            sourceType: 'supervisor_request',
+            requestedBy: 'Supervisor Operasional',
+            requestedByRole: 'Supervisor Operasional',
+            requestReason: 'Pekerjaan khusus berkala',
+            assignedPicName: payload.new.pic_name || 'Petugas Kebersihan',
+            shiftName: 'Pagi (06:00 - 14:00)',
+            priority: 'high',
+            scheduledDate: payload.new.scheduled_date || new Date().toISOString().split('T')[0],
+            scheduledTime: '09:00 - 11:00 WIB',
+            targetDurationMinutes: 120,
+            status: payload.new.status || 'requested',
+            photoBefore: payload.new.photo_before,
+            photoProgress: payload.new.photo_progress,
+            photoAfter: payload.new.photo_after,
+            completedAt: payload.new.completed_at,
+            createdAt: payload.new.created_at || new Date().toISOString(),
+          };
+          setSpecialJobs((prev) => {
+            if (prev.some((s) => s.id === newJob.id)) return prev;
+            return [newJob, ...prev];
+          });
+        } else if (payload.eventType === 'UPDATE' && payload.new) {
+          setSpecialJobs((prev) =>
+            prev.map((s) =>
+              s.id === payload.new.id
+                ? {
+                    ...s,
+                    status: payload.new.status || s.status,
+                    completedAt: payload.new.completed_at || s.completedAt,
+                    photoBefore: payload.new.photo_before || s.photoBefore,
+                    photoProgress: payload.new.photo_progress || s.photoProgress,
+                    photoAfter: payload.new.photo_after || s.photoAfter,
+                  }
+                : s
+            )
+          );
+        } else if (payload.eventType === 'DELETE' && payload.old) {
+          setSpecialJobs((prev) => prev.filter((s) => s.id !== payload.old.id));
+        }
+      },
+    });
+
+    return () => {
+      isMounted = false;
+      unsubscribe();
+    };
+  }, []);
+
   useEffect(() => {
     localStorage.setItem('sco_master_programs', JSON.stringify(masterPrograms));
   }, [masterPrograms]);
@@ -1086,7 +1392,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
     // Periksa Tugas yang belum selesai melewati deadline
     tasks.forEach((t) => {
-      if (t.status === 'in_progress' || t.status === 'scheduled') {
+      if (t.status === 'in_progress' || t.status === 'pending') {
         const deadlineHour = parseInt(t.deadlineTime?.split(':')[0] || '24', 10);
         if (deadlineHour <= currentHour) {
           overdueTasksCount++;
@@ -1423,6 +1729,10 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             shiftName: 'Pagi (06:00 - 14:00)',
             assignedAreas: [],
             status: 'active',
+            rating: 5,
+            tasksCompletedToday: 0,
+            totalTasksToday: 0,
+            isClockedIn: false,
           },
         ]);
       }
@@ -1578,7 +1888,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             (i) => i.status === 'issue' || i.status === 'dirty' || i.status === 'broken'
           );
           const allClean = updatedItems.every((i) => i.status === 'clean');
-          const slotStatus = hasIssue ? 'has_issue' : allClean ? 'clean' : 'pending';
+          const slotStatus: 'clean' | 'has_issue' | 'pending' = hasIssue ? 'has_issue' : allClean ? 'clean' : 'pending';
 
           return {
             ...slot,
@@ -1639,15 +1949,16 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           if (slot.hour !== hour) return slot;
           const currentItems = ensureCompleteSlotItems(slot.items, category, checklistTemplates);
           const updatedItems = currentItems.map((item) => ({ ...item, status }));
+          const slotStatus: 'clean' | 'has_issue' | 'pending' =
+            status === 'clean'
+              ? 'clean'
+              : status === 'issue' || status === 'dirty' || status === 'broken'
+              ? 'has_issue'
+              : 'pending';
           return {
             ...slot,
             items: updatedItems,
-            status:
-              status === 'clean'
-                ? 'clean'
-                : status === 'issue' || status === 'dirty' || status === 'broken'
-                ? 'has_issue'
-                : 'pending',
+            status: slotStatus,
             checkedBy,
             checkedAt: nowStr,
           };
@@ -1733,7 +2044,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           }));
           return {
             ...slot,
-            status: 'clean',
+            status: 'clean' as const,
             checkedBy,
             checkedAt: nowStr,
             supervisorVerified: true,
@@ -1851,6 +2162,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       createdAt: now.toISOString(),
     };
     setSpecialJobs((prev) => [newJob, ...prev]);
+    upsertSupabaseSpecialJob(newJob);
 
     const nowStr = now.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB';
     const sourceLabel =
@@ -1966,14 +2278,19 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setMasterPrograms((prev) => [newItem, ...prev]);
   };
 
-  const updateMasterProgram = (id: string, updates: Partial<MasterCleaningProgramItem>) => {
+  const updateMasterProgram = (
+    idOrItem: string | MasterCleaningProgramItem,
+    updates?: Partial<MasterCleaningProgramItem>
+  ) => {
+    const id = typeof idOrItem === 'string' ? idOrItem : idOrItem.id;
+    const itemUpdates = typeof idOrItem === 'string' ? (updates || {}) : idOrItem;
     setMasterPrograms((prev) =>
       prev.map((m) =>
         m.id === id
           ? {
               ...m,
-              ...updates,
-              ...(updates.frequency ? { frequency: normalizeFrequencyCode(updates.frequency) } : {}),
+              ...itemUpdates,
+              ...(itemUpdates.frequency ? { frequency: normalizeFrequencyCode(itemUpdates.frequency) } : {}),
               updatedAt: new Date().toISOString(),
             }
           : m
@@ -2231,12 +2548,14 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setTasks((prev) =>
       prev.map((t) => {
         if (t.id !== taskId) return t;
-        return {
+        const updated = {
           ...t,
           status,
           ...(status === 'in_progress' && !t.startTime ? { startTime: nowStr } : {}),
           ...(status === 'completed' ? { completedTime: nowStr } : {}),
         };
+        upsertSupabaseTask(updated);
+        return updated;
       })
     );
   };
@@ -2257,9 +2576,9 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setTasks((prev) =>
       prev.map((t) => {
         if (t.id !== taskId) return t;
-        return {
+        const updated = {
           ...t,
-          status: 'pending_qc',
+          status: 'pending_qc' as const,
           completedTime: nowStr,
           checklistArea: payload.checklistArea,
           suppliesUsed: [],
@@ -2268,6 +2587,8 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           photoProgress: payload.photoProgress || t.photoProgress,
           photoAfter: payload.photoAfter,
         };
+        upsertSupabaseTask(updated);
+        return updated;
       })
     );
 
@@ -2473,6 +2794,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     };
 
     setComplaints((prev) => [newTicket, ...prev]);
+    upsertSupabaseComplaint(newTicket);
 
     const notif: AppNotification = {
       id: `notif-complaint-${Date.now()}`,
@@ -2524,6 +2846,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     );
 
     if (targetTicket) {
+      upsertSupabaseComplaint(targetTicket);
       const notif: AppNotification = {
         id: `notif-${Date.now()}`,
         title: '⚙️ Komplain Dalam Pengerjaan (Di Kerjakan)',
@@ -2727,6 +3050,17 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     );
 
     const targetComplaint = complaints.find((c) => c.id === complaintId);
+    if (targetComplaint) {
+      upsertSupabaseComplaint({
+        ...targetComplaint,
+        status: 'resolved',
+        resolvedAt: `Hari ini, ${nowStr}`,
+        resolutionNotes,
+        photoProgress: photoProgress || targetComplaint.photoProgress,
+        photoResolved: photoResolved || targetComplaint.photoResolved,
+      });
+    }
+
     const notif: AppNotification = {
       id: `notif-${Date.now()}`,
       title: '✅ Komplain Berhasil Ditangani!',
@@ -2770,6 +3104,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     };
 
     setDamageReports((prev) => [newReport, ...prev]);
+    upsertSupabaseDamageReport(newReport);
 
     // Push notification for team
     const notif: AppNotification = {
@@ -3471,6 +3806,10 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         addSpecialJob,
         updateSpecialJob,
         deleteSpecialJob,
+
+        // Supabase Realtime State & Sync
+        supabaseStatus,
+        syncToSupabase,
       }}
     >
       {children}

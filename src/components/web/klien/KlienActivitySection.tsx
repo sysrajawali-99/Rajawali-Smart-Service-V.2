@@ -150,7 +150,7 @@ export const KlienActivitySection: React.FC = () => {
   };
 
   // Project name lookup helper (hanya sesuai project user login)
-  const getProjectNameById = () => {
+  const getProjectNameById = (_projectId?: string) => {
     return activeProject.name;
   };
 
@@ -1593,7 +1593,7 @@ export const KlienActivitySection: React.FC = () => {
             <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-100 space-y-2 text-xs">
               <div>
                 <span className="font-bold text-slate-700 block">Deskripsi Pekerjaan:</span>
-                <p className="text-slate-700 mt-0.5">{selectedSpecialDetail.workDescription}</p>
+                <p className="text-slate-700 mt-0.5">{selectedSpecialDetail.workDescription || selectedSpecialDetail.title}</p>
               </div>
               <div>
                 <span className="font-bold text-slate-700 block">Metode &amp; SOP:</span>

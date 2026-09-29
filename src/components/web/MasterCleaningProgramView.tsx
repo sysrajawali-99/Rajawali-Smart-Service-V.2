@@ -183,7 +183,7 @@ export const MasterCleaningProgramView: React.FC = () => {
     setFormWorkDescription('');
     setFormWorkMethod('');
     setFormLocation(areas[0]?.name || 'Lobby Utama');
-    setFormFrequency('bulanan');
+    setFormFrequency('M');
     setFormPicName(cleaners[0]?.name || 'Budi Santoso');
 
     // Default empty days
@@ -201,7 +201,7 @@ export const MasterCleaningProgramView: React.FC = () => {
     setFormWorkDescription(item.workDescription);
     setFormWorkMethod(item.workMethod);
     setFormLocation(item.location);
-    setFormFrequency(item.frequency);
+    setFormFrequency(normalizeFrequencyCode(item.frequency));
     setFormPicName(item.picName);
     setFormDays({ ...item.days });
     setIsAddModalOpen(true);
@@ -228,6 +228,7 @@ export const MasterCleaningProgramView: React.FC = () => {
     } else {
       addMasterProgram({
         projectId: activeProject.id,
+        category: 'periodic',
         month: selectedMonth,
         year: selectedYear,
         workDescription: formWorkDescription.trim(),
@@ -621,7 +622,7 @@ export const MasterCleaningProgramView: React.FC = () => {
             </div>
           ) : (
             filteredPrograms.map((program, index) => {
-              const freqMeta = FREQUENCY_META[normalizeFrequencyCode(program.frequencyCode)];
+              const freqMeta = FREQUENCY_META[normalizeFrequencyCode(program.frequency)];
               const planCount = Object.values(program.days).filter((s) => s === 'planned').length;
               const isExpanded = expandedCardId === program.id;
 

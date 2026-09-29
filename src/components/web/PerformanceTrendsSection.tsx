@@ -98,7 +98,7 @@ export const PerformanceTrendsSection: React.FC = () => {
         if (slot.status === 'clean') {
           item.totalChecks += 1;
           item.cleanCount += 1;
-        } else if (slot.status === 'has_issue' || slot.status === 'dirty' || slot.status === 'broken') {
+        } else if (slot.status === 'has_issue') {
           item.totalChecks += 1;
           item.issueCount += 1;
         }

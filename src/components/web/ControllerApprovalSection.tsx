@@ -201,11 +201,11 @@ export const ControllerApprovalSection: React.FC = () => {
                     </td>
 
                     <td className="py-2.5 px-3 text-center font-mono text-slate-600 whitespace-nowrap">
-                      {task.completedAt || task.deadlineTime || '-'}
+                      {task.completedTime || task.completedAt || task.deadlineTime || '-'}
                     </td>
 
                     <td className="py-2.5 px-3 text-center">
-                      {task.photoProof || task.photoBefore ? (
+                      {task.photoAfter || task.photoProof || task.photoBefore ? (
                         <button
                           type="button"
                           onClick={() => setPreviewTask(task)}
@@ -328,16 +328,13 @@ export const ControllerApprovalSection: React.FC = () => {
           isOpen={!!previewTask}
           onClose={() => setPreviewTask(null)}
           title={`Bukti Kerja: ${previewTask.areaName}`}
-          taskTitle={previewTask.areaName}
-          locationName={previewTask.areaName}
+          areaName={previewTask.areaName}
           cleanerName={previewTask.cleanerName}
-          date={previewTask.deadlineTime || 'Hari ini'}
+          completedTime={previewTask.completedTime || previewTask.completedAt}
+          remarks={previewTask.remarks}
           photoBefore={previewTask.photoBefore}
           photoProgress={previewTask.photoProgress}
-          photoAfter={previewTask.photoProof || previewTask.photoAfter}
-          beforeTimestamp={previewTask.photoBeforeTimestamp}
-          progressTimestamp={previewTask.photoProgressTimestamp}
-          afterTimestamp={previewTask.photoProofTimestamp}
+          photoAfter={previewTask.photoAfter || previewTask.photoProof}
         />
       )}
     </div>

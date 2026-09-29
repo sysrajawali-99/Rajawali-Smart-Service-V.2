@@ -121,7 +121,7 @@ export const DashboardKpiSection: React.FC<DashboardKpiSectionProps> = ({
 
   // Konsolidasi Semua Pekerjaan (Tasks + MCP + Damaged Repaired)
   const consolidatedPlanned = tasks.length + mcpScheduledDays + damageReports.length;
-  const consolidatedProcessing = totalInProcessing + mcpInProgressDays + damageReports.filter((d) => d.status === 'dalam_proses').length;
+  const consolidatedProcessing = totalInProcessing + mcpInProgressDays + damageReports.filter((d) => d.status === 'dalam_penanganan').length;
   const consolidatedCompleted = completedCount + mcpDoneDays + damageReports.filter((d) => d.status === 'selesai').length;
   const consolidatedRate = Math.round(
     (consolidatedCompleted / (consolidatedPlanned || 1)) * 100

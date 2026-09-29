@@ -40,12 +40,15 @@ export type AttendanceStatusCode = 'H' | 'I' | 'S' | 'A' | 'L' | '-';
 export interface Cleaner {
   id: string;
   projectId?: string;
+  projectLocationId?: string;
+  role?: string;
   nik: string;
   name: string;
   photoUrl: string;
   phone: string;
   shiftId: string;
   shiftName: string;
+  shift?: string;
   assignedAreas: string[]; // Area IDs
   status: 'active' | 'on_break' | 'off';
   rating: number;
@@ -128,6 +131,8 @@ export interface CleaningTask {
   monthPeriod?: string; // Periode bulan (e.g. "2026-09")
   startTime?: string;
   completedTime?: string;
+  completedAt?: string;
+  zone?: string;
   durationMinutes?: number;
   checklistArea: TaskChecklistItem[];
   suppliesUsed: SupplyUsage[];
@@ -135,6 +140,10 @@ export interface CleaningTask {
   photoBefore?: string;
   photoProgress?: string; // Foto saat progress pengerjaan
   photoAfter?: string;
+  photoProof?: string;
+  photoBeforeTimestamp?: string;
+  photoProgressTimestamp?: string;
+  photoProofTimestamp?: string;
   qcScore?: number;
   qcStatus?: 'approved' | 'rejected' | 'pending';
   qcNotes?: string;
@@ -379,7 +388,7 @@ export interface MasterCleaningProgramItem {
   workDescription: string; // Uraian pekerjaan detail
   workMethod: string; // Metode pekerjaan, SOP, alat & chemical
   location: string; // Lokasi kerja spesifik di dalam site
-  category: 'daily' | 'periodic' | 'deep_clean' | 'special_treatment';
+  category?: 'daily' | 'weekly' | 'monthly' | 'periodic' | 'deep_clean' | 'special_treatment';
   frequency: ProgramFrequencyCode | 'harian' | 'mingguan' | 'dua_mingguan' | 'bulanan' | 'berkala' | string;
   picName: string; // Petugas / PIC penanggung jawab
   month: number; // 1 - 12
@@ -574,6 +583,7 @@ export interface SpecialJobItem {
   ticketNo: string; // e.g. "SPJ-2026-001"
   projectId: string;
   title: string; // Nama / Uraian Pekerjaan Special Job
+  workDescription?: string; // Alias for title / deskripsi pekerjaan
   workMethod: string; // Metode Pengerjaan, SOP, Alat & Chemical
   location: string; // Lokasi / Area Kerja
   floor: string; // Lantai / Zona
@@ -593,6 +603,7 @@ export interface SpecialJobItem {
   photoBefore?: string;
   photoProgress?: string;
   photoAfter?: string;
+  startedAt?: string;
   completedAt?: string;
   verifiedBySupervisor?: boolean;
   verifiedByName?: string;
