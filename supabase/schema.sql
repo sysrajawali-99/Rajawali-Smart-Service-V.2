@@ -1,13 +1,14 @@
 -- =========================================================================
 -- RAJAWALI SMART CLEANING OPERATIONS - SUPABASE DATABASE SCHEMA
 -- =========================================================================
--- Jalankan skrip SQL ini di Supabase Dashboard -> SQL Editor -> New Query -> Run
+-- Jalankan seluruh skrip SQL ini di Supabase Dashboard:
+-- SQL Editor -> New Query -> Tempel (Paste) -> Run
 -- =========================================================================
 
 -- 1. EXTENSIONS
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
--- 2. TABLE: TASKS (Tugas Pembersihan)
+-- 2. TABLE: TASKS (Tugas Pembersihan Lapangan)
 CREATE TABLE IF NOT EXISTS public.tasks (
     id TEXT PRIMARY KEY,
     project_id TEXT,
@@ -34,7 +35,7 @@ CREATE TABLE IF NOT EXISTS public.tasks (
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 3. TABLE: COMPLAINTS (Komplain & Tiket Bantuan)
+-- 3. TABLE: COMPLAINTS (Keluhan / Tiket Bantuan)
 CREATE TABLE IF NOT EXISTS public.complaints (
     id TEXT PRIMARY KEY,
     project_id TEXT,
@@ -47,16 +48,16 @@ CREATE TABLE IF NOT EXISTS public.complaints (
     status TEXT DEFAULT 'open',
     reporter_name TEXT,
     reporter_role TEXT,
-    reported_at TIMESTAMPTZ DEFAULT NOW(),
+    reported_at TEXT,
     assigned_to TEXT,
     photos JSONB DEFAULT '[]'::jsonb,
-    resolved_at TIMESTAMPTZ,
+    resolved_at TEXT,
     resolution_notes TEXT,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 4. TABLE: DAMAGE_REPORTS (Laporan Kerusakan Fasilitas)
+-- 4. TABLE: DAMAGE_REPORTS (Laporan Kerusakan Fasilitas & Aset)
 CREATE TABLE IF NOT EXISTS public.damage_reports (
     id TEXT PRIMARY KEY,
     project_id TEXT,
@@ -65,16 +66,16 @@ CREATE TABLE IF NOT EXISTS public.damage_reports (
     item_name TEXT NOT NULL,
     description TEXT,
     severity TEXT DEFAULT 'sedang',
-    status TEXT DEFAULT 'menunggu_verifikasi',
+    status TEXT DEFAULT 'dilaporkan',
     reporter_name TEXT,
-    reported_at TIMESTAMPTZ DEFAULT NOW(),
+    reported_at TEXT,
     photo_urls JSONB DEFAULT '[]'::jsonb,
     repair_notes TEXT,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 5. TABLE: SPECIAL_JOBS (Special Job & Pekerjaan Khusus)
+-- 5. TABLE: SPECIAL_JOBS (Pekerjaan Khusus / By Request)
 CREATE TABLE IF NOT EXISTS public.special_jobs (
     id TEXT PRIMARY KEY,
     ticket_no TEXT NOT NULL,
@@ -84,10 +85,10 @@ CREATE TABLE IF NOT EXISTS public.special_jobs (
     work_method TEXT,
     location TEXT,
     floor TEXT,
-    frequency TEXT,
+    frequency TEXT DEFAULT 'Special',
     pic_name TEXT,
     scheduled_date TEXT,
-    status TEXT DEFAULT 'draft',
+    status TEXT DEFAULT 'requested',
     photo_before TEXT,
     photo_progress TEXT,
     photo_after TEXT,
@@ -113,28 +114,40 @@ CREATE TABLE IF NOT EXISTS public.master_cleaning_programs (
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 7. ROW LEVEL SECURITY (RLS) POLICIES
+-- 7. ROW LEVEL SECURITY (RLS)
 ALTER TABLE public.tasks ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.complaints ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.damage_reports ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.special_jobs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.master_cleaning_programs ENABLE ROW LEVEL SECURITY;
 
--- Allow anonymous & authenticated reads/writes for operational client app
+-- 8. POLICIES (Full Access untuk Operasional Web App)
+DROP POLICY IF EXISTS "Public full access tasks" ON public.tasks;
 CREATE POLICY "Public full access tasks" ON public.tasks FOR ALL USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Public full access complaints" ON public.complaints;
 CREATE POLICY "Public full access complaints" ON public.complaints FOR ALL USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Public full access damage_reports" ON public.damage_reports;
 CREATE POLICY "Public full access damage_reports" ON public.damage_reports FOR ALL USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Public full access special_jobs" ON public.special_jobs;
 CREATE POLICY "Public full access special_jobs" ON public.special_jobs FOR ALL USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Public full access master_cleaning_programs" ON public.master_cleaning_programs;
 CREATE POLICY "Public full access master_cleaning_programs" ON public.master_cleaning_programs FOR ALL USING (true) WITH CHECK (true);
 
--- 8. ENABLE REALTIME ON KEY OPERATIONAL TABLES
--- Fitur Realtime Supabase agar update langsung broadcast ke semua device & Vercel
-BEGIN;
-  DROP PUBLICATION IF EXISTS supabase_realtime;
-  CREATE PUBLICATION supabase_realtime FOR TABLE 
-    public.tasks, 
-    public.complaints, 
-    public.damage_reports, 
-    public.special_jobs,
-    public.master_cleaning_programs;
-COMMIT;
+-- 9. ENABLE SUPABASE REALTIME PUBLICATION
+DO $$
+BEGIN
+  BEGIN
+    ALTER PUBLICATION supabase_realtime ADD TABLE 
+      public.tasks, 
+      public.complaints, 
+      public.damage_reports, 
+      public.special_jobs, 
+      public.master_cleaning_programs;
+  EXCEPTION
+    WHEN duplicate_object THEN NULL;
+  END;
+END $$;
