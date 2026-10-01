@@ -73,17 +73,15 @@ import {
 } from '../utils/checklistHelper';
 import confetti from 'canvas-confetti';
 import {
-  isSupabaseConfigured,
-  fetchSupabaseTasks,
-  upsertSupabaseTask,
-  fetchSupabaseComplaints,
-  upsertSupabaseComplaint,
-  fetchSupabaseDamageReports,
-  upsertSupabaseDamageReport,
-  fetchSupabaseSpecialJobs,
-  upsertSupabaseSpecialJob,
-  subscribeToSupabaseRealtime,
-} from '../lib/supabaseService';
+  COLLECTIONS,
+  getRecords,
+  upsertRecord,
+  deleteRecord,
+  onRecordChange,
+  onServerReconnect,
+  fetchServerStatus,
+  socket,
+} from '../services/apiService';
 
 interface CleaningContextType {
   userRole: UserRole;
@@ -909,32 +907,74 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     localStorage.setItem('sco_special_jobs', JSON.stringify(specialJobs));
   }, [specialJobs]);
 
-  // ==================== SUPABASE REALTIME STATE & SYNC ====================
+  // ==================== VPS POSTGRESQL & SOCKET.IO REALTIME SYNC ====================
   const [supabaseStatus, setSupabaseStatus] = useState<{
     isConfigured: boolean;
     status: string;
     lastSyncedAt: string | null;
   }>({
-    isConfigured: isSupabaseConfigured(),
-    status: isSupabaseConfigured() ? 'CONNECTING' : 'LOCAL_STORAGE',
+    isConfigured: true,
+    status: socket.connected ? 'CONNECTED' : 'CONNECTING',
     lastSyncedAt: null,
   });
 
+  // Pull all collections from backend (auto-pull on load & reconnect)
+  const pullAllDataFromServer = async () => {
+    try {
+      setSupabaseStatus((prev) => ({ ...prev, status: 'SYNCING' }));
+      const [
+        remoteTasks,
+        remoteComplaints,
+        remoteDamage,
+        remoteSpecial,
+        remoteMcp,
+        remoteDailyChecklists,
+      ] = await Promise.all([
+        getRecords<CleaningTask>(COLLECTIONS.TASKS),
+        getRecords<Complaint>(COLLECTIONS.COMPLAINTS),
+        getRecords<FacilityDamageReport>(COLLECTIONS.DAMAGE_REPORTS),
+        getRecords<SpecialJobItem>(COLLECTIONS.SPECIAL_JOBS),
+        getRecords<MasterCleaningProgramItem>(COLLECTIONS.MASTER_PROGRAMS),
+        getRecords<DailyAreaChecklist>(COLLECTIONS.DAILY_CHECKLISTS),
+      ]);
+
+      if (remoteTasks.length > 0) setTasks(remoteTasks);
+      if (remoteComplaints.length > 0) setComplaints(remoteComplaints);
+      if (remoteDamage.length > 0) setDamageReports(remoteDamage);
+      if (remoteSpecial.length > 0) setSpecialJobs(remoteSpecial);
+      if (remoteMcp.length > 0) setMasterPrograms(remoteMcp);
+      if (remoteDailyChecklists.length > 0) setDailyChecklists(remoteDailyChecklists);
+
+      const nowStr = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB';
+      setSupabaseStatus({
+        isConfigured: true,
+        status: 'CONNECTED',
+        lastSyncedAt: nowStr,
+      });
+    } catch (err) {
+      console.warn('[Auto-Pull] Gagal mengambil data dari server:', err);
+      setSupabaseStatus((prev) => ({ ...prev, status: 'ERROR' }));
+    }
+  };
+
+  // Manual push sync to server
   const syncToSupabase = async () => {
-    if (!isSupabaseConfigured()) return;
     try {
       setSupabaseStatus((prev) => ({ ...prev, status: 'SYNCING' }));
       for (const t of tasks) {
-        await upsertSupabaseTask(t);
+        await upsertRecord(COLLECTIONS.TASKS, t);
       }
       for (const c of complaints) {
-        await upsertSupabaseComplaint(c);
+        await upsertRecord(COLLECTIONS.COMPLAINTS, c);
       }
       for (const d of damageReports) {
-        await upsertSupabaseDamageReport(d);
+        await upsertRecord(COLLECTIONS.DAMAGE_REPORTS, d);
       }
       for (const s of specialJobs) {
-        await upsertSupabaseSpecialJob(s);
+        await upsertRecord(COLLECTIONS.SPECIAL_JOBS, s);
+      }
+      for (const m of masterPrograms) {
+        await upsertRecord(COLLECTIONS.MASTER_PROGRAMS, m);
       }
       const nowStr = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB';
       setSupabaseStatus({
@@ -943,250 +983,120 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         lastSyncedAt: nowStr,
       });
     } catch (e) {
-      console.warn('[Supabase Sync Error]', e);
+      console.warn('[Server Sync Error]', e);
       setSupabaseStatus((prev) => ({ ...prev, status: 'ERROR' }));
     }
   };
 
   useEffect(() => {
-    if (!isSupabaseConfigured()) return;
-
     let isMounted = true;
-    async function loadInitialSupabaseData() {
-      try {
-        const [remoteTasks, remoteComplaints, remoteDamage, remoteSpecial] = await Promise.all([
-          fetchSupabaseTasks(),
-          fetchSupabaseComplaints(),
-          fetchSupabaseDamageReports(),
-          fetchSupabaseSpecialJobs(),
-        ]);
-        if (!isMounted) return;
-        if (remoteTasks && remoteTasks.length > 0) setTasks(remoteTasks);
-        if (remoteComplaints && remoteComplaints.length > 0) setComplaints(remoteComplaints);
-        if (remoteDamage && remoteDamage.length > 0) setDamageReports(remoteDamage);
-        if (remoteSpecial && remoteSpecial.length > 0) setSpecialJobs(remoteSpecial);
 
-        const nowStr = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB';
-        setSupabaseStatus({
-          isConfigured: true,
-          status: 'CONNECTED',
-          lastSyncedAt: nowStr,
-        });
-      } catch (err) {
-        console.warn('[Supabase] Initial fetch error:', err);
-      }
-    }
-    loadInitialSupabaseData();
+    // 1. Initial Auto-pull on app load
+    pullAllDataFromServer();
 
-    const unsubscribe = subscribeToSupabaseRealtime({
-      onStatusChange: (status) => {
-        if (!isMounted) return;
-        setSupabaseStatus((prev) => ({
-          ...prev,
-          status: status === 'SUBSCRIBED' ? 'CONNECTED' : status,
-          lastSyncedAt: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB',
-        }));
-      },
-      onTaskChange: (payload) => {
-        if (!isMounted) return;
-        if (payload.eventType === 'INSERT' && payload.new) {
-          const newTask: CleaningTask = {
-            id: payload.new.id,
-            areaId: payload.new.area_id || '',
-            areaName: payload.new.area_name || payload.new.title,
-            buildingFloor: 'Lt. 1',
-            cleanerId: payload.new.cleaner_id || '',
-            cleanerName: payload.new.cleaner_name || '',
-            shift: 'Pagi (06:00 - 14:00)',
-            scheduledTime: payload.new.scheduled_time || '08:00',
-            deadlineTime: payload.new.deadline_time || '10:00',
-            status: payload.new.status || 'pending',
-            checklistArea: payload.new.checklist_items || [],
-            suppliesUsed: payload.new.supplies_used || [],
-            photoBefore: payload.new.photo_before,
-            photoProgress: payload.new.photo_progress,
-            photoAfter: payload.new.photo_after,
-            photoProof: payload.new.photo_proof,
-            completedTime: payload.new.completed_time,
-            completedAt: payload.new.completed_at,
-            remarks: payload.new.remarks,
-            workDescription: payload.new.title,
-          };
-          setTasks((prev) => {
-            if (prev.some((t) => t.id === newTask.id)) return prev;
-            return [newTask, ...prev];
-          });
-        } else if (payload.eventType === 'UPDATE' && payload.new) {
-          setTasks((prev) =>
-            prev.map((t) =>
-              t.id === payload.new.id
-                ? {
-                    ...t,
-                    status: payload.new.status || t.status,
-                    completedTime: payload.new.completed_time || t.completedTime,
-                    completedAt: payload.new.completed_at || t.completedAt,
-                    photoBefore: payload.new.photo_before || t.photoBefore,
-                    photoProgress: payload.new.photo_progress || t.photoProgress,
-                    photoAfter: payload.new.photo_after || t.photoAfter,
-                    photoProof: payload.new.photo_proof || t.photoProof,
-                    remarks: payload.new.remarks || t.remarks,
-                  }
-                : t
-            )
-          );
-        } else if (payload.eventType === 'DELETE' && payload.old) {
-          setTasks((prev) => prev.filter((t) => t.id !== payload.old.id));
-        }
-      },
-      onComplaintChange: (payload) => {
-        if (!isMounted) return;
-        if (payload.eventType === 'INSERT' && payload.new) {
-          const hours = 2;
-          const now = Date.now();
-          const newComplaint: Complaint = {
-            id: payload.new.id,
-            projectId: payload.new.project_id || 'proj-1',
-            ticketNumber: payload.new.ticket_no || payload.new.id,
-            reporterName: payload.new.reporter_name || 'Pelapor',
-            reporterRole: payload.new.reporter_role || 'Staff',
-            areaId: 'area-1',
-            areaName: payload.new.location || 'Area',
-            floor: 'Lt. 1',
-            category: payload.new.category || 'kebersihan',
-            description: payload.new.description || payload.new.title || '',
-            priority: payload.new.priority || 'medium',
-            status: payload.new.status || 'open',
-            createdAt: payload.new.reported_at || payload.new.created_at || 'Hari ini, 08:00 WIB',
-            resolvedAt: payload.new.resolved_at,
-            assignedCleanerName: payload.new.assigned_to,
-            resolutionNotes: payload.new.resolution_notes,
-            slaHours: hours,
-            slaMinutes: hours * 60,
-            slaDeadline: '10:00 WIB',
-            deadlineTimestamp: now + hours * 3600 * 1000,
-          };
-          setComplaints((prev) => {
-            if (prev.some((c) => c.id === newComplaint.id)) return prev;
-            return [newComplaint, ...prev];
-          });
-        } else if (payload.eventType === 'UPDATE' && payload.new) {
-          setComplaints((prev) =>
-            prev.map((c) =>
-              c.id === payload.new.id
-                ? {
-                    ...c,
-                    status: payload.new.status || c.status,
-                    resolvedAt: payload.new.resolved_at || c.resolvedAt,
-                    assignedCleanerName: payload.new.assigned_to || c.assignedCleanerName,
-                    resolutionNotes: payload.new.resolution_notes || c.resolutionNotes,
-                  }
-                : c
-            )
-          );
-        } else if (payload.eventType === 'DELETE' && payload.old) {
-          setComplaints((prev) => prev.filter((c) => c.id !== payload.old.id));
-        }
-      },
-      onDamageReportChange: (payload) => {
-        if (!isMounted) return;
-        if (payload.eventType === 'INSERT' && payload.new) {
-          const newReport: FacilityDamageReport = {
-            id: payload.new.id,
-            ticketNo: payload.new.ticket_no || payload.new.id,
-            projectId: payload.new.project_id || 'proj-1',
-            itemName: payload.new.item_name || 'Fasilitas',
-            category: 'mekanikal',
-            locationName: payload.new.area_name || 'Area Gedung',
-            floor: 'Lantai GF',
-            damageLevel: payload.new.severity || 'sedang',
-            chronology: payload.new.description || '',
-            impact: 'Perlu penanganan teknisi',
-            actionTaken: 'Dipasang barikade pengaman',
-            status: payload.new.status || 'dilaporkan',
-            reportDate: (payload.new.reported_at || new Date().toISOString()).split('T')[0],
-            reporterName: payload.new.reporter_name || 'Petugas',
-            targetDepartment: 'Engineering & Maintenance',
-            photoBefore: (payload.new.photo_urls && payload.new.photo_urls[0]) || undefined,
-            technicianNotes: payload.new.repair_notes,
-            priority: 'medium',
-          };
-          setDamageReports((prev) => {
-            if (prev.some((d) => d.id === newReport.id)) return prev;
-            return [newReport, ...prev];
-          });
-        } else if (payload.eventType === 'UPDATE' && payload.new) {
-          setDamageReports((prev) =>
-            prev.map((d) =>
-              d.id === payload.new.id
-                ? {
-                    ...d,
-                    status: payload.new.status || d.status,
-                    technicianNotes: payload.new.repair_notes || d.technicianNotes,
-                  }
-                : d
-            )
-          );
-        } else if (payload.eventType === 'DELETE' && payload.old) {
-          setDamageReports((prev) => prev.filter((d) => d.id !== payload.old.id));
-        }
-      },
-      onSpecialJobChange: (payload) => {
-        if (!isMounted) return;
-        if (payload.eventType === 'INSERT' && payload.new) {
-          const newJob: SpecialJobItem = {
-            id: payload.new.id,
-            ticketNo: payload.new.ticket_no || payload.new.id,
-            projectId: payload.new.project_id || 'proj-1',
-            title: payload.new.title,
-            workDescription: payload.new.work_description || payload.new.title,
-            workMethod: payload.new.work_method || 'SOP Pembersihan Khusus',
-            location: payload.new.location || 'Area Khusus',
-            floor: payload.new.floor || 'Lt. 1',
-            sourceType: 'supervisor_request',
-            requestedBy: 'Supervisor Operasional',
-            requestedByRole: 'Supervisor Operasional',
-            requestReason: 'Pekerjaan khusus berkala',
-            assignedPicName: payload.new.pic_name || 'Petugas Kebersihan',
-            shiftName: 'Pagi (06:00 - 14:00)',
-            priority: 'high',
-            scheduledDate: payload.new.scheduled_date || new Date().toISOString().split('T')[0],
-            scheduledTime: '09:00 - 11:00 WIB',
-            targetDurationMinutes: 120,
-            status: payload.new.status || 'requested',
-            photoBefore: payload.new.photo_before,
-            photoProgress: payload.new.photo_progress,
-            photoAfter: payload.new.photo_after,
-            completedAt: payload.new.completed_at,
-            createdAt: payload.new.created_at || new Date().toISOString(),
-          };
-          setSpecialJobs((prev) => {
-            if (prev.some((s) => s.id === newJob.id)) return prev;
-            return [newJob, ...prev];
-          });
-        } else if (payload.eventType === 'UPDATE' && payload.new) {
-          setSpecialJobs((prev) =>
-            prev.map((s) =>
-              s.id === payload.new.id
-                ? {
-                    ...s,
-                    status: payload.new.status || s.status,
-                    completedAt: payload.new.completed_at || s.completedAt,
-                    photoBefore: payload.new.photo_before || s.photoBefore,
-                    photoProgress: payload.new.photo_progress || s.photoProgress,
-                    photoAfter: payload.new.photo_after || s.photoAfter,
-                  }
-                : s
-            )
-          );
-        } else if (payload.eventType === 'DELETE' && payload.old) {
-          setSpecialJobs((prev) => prev.filter((s) => s.id !== payload.old.id));
-        }
-      },
+    // 2. Auto-pull every time Socket.IO reconnects
+    const unsubscribeReconnect = onServerReconnect(() => {
+      if (!isMounted) return;
+      setSupabaseStatus((prev) => ({
+        ...prev,
+        status: 'CONNECTED',
+        lastSyncedAt: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB',
+      }));
+      pullAllDataFromServer();
     });
+
+    // 3. Real-time updates without page refresh via Socket.IO
+    const unsubscribeChanges = onRecordChange((evt) => {
+      if (!isMounted) return;
+      const { collection, id, data, isDeleted, action } = evt;
+
+      if (action === 'delete' || isDeleted) {
+        if (collection === COLLECTIONS.TASKS) setTasks((prev) => prev.filter((t) => t.id !== id));
+        if (collection === COLLECTIONS.COMPLAINTS) setComplaints((prev) => prev.filter((c) => c.id !== id));
+        if (collection === COLLECTIONS.DAMAGE_REPORTS) setDamageReports((prev) => prev.filter((d) => d.id !== id));
+        if (collection === COLLECTIONS.SPECIAL_JOBS) setSpecialJobs((prev) => prev.filter((s) => s.id !== id));
+        if (collection === COLLECTIONS.MASTER_PROGRAMS) setMasterPrograms((prev) => prev.filter((m) => m.id !== id));
+        if (collection === COLLECTIONS.DAILY_CHECKLISTS) setDailyChecklists((prev) => prev.filter((dc) => dc.id !== id));
+        return;
+      }
+
+      if (data) {
+        if (collection === COLLECTIONS.TASKS) {
+          setTasks((prev) => {
+            const idx = prev.findIndex((t) => t.id === id);
+            if (idx >= 0) {
+              const updated = [...prev];
+              updated[idx] = { ...updated[idx], ...data };
+              return updated;
+            }
+            return [data, ...prev];
+          });
+        } else if (collection === COLLECTIONS.COMPLAINTS) {
+          setComplaints((prev) => {
+            const idx = prev.findIndex((c) => c.id === id);
+            if (idx >= 0) {
+              const updated = [...prev];
+              updated[idx] = { ...updated[idx], ...data };
+              return updated;
+            }
+            return [data, ...prev];
+          });
+        } else if (collection === COLLECTIONS.DAMAGE_REPORTS) {
+          setDamageReports((prev) => {
+            const idx = prev.findIndex((d) => d.id === id);
+            if (idx >= 0) {
+              const updated = [...prev];
+              updated[idx] = { ...updated[idx], ...data };
+              return updated;
+            }
+            return [data, ...prev];
+          });
+        } else if (collection === COLLECTIONS.SPECIAL_JOBS) {
+          setSpecialJobs((prev) => {
+            const idx = prev.findIndex((s) => s.id === id);
+            if (idx >= 0) {
+              const updated = [...prev];
+              updated[idx] = { ...updated[idx], ...data };
+              return updated;
+            }
+            return [data, ...prev];
+          });
+        } else if (collection === COLLECTIONS.MASTER_PROGRAMS) {
+          setMasterPrograms((prev) => {
+            const idx = prev.findIndex((m) => m.id === id);
+            if (idx >= 0) {
+              const updated = [...prev];
+              updated[idx] = { ...updated[idx], ...data };
+              return updated;
+            }
+            return [data, ...prev];
+          });
+        } else if (collection === COLLECTIONS.DAILY_CHECKLISTS) {
+          setDailyChecklists((prev) => {
+            const idx = prev.findIndex((dc) => dc.id === id);
+            if (idx >= 0) {
+              const updated = [...prev];
+              updated[idx] = { ...updated[idx], ...data };
+              return updated;
+            }
+            return [data, ...prev];
+          });
+        }
+      }
+    });
+
+    const onSocketDisconnect = () => {
+      if (!isMounted) return;
+      setSupabaseStatus((prev) => ({ ...prev, status: 'DISCONNECTED' }));
+    };
+
+    socket.on('disconnect', onSocketDisconnect);
 
     return () => {
       isMounted = false;
-      unsubscribe();
+      unsubscribeReconnect();
+      unsubscribeChanges();
+      socket.off('disconnect', onSocketDisconnect);
     };
   }, []);
 
@@ -2162,7 +2072,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       createdAt: now.toISOString(),
     };
     setSpecialJobs((prev) => [newJob, ...prev]);
-    upsertSupabaseSpecialJob(newJob);
+    upsertRecord(COLLECTIONS.SPECIAL_JOBS, newJob);
 
     const nowStr = now.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB';
     const sourceLabel =
@@ -2188,12 +2098,18 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const updateSpecialJob = (id: string, updates: Partial<SpecialJobItem>) => {
     setSpecialJobs((prev) =>
-      prev.map((j) => (j.id === id ? { ...j, ...updates } : j))
+      prev.map((j) => {
+        if (j.id !== id) return j;
+        const updated = { ...j, ...updates };
+        upsertRecord(COLLECTIONS.SPECIAL_JOBS, updated);
+        return updated;
+      })
     );
   };
 
   const deleteSpecialJob = (id: string) => {
     setSpecialJobs((prev) => prev.filter((j) => j.id !== id));
+    deleteRecord(COLLECTIONS.SPECIAL_JOBS, id);
   };
 
   const addEmployeeTurnover = (record: Omit<EmployeeTurnoverRecord, 'id' | 'createdAt'>) => {
@@ -2276,6 +2192,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       updatedAt: new Date().toISOString(),
     };
     setMasterPrograms((prev) => [newItem, ...prev]);
+    upsertRecord(COLLECTIONS.MASTER_PROGRAMS, newItem);
   };
 
   const updateMasterProgram = (
@@ -2285,21 +2202,23 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     const id = typeof idOrItem === 'string' ? idOrItem : idOrItem.id;
     const itemUpdates = typeof idOrItem === 'string' ? (updates || {}) : idOrItem;
     setMasterPrograms((prev) =>
-      prev.map((m) =>
-        m.id === id
-          ? {
-              ...m,
-              ...itemUpdates,
-              ...(itemUpdates.frequency ? { frequency: normalizeFrequencyCode(itemUpdates.frequency) } : {}),
-              updatedAt: new Date().toISOString(),
-            }
-          : m
-      )
+      prev.map((m) => {
+        if (m.id !== id) return m;
+        const updated = {
+          ...m,
+          ...itemUpdates,
+          ...(itemUpdates.frequency ? { frequency: normalizeFrequencyCode(itemUpdates.frequency) } : {}),
+          updatedAt: new Date().toISOString(),
+        };
+        upsertRecord(COLLECTIONS.MASTER_PROGRAMS, updated);
+        return updated;
+      })
     );
   };
 
   const deleteMasterProgram = (id: string) => {
     setMasterPrograms((prev) => prev.filter((m) => m.id !== id));
+    deleteRecord(COLLECTIONS.MASTER_PROGRAMS, id);
   };
 
   const toggleMasterProgramDay = (programId: string, day: number, forcedStatus?: ProgramDayStatus) => {
@@ -2311,7 +2230,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           forcedStatus !== undefined
             ? forcedStatus
             : getNextProgramDayStatus(currentStatus);
-        return {
+        const updated = {
           ...m,
           days: {
             ...m.days,
@@ -2319,6 +2238,8 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           },
           updatedAt: new Date().toISOString(),
         };
+        upsertRecord(COLLECTIONS.MASTER_PROGRAMS, updated);
+        return updated;
       })
     );
   };
@@ -2331,11 +2252,13 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         days.forEach((d) => {
           newDays[d] = status;
         });
-        return {
+        const updated = {
           ...m,
           days: newDays,
           updatedAt: new Date().toISOString(),
         };
+        upsertRecord(COLLECTIONS.MASTER_PROGRAMS, updated);
+        return updated;
       })
     );
   };
@@ -2351,6 +2274,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       updatedAt: new Date().toISOString(),
     };
     setMasterPrograms((prev) => [duplicated, ...prev]);
+    upsertRecord(COLLECTIONS.MASTER_PROGRAMS, duplicated);
   };
 
   const activeCleaner = filteredCleaners.find((c) => c.id === activeCleanerId) || filteredCleaners[0] || cleaners[0];
@@ -2554,7 +2478,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           ...(status === 'in_progress' && !t.startTime ? { startTime: nowStr } : {}),
           ...(status === 'completed' ? { completedTime: nowStr } : {}),
         };
-        upsertSupabaseTask(updated);
+        upsertRecord(COLLECTIONS.TASKS, updated);
         return updated;
       })
     );
@@ -2587,7 +2511,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           photoProgress: payload.photoProgress || t.photoProgress,
           photoAfter: payload.photoAfter,
         };
-        upsertSupabaseTask(updated);
+        upsertRecord(COLLECTIONS.TASKS, updated);
         return updated;
       })
     );
@@ -2794,7 +2718,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     };
 
     setComplaints((prev) => [newTicket, ...prev]);
-    upsertSupabaseComplaint(newTicket);
+    upsertRecord(COLLECTIONS.COMPLAINTS, newTicket);
 
     const notif: AppNotification = {
       id: `notif-complaint-${Date.now()}`,
@@ -2846,7 +2770,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     );
 
     if (targetTicket) {
-      upsertSupabaseComplaint(targetTicket);
+      upsertRecord(COLLECTIONS.COMPLAINTS, targetTicket);
       const notif: AppNotification = {
         id: `notif-${Date.now()}`,
         title: '⚙️ Komplain Dalam Pengerjaan (Di Kerjakan)',
@@ -3051,7 +2975,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
     const targetComplaint = complaints.find((c) => c.id === complaintId);
     if (targetComplaint) {
-      upsertSupabaseComplaint({
+      upsertRecord(COLLECTIONS.COMPLAINTS, {
         ...targetComplaint,
         status: 'resolved',
         resolvedAt: `Hari ini, ${nowStr}`,
@@ -3104,7 +3028,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     };
 
     setDamageReports((prev) => [newReport, ...prev]);
-    upsertSupabaseDamageReport(newReport);
+    upsertRecord(COLLECTIONS.DAMAGE_REPORTS, newReport);
 
     // Push notification for team
     const notif: AppNotification = {
@@ -3122,20 +3046,22 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const updateDamageReport = (id: string, updates: Partial<FacilityDamageReport>) => {
     setDamageReports((prev) =>
-      prev.map((r) =>
-        r.id === id
-          ? {
-              ...r,
-              ...updates,
-              updatedAt: new Date().toISOString(),
-            }
-          : r
-      )
+      prev.map((r) => {
+        if (r.id !== id) return r;
+        const updated = {
+          ...r,
+          ...updates,
+          updatedAt: new Date().toISOString(),
+        };
+        upsertRecord(COLLECTIONS.DAMAGE_REPORTS, updated);
+        return updated;
+      })
     );
   };
 
   const deleteDamageReport = (id: string) => {
     setDamageReports((prev) => prev.filter((r) => r.id !== id));
+    deleteRecord(COLLECTIONS.DAMAGE_REPORTS, id);
   };
 
   const resolveDamageReport = (
@@ -3152,21 +3078,22 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     const dateStr = now.toISOString().split('T')[0];
 
     setDamageReports((prev) =>
-      prev.map((r) =>
-        r.id === id
-          ? {
-              ...r,
-              status: 'selesai',
-              repairedDate: dateStr,
-              repairedTime: nowStr,
-              technicianNotes: resolutionPayload.technicianNotes || r.technicianNotes,
-              photoAfter: resolutionPayload.photoAfter || r.photoAfter,
-              technicianName: resolutionPayload.technicianName || r.technicianName,
-              costEstimate: resolutionPayload.costEstimate !== undefined ? resolutionPayload.costEstimate : r.costEstimate,
-              updatedAt: now.toISOString(),
-            }
-          : r
-      )
+      prev.map((r) => {
+        if (r.id !== id) return r;
+        const updated = {
+          ...r,
+          status: 'selesai' as const,
+          repairedDate: dateStr,
+          repairedTime: nowStr,
+          technicianNotes: resolutionPayload.technicianNotes || r.technicianNotes,
+          photoAfter: resolutionPayload.photoAfter || r.photoAfter,
+          technicianName: resolutionPayload.technicianName || r.technicianName,
+          costEstimate: resolutionPayload.costEstimate !== undefined ? resolutionPayload.costEstimate : r.costEstimate,
+          updatedAt: now.toISOString(),
+        };
+        upsertRecord(COLLECTIONS.DAMAGE_REPORTS, updated);
+        return updated;
+      })
     );
 
     const target = damageReports.find((r) => r.id === id);

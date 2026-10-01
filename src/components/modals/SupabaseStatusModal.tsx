@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Database, CheckCircle2, AlertCircle, RefreshCw, Copy, Check, Radio, ExternalLink } from 'lucide-react';
+import { X, Database, CheckCircle2, AlertCircle, RefreshCw, Copy, Check, Radio, Server } from 'lucide-react';
 import { useCleaning } from '../../context/CleaningContext';
 
 interface SupabaseStatusModalProps {
@@ -46,24 +46,24 @@ export const SupabaseStatusModal: React.FC<SupabaseStatusModalProps> = ({ isOpen
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h3 className="font-bold text-slate-800 text-base">Supabase Realtime &amp; Deployment</h3>
+                <h3 className="font-bold text-slate-800 text-base">Backend VPS &amp; Realtime PostgreSQL</h3>
                 <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${
                   isConnected
                     ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
                     : 'bg-amber-100 text-amber-800 border border-amber-300'
                 }`}>
                   <span className={`w-1.5 h-1.5 rounded-full ${isConnected ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`} />
-                  {isConnected ? 'Realtime Connected' : 'Mode Lokal (Browser)'}
+                  {isConnected ? 'Realtime Socket.IO Connected' : 'Menghubungkan ke Server...'}
                 </span>
               </div>
               <p className="text-xs text-slate-500 mt-0.5">
-                Sinkronisasi database PostgreSQL &amp; otomasi update via GitHub + Vercel
+                Sinkronisasi data PostgreSQL (tabel records) &amp; update real-time multi-perangkat via Socket.IO
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 transition-colors"
+            className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
@@ -88,12 +88,12 @@ export const SupabaseStatusModal: React.FC<SupabaseStatusModalProps> = ({ isOpen
                   )}
                   <span className="text-sm font-semibold text-slate-800">
                     {isConnected
-                      ? 'Terhubung ke Database Supabase'
-                      : 'Berjalan dalam Local Storage (Siap Disambungkan)'}
+                      ? 'Terhubung ke Backend VPS & Realtime Socket.IO'
+                      : 'Menghubungkan ke Backend VPS...'}
                   </span>
                 </div>
                 <p className="text-[11px] text-slate-500 mt-1">
-                  Status Channel: <code className="bg-white px-1.5 py-0.5 rounded font-mono text-slate-700 border border-slate-200">{supabaseStatus.status}</code>
+                  Status Socket: <code className="bg-white px-1.5 py-0.5 rounded font-mono text-slate-700 border border-slate-200">{supabaseStatus.status}</code>
                   {supabaseStatus.lastSyncedAt && ` • Terakhir sinkron: ${supabaseStatus.lastSyncedAt}`}
                 </p>
               </div>
@@ -113,25 +113,25 @@ export const SupabaseStatusModal: React.FC<SupabaseStatusModalProps> = ({ isOpen
             {syncSuccess && (
               <div className="mt-2.5 p-2 bg-emerald-100 border border-emerald-300 text-emerald-800 rounded-lg text-[11px] flex items-center gap-1.5">
                 <Check className="w-3.5 h-3.5 shrink-0" />
-                Seluruh data tugas, komplain, dan pekerjaan berhasil disinkronkan ke Supabase!
+                Seluruh data tugas, komplain, laporan kerusakan, dan pekerjaan khusus berhasil disinkronkan ke PostgreSQL!
               </div>
             )}
           </div>
 
-          {/* Panduan Alur CI/CD Otomatis: GitHub -> Vercel -> Supabase */}
+          {/* Arsitektur Backend VPS */}
           <div className="space-y-3">
             <h4 className="font-bold text-slate-800 text-xs flex items-center gap-1.5">
               <Radio className="w-4 h-4 text-sky-600" />
-              Alur Realtime Otomatis: GitHub ➔ Vercel ➔ Supabase
+              Arsitektur Data Mandiri di VPS
             </h4>
             
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 flex flex-col justify-between">
                 <div>
                   <div className="w-6 h-6 rounded-full bg-slate-900 text-white flex items-center justify-center font-bold text-[10px] mb-2">1</div>
-                  <h5 className="font-bold text-slate-800 mb-1">Update di GitHub</h5>
+                  <h5 className="font-bold text-slate-800 mb-1">Database PostgreSQL</h5>
                   <p className="text-[11px] text-slate-500">
-                    Setiap kali Anda melakukan <code className="bg-white px-1 py-0.5 rounded text-slate-700">git push</code> ke repository GitHub, webhook Vercel langsung mendeteksi perubahan.
+                    Data disimpan satu baris per item pada tabel <code className="bg-white px-1 py-0.5 rounded text-slate-700 font-mono">records</code> (collection, id, data JSONB) mencegah race condition.
                   </p>
                 </div>
               </div>
@@ -139,9 +139,9 @@ export const SupabaseStatusModal: React.FC<SupabaseStatusModalProps> = ({ isOpen
               <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 flex flex-col justify-between">
                 <div>
                   <div className="w-6 h-6 rounded-full bg-sky-600 text-white flex items-center justify-center font-bold text-[10px] mb-2">2</div>
-                  <h5 className="font-bold text-slate-800 mb-1">Auto-Deploy di Vercel</h5>
+                  <h5 className="font-bold text-slate-800 mb-1">REST API &amp; Uploads</h5>
                   <p className="text-[11px] text-slate-500">
-                    Vercel secara otomatis membangun dan menyebarkan versi web terbaru dalam hitungan detik tanpa downtime.
+                    Endpoint REST di Express mengelola CRUD data, dan foto diunggah ke folder <code className="bg-white px-1 py-0.5 rounded text-slate-700 font-mono">uploads/</code> tanpa base64.
                   </p>
                 </div>
               </div>
@@ -149,49 +149,41 @@ export const SupabaseStatusModal: React.FC<SupabaseStatusModalProps> = ({ isOpen
               <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 flex flex-col justify-between">
                 <div>
                   <div className="w-6 h-6 rounded-full bg-emerald-600 text-white flex items-center justify-center font-bold text-[10px] mb-2">3</div>
-                  <h5 className="font-bold text-slate-800 mb-1">Supabase Realtime</h5>
+                  <h5 className="font-bold text-slate-800 mb-1">Realtime Socket.IO</h5>
                   <p className="text-[11px] text-slate-500">
-                    Semua tester dan user yang membuka aplikasi langsung melihat data real-time via WebSocket tanpa refresh halaman.
+                    Setiap simpan/ubah/hapus disiarkan langsung ke semua perangkat yang sedang membuka aplikasi tanpa perlu refresh halaman.
                   </p>
                 </div>
               </div>
             </div>
           </div>
 
-          {/* Konfigurasi Environment Variables untuk Vercel */}
+          {/* Konfigurasi Environment Variables di VPS */}
           <div className="space-y-2">
-            <h4 className="font-bold text-slate-800 text-xs">Variabel Environment di Vercel (Project Settings ➔ Environment Variables)</h4>
+            <h4 className="font-bold text-slate-800 text-xs flex items-center gap-1.5">
+              <Server className="w-3.5 h-3.5 text-slate-600" />
+              Variabel Environment di VPS (.env)
+            </h4>
             <div className="bg-slate-900 text-slate-200 p-3 rounded-xl font-mono text-[11px] space-y-2">
               <div className="flex items-center justify-between">
-                <span>VITE_SUPABASE_URL=https://[YOUR-PROJECT].supabase.co</span>
+                <span>DATABASE_URL=postgresql://user:password@localhost:5432/cleaning_db</span>
                 <button
-                  onClick={() => copyToClipboard('VITE_SUPABASE_URL=https://your-project.supabase.co', 'url')}
-                  className="text-slate-400 hover:text-white px-2 py-0.5 rounded bg-slate-800 transition-colors"
+                  onClick={() => copyToClipboard('DATABASE_URL=postgresql://user:password@localhost:5432/cleaning_db', 'db')}
+                  className="text-slate-400 hover:text-white px-2 py-0.5 rounded bg-slate-800 transition-colors cursor-pointer"
                 >
-                  {copiedKey === 'url' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                  {copiedKey === 'db' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
                 </button>
               </div>
               <div className="flex items-center justify-between border-t border-slate-800 pt-2">
-                <span>VITE_SUPABASE_ANON_KEY=[YOUR-ANON-PUBLIC-KEY]</span>
+                <span>PORT=3000</span>
                 <button
-                  onClick={() => copyToClipboard('VITE_SUPABASE_ANON_KEY=your-anon-key', 'key')}
-                  className="text-slate-400 hover:text-white px-2 py-0.5 rounded bg-slate-800 transition-colors"
+                  onClick={() => copyToClipboard('PORT=3000', 'port')}
+                  className="text-slate-400 hover:text-white px-2 py-0.5 rounded bg-slate-800 transition-colors cursor-pointer"
                 >
-                  {copiedKey === 'key' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                  {copiedKey === 'port' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
                 </button>
               </div>
             </div>
-          </div>
-
-          {/* Lokasi Schema SQL */}
-          <div className="p-3.5 rounded-xl bg-sky-50 border border-sky-200 space-y-1.5">
-            <div className="flex items-center justify-between">
-              <span className="font-bold text-sky-900 text-xs">Skrip Database Supabase Siap Pakai</span>
-              <span className="text-[10px] bg-sky-200 text-sky-800 px-2 py-0.5 rounded-full font-bold">Tersedia di file</span>
-            </div>
-            <p className="text-[11px] text-sky-800">
-              Skrip tabel lengkap beserta policy RLS dan Realtime telah disiapkan pada file <code className="bg-white/80 px-1 py-0.5 rounded text-sky-950 font-bold font-mono">supabase/schema.sql</code>. Anda cukup membuka Supabase Dashboard ➔ <strong>SQL Editor</strong> ➔ Tempel &amp; klik <strong>Run</strong>.
-            </p>
           </div>
         </div>
 

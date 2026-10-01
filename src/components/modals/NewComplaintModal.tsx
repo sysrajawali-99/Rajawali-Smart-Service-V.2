@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { X, AlertCircle, Camera, Upload, Trash2, Clock, User, Plus } from 'lucide-react';
 import { useCleaning } from '../../context/CleaningContext';
+import { uploadPhoto } from '../../services/apiService';
 
 interface NewComplaintModalProps {
   isOpen: boolean;
@@ -147,7 +148,8 @@ export const NewComplaintModal: React.FC<NewComplaintModalProps> = ({ isOpen, on
     setErrorMsg(null);
     try {
       const result = await processPhotoWithTimestamp(file, areaLocation.trim() || undefined);
-      setPhotoBefore(result.dataUrl);
+      const uploadedUrl = await uploadPhoto(result.dataUrl);
+      setPhotoBefore(uploadedUrl || result.dataUrl);
       setPhotoMeta({ timestamp: result.timestamp, userName: result.userName });
     } catch {
       setErrorMsg('Gagal memproses foto. Silakan pilih file gambar lain.');

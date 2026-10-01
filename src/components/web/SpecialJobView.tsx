@@ -33,6 +33,7 @@ import {
   MasterCleaningProgramItem,
 } from '../../types';
 import { normalizeFrequencyCode } from '../../utils/mcpUtils';
+import { uploadPhoto } from '../../services/apiService';
 
 export interface SpecialJobViewProps {
   readOnlyStatus?: boolean;
@@ -350,7 +351,8 @@ export const SpecialJobView: React.FC<SpecialJobViewProps> = ({ readOnlyStatus =
     setIsProcessingPhoto(true);
     try {
       const res = await processPhotoWithTimestamp(file, newLocation || newFloor);
-      setNewPhotoBefore(res.dataUrl);
+      const uploadedUrl = await uploadPhoto(res.dataUrl);
+      setNewPhotoBefore(uploadedUrl || res.dataUrl);
       setNewPhotoMeta({ timestamp: res.timestamp, userName: res.userName });
     } catch {
       showToast('Gagal memproses foto.');
@@ -369,7 +371,8 @@ export const SpecialJobView: React.FC<SpecialJobViewProps> = ({ readOnlyStatus =
         file,
         completingJob ? `${completingJob.location} (${completingJob.floor})` : undefined
       );
-      setCompletionPhotoAfter(res.dataUrl);
+      const uploadedUrl = await uploadPhoto(res.dataUrl);
+      setCompletionPhotoAfter(uploadedUrl || res.dataUrl);
       setCompletionPhotoMeta({ timestamp: res.timestamp, userName: res.userName });
     } catch {
       showToast('Gagal memproses foto hasil selesai.');

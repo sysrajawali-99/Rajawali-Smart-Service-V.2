@@ -43,6 +43,7 @@ import {
   exportDamageSummaryToPDF,
   exportDamageWorkOrderToPDF,
 } from '../../utils/damagePdfExport';
+import { uploadPhoto } from '../../services/apiService';
 
 export const DamageReportView: React.FC = () => {
   const {
@@ -488,13 +489,27 @@ export const DamageReportView: React.FC = () => {
     }
   };
 
-  // Photo upload helper using FileReader
-  const handlePhotoUpload = (
+  // Photo upload helper using uploadPhoto
+  const handlePhotoUpload = async (
     e: React.ChangeEvent<HTMLInputElement>,
     type: 'before' | 'after'
   ) => {
     const file = e.target.files?.[0];
     if (!file) return;
+
+    try {
+      const uploadedUrl = await uploadPhoto(file);
+      if (uploadedUrl) {
+        if (type === 'before') {
+          setNewReport((prev) => ({ ...prev, photoBefore: uploadedUrl }));
+        } else {
+          setResolveForm((prev) => ({ ...prev, photoAfter: uploadedUrl }));
+        }
+        return;
+      }
+    } catch {
+      // fallback
+    }
 
     const reader = new FileReader();
     reader.onload = () => {

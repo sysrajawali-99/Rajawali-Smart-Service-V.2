@@ -14,6 +14,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { Complaint } from '../../types';
+import { uploadPhoto } from '../../services/apiService';
 
 interface ResolveComplaintModalProps {
   complaint: Complaint | null;
@@ -75,25 +76,38 @@ export const ResolveComplaintModal: React.FC<ResolveComplaintModalProps> = ({
   if (!isOpen || !complaint) return null;
 
   // File upload handlers
-  const handleFileUpload = (
+  const handleFileUpload = async (
     e: React.ChangeEvent<HTMLInputElement>,
     type: 'progress' | 'resolved'
   ) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Convert to DataURL base64 for reliable instant preview and storage
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = reader.result as string;
-      if (type === 'progress') {
-        setPhotoProgress(result);
+    try {
+      const uploadedUrl = await uploadPhoto(file);
+      if (uploadedUrl) {
+        if (type === 'progress') {
+          setPhotoProgress(uploadedUrl);
+        } else {
+          setPhotoResolved(uploadedUrl);
+        }
+        setErrorMessage(null);
       } else {
-        setPhotoResolved(result);
+        const reader = new FileReader();
+        reader.onload = () => {
+          const result = reader.result as string;
+          if (type === 'progress') {
+            setPhotoProgress(result);
+          } else {
+            setPhotoResolved(result);
+          }
+          setErrorMessage(null);
+        };
+        reader.readAsDataURL(file);
       }
-      setErrorMessage(null);
-    };
-    reader.readAsDataURL(file);
+    } catch {
+      setErrorMessage('Gagal memproses gambar');
+    }
     // Reset file input value to allow re-uploading same file if desired
     e.target.value = '';
   };

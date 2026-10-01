@@ -360,7 +360,7 @@ export const Header: React.FC = () => {
             </div>
           )}
 
-          {/* Supabase Status Button */}
+          {/* Database VPS & Realtime Status Button */}
           <button
             onClick={() => setShowSupabaseModal(true)}
             className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-semibold transition-colors cursor-pointer shadow-2xs ${
@@ -368,11 +368,11 @@ export const Header: React.FC = () => {
                 ? 'bg-emerald-50 border-emerald-200 text-emerald-700 hover:bg-emerald-100'
                 : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
             }`}
-            title="Status Supabase Realtime & Setup Vercel"
+            title="Status Database PostgreSQL & Realtime Socket.IO"
           >
             <Database className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
             <span className="hidden xl:inline text-[11px]">
-              {supabaseStatus.isConfigured ? 'Supabase' : 'Supabase'}
+              Database VPS
             </span>
             <span
               className={`w-2 h-2 rounded-full shrink-0 ${

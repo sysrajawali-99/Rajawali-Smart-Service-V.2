@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { useCleaning } from '../../context/CleaningContext';
 import { CompanyProfile, DEFAULT_COMPANY_PROFILE } from '../../types';
+import { uploadPhoto } from '../../services/apiService';
 
 export const CompanyProfileSettingsSection: React.FC = () => {
   const { companyProfile, updateCompanyProfile, resetCompanyProfile, activeProject } = useCleaning();
@@ -36,7 +37,7 @@ export const CompanyProfileSettingsSection: React.FC = () => {
     setFormData((prev) => ({ ...prev, [field]: value }));
   };
 
-  const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -44,6 +45,16 @@ export const CompanyProfileSettingsSection: React.FC = () => {
     if (file.size > 2 * 1024 * 1024) {
       alert('Ukuran file logo terlalu besar. Maksimal 2MB.');
       return;
+    }
+
+    try {
+      const uploadedUrl = await uploadPhoto(file);
+      if (uploadedUrl) {
+        setFormData((prev) => ({ ...prev, logoUrl: uploadedUrl }));
+        return;
+      }
+    } catch {
+      // fallback
     }
 
     const reader = new FileReader();

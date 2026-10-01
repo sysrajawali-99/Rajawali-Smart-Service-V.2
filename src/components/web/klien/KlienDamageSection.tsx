@@ -26,6 +26,7 @@ import {
 } from 'lucide-react';
 import { useCleaning } from '../../../context/CleaningContext';
 import { FacilityDamageReport, DamageCategory, DamageSeverity, DamageReportStatus } from '../../../types';
+import { uploadPhoto } from '../../../services/apiService';
 
 export const KlienDamageSection: React.FC = () => {
   const {
@@ -298,7 +299,8 @@ export const KlienDamageSection: React.FC = () => {
         ? `${newLocationName.trim()} (${newFloor})`
         : newFloor;
       const result = await processPhotoWithTimestamp(file, locLabel);
-      setNewPhotoBefore(result.dataUrl);
+      const uploadedUrl = await uploadPhoto(result.dataUrl);
+      setNewPhotoBefore(uploadedUrl || result.dataUrl);
       setNewPhotoMeta({ timestamp: result.timestamp, userName: result.userName });
     } catch {
       setPhotoError('Gagal memproses foto. Silakan coba ambil ulang atau pilih file gambar lain.');

@@ -12,6 +12,7 @@ import {
   ShieldAlert,
 } from 'lucide-react';
 import { analyzePhotoWatermark, createWatermarkedPhoto } from '../../utils/watermarkAnalyzer';
+import { uploadPhoto } from '../../services/apiService';
 
 interface PhotoWatermarkUploaderProps {
   label: string;
@@ -79,7 +80,7 @@ export const PhotoWatermarkUploader: React.FC<PhotoWatermarkUploaderProps> = ({
       }
 
       // Validasi berhasil!
-      const finalUrl =
+      let finalUrl =
         typeof imageSrc === 'string'
           ? imageSrc
           : await new Promise<string>((res) => {
@@ -87,6 +88,14 @@ export const PhotoWatermarkUploader: React.FC<PhotoWatermarkUploaderProps> = ({
               r.onload = () => res(r.result as string);
               r.readAsDataURL(imageSrc);
             });
+
+      // Upload ke backend VPS (/api/upload) agar foto tidak disimpan sebagai base64 di database
+      if (finalUrl.startsWith('data:image/')) {
+        const uploaded = await uploadPhoto(finalUrl);
+        if (uploaded) {
+          finalUrl = uploaded;
+        }
+      }
 
       setAnalysisSuccess(
         `✓ Watermark Terverifikasi: Tanggal ${analysis.detectedDate || '13/09/2026'}`

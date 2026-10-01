@@ -27,6 +27,7 @@ import {
 import { useCleaning } from '../../../context/CleaningContext';
 import { Complaint, PriorityLevel } from '../../../types';
 import { ComplaintCountdown } from '../../common/ComplaintCountdown';
+import { uploadPhoto } from '../../../services/apiService';
 
 export const KlienComplaintSection: React.FC = () => {
   const {
@@ -221,7 +222,8 @@ export const KlienComplaintSection: React.FC = () => {
     try {
       const locLabel = newAreaLocation.trim() || undefined;
       const result = await processPhotoWithTimestamp(file, locLabel);
-      setNewPhotoBefore(result.dataUrl);
+      const uploadedUrl = await uploadPhoto(result.dataUrl);
+      setNewPhotoBefore(uploadedUrl || result.dataUrl);
       setNewPhotoMeta({ timestamp: result.timestamp, userName: result.userName });
     } catch {
       setPhotoError('Gagal memproses foto. Silakan coba ambil ulang atau pilih file gambar lain.');
