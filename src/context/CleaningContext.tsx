@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import {
   UserRole,
   ViewMode,
@@ -918,6 +918,16 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     lastSyncedAt: null,
   });
 
+  // Refs for daily_checklists synchronization (Point A, B, C, D)
+  const initialSyncDone = useRef<boolean>(false);
+  const checklistSnapshotRef = useRef<Map<string, string>>(new Map());
+  const dirtyChecklistIdsRef = useRef<Set<string>>(new Set());
+  const dailyChecklistsRef = useRef<DailyAreaChecklist[]>(dailyChecklists);
+
+  useEffect(() => {
+    dailyChecklistsRef.current = dailyChecklists;
+  }, [dailyChecklists]);
+
   // Pull all collections from backend (auto-pull on load & reconnect)
   const pullAllDataFromServer = async () => {
     try {
@@ -943,7 +953,73 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       if (remoteDamage.length > 0) setDamageReports(remoteDamage);
       if (remoteSpecial.length > 0) setSpecialJobs(remoteSpecial);
       if (remoteMcp.length > 0) setMasterPrograms(remoteMcp);
-      if (remoteDailyChecklists.length > 0) setDailyChecklists(remoteDailyChecklists);
+
+      // Point B: Daily Checklists merge & initial sync
+      const serverMap = new Map(remoteDailyChecklists.map((c) => [c.id, c]));
+      const localOnlyChecklists: DailyAreaChecklist[] = [];
+      const mergedChecklists: DailyAreaChecklist[] = [];
+
+      setDailyChecklists((prevLocal) => {
+        if (!initialSyncDone.current) {
+          // Initial sync: Server wins on conflict
+          for (const remote of remoteDailyChecklists) {
+            mergedChecklists.push(remote);
+          }
+          for (const local of prevLocal) {
+            if (!serverMap.has(local.id)) {
+              mergedChecklists.push(local);
+              localOnlyChecklists.push(local);
+            }
+          }
+        } else {
+          // Reconnection pull: keep local for dirty checklists, server wins for others
+          for (const remote of remoteDailyChecklists) {
+            if (dirtyChecklistIdsRef.current.has(remote.id)) {
+              const localDirty = prevLocal.find((l) => l.id === remote.id);
+              if (localDirty) {
+                mergedChecklists.push(localDirty);
+                continue;
+              }
+            }
+            mergedChecklists.push(remote);
+          }
+          for (const local of prevLocal) {
+            if (!serverMap.has(local.id)) {
+              mergedChecklists.push(local);
+              if (dirtyChecklistIdsRef.current.has(local.id)) {
+                localOnlyChecklists.push(local);
+              }
+            }
+          }
+        }
+
+        // Fill snapshot Map with merged data
+        for (const item of mergedChecklists) {
+          if (!dirtyChecklistIdsRef.current.has(item.id)) {
+            checklistSnapshotRef.current.set(item.id, JSON.stringify(item));
+          }
+        }
+
+        return mergedChecklists;
+      });
+
+      initialSyncDone.current = true;
+
+      // Push local-only checklists to server once
+      if (localOnlyChecklists.length > 0) {
+        for (const localItem of localOnlyChecklists) {
+          console.debug('[Sync] Mengirim initial local-only daily_checklist ke server:', localItem.id);
+          upsertRecord(COLLECTIONS.DAILY_CHECKLISTS, localItem)
+            .then(() => {
+              checklistSnapshotRef.current.set(localItem.id, JSON.stringify(localItem));
+              dirtyChecklistIdsRef.current.delete(localItem.id);
+            })
+            .catch((err) => {
+              console.warn('[Sync] Gagal mengirim local-only checklist ke server:', localItem.id, err);
+              dirtyChecklistIdsRef.current.add(localItem.id);
+            });
+        }
+      }
 
       const nowStr = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB';
       setSupabaseStatus({
@@ -976,6 +1052,12 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       for (const m of masterPrograms) {
         await upsertRecord(COLLECTIONS.MASTER_PROGRAMS, m);
       }
+      for (const chk of dailyChecklists) {
+        await upsertRecord(COLLECTIONS.DAILY_CHECKLISTS, chk);
+        checklistSnapshotRef.current.set(chk.id, JSON.stringify(chk));
+      }
+      dirtyChecklistIdsRef.current.clear();
+
       const nowStr = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB';
       setSupabaseStatus({
         isConfigured: true,
@@ -988,6 +1070,41 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
   };
 
+  // Point A & D: Debounced effect to push changed dailyChecklists to server
+  useEffect(() => {
+    // Point B: Do NOT send anything before initialSync is done
+    if (!initialSyncDone.current) return;
+
+    const changedChecklists: DailyAreaChecklist[] = [];
+    for (const item of dailyChecklists) {
+      const currentJson = JSON.stringify(item);
+      const snapshotJson = checklistSnapshotRef.current.get(item.id);
+      if (snapshotJson !== currentJson) {
+        changedChecklists.push(item);
+        dirtyChecklistIdsRef.current.add(item.id);
+      }
+    }
+
+    if (changedChecklists.length === 0) return;
+
+    const timer = setTimeout(async () => {
+      for (const checklist of changedChecklists) {
+        const itemJson = JSON.stringify(checklist);
+        console.debug('[Sync] Mengirim update daily_checklist ke server:', checklist.id);
+        try {
+          await upsertRecord(COLLECTIONS.DAILY_CHECKLISTS, checklist);
+          checklistSnapshotRef.current.set(checklist.id, itemJson);
+          dirtyChecklistIdsRef.current.delete(checklist.id);
+        } catch (err) {
+          console.warn('[Sync] Gagal upsert daily_checklist ke server:', checklist.id, err);
+          dirtyChecklistIdsRef.current.add(checklist.id);
+        }
+      }
+    }, 600);
+
+    return () => clearTimeout(timer);
+  }, [dailyChecklists]);
+
   useEffect(() => {
     let isMounted = true;
 
@@ -995,14 +1112,30 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     pullAllDataFromServer();
 
     // 2. Auto-pull every time Socket.IO reconnects
-    const unsubscribeReconnect = onServerReconnect(() => {
+    const unsubscribeReconnect = onServerReconnect(async () => {
       if (!isMounted) return;
       setSupabaseStatus((prev) => ({
         ...prev,
         status: 'CONNECTED',
         lastSyncedAt: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB',
       }));
-      pullAllDataFromServer();
+      await pullAllDataFromServer();
+      // Retry sending any unsent/dirty checklists
+      if (dirtyChecklistIdsRef.current.size > 0) {
+        for (const dirtyId of Array.from(dirtyChecklistIdsRef.current)) {
+          const item = dailyChecklistsRef.current.find((c) => c.id === dirtyId);
+          if (item) {
+            console.debug('[Sync] Mencoba kirim ulang daily_checklist saat reconnect:', dirtyId);
+            try {
+              await upsertRecord(COLLECTIONS.DAILY_CHECKLISTS, item);
+              checklistSnapshotRef.current.set(item.id, JSON.stringify(item));
+              dirtyChecklistIdsRef.current.delete(item.id);
+            } catch (err) {
+              console.warn('[Sync] Gagal kirim ulang saat reconnect:', dirtyId, err);
+            }
+          }
+        }
+      }
     });
 
     // 3. Real-time updates without page refresh via Socket.IO
@@ -1016,7 +1149,12 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         if (collection === COLLECTIONS.DAMAGE_REPORTS) setDamageReports((prev) => prev.filter((d) => d.id !== id));
         if (collection === COLLECTIONS.SPECIAL_JOBS) setSpecialJobs((prev) => prev.filter((s) => s.id !== id));
         if (collection === COLLECTIONS.MASTER_PROGRAMS) setMasterPrograms((prev) => prev.filter((m) => m.id !== id));
-        if (collection === COLLECTIONS.DAILY_CHECKLISTS) setDailyChecklists((prev) => prev.filter((dc) => dc.id !== id));
+        if (collection === COLLECTIONS.DAILY_CHECKLISTS) {
+          console.debug('[Sync] Menerima delete daily_checklist dari server:', id);
+          checklistSnapshotRef.current.delete(id);
+          dirtyChecklistIdsRef.current.delete(id);
+          setDailyChecklists((prev) => prev.filter((dc) => dc.id !== id));
+        }
         return;
       }
 
@@ -1072,6 +1210,10 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             return [data, ...prev];
           });
         } else if (collection === COLLECTIONS.DAILY_CHECKLISTS) {
+          console.debug('[Sync] Menerima update daily_checklist dari server:', id);
+          // Point C: Update snapshot Map BEFORE or simultaneously with setDailyChecklists to prevent echo
+          checklistSnapshotRef.current.set(id, JSON.stringify(data));
+          dirtyChecklistIdsRef.current.delete(id);
           setDailyChecklists((prev) => {
             const idx = prev.findIndex((dc) => dc.id === id);
             if (idx >= 0) {
@@ -1511,9 +1653,46 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const reloadSystemData = async () => {
     setIsReloading(true);
-    await new Promise((res) => setTimeout(res, 650));
+    let serverSuccess = false;
 
-    // Reload from localStorage
+    // 1. Tarik data terbaru dari server untuk koleksi yang disinkronkan (termasuk daily_checklists)
+    try {
+      const [
+        remoteTasks,
+        remoteComplaints,
+        remoteDamage,
+        remoteSpecial,
+        remoteMcp,
+        remoteDailyChecklists,
+      ] = await Promise.all([
+        getRecords<CleaningTask>(COLLECTIONS.TASKS),
+        getRecords<Complaint>(COLLECTIONS.COMPLAINTS),
+        getRecords<FacilityDamageReport>(COLLECTIONS.DAMAGE_REPORTS),
+        getRecords<SpecialJobItem>(COLLECTIONS.SPECIAL_JOBS),
+        getRecords<MasterCleaningProgramItem>(COLLECTIONS.MASTER_PROGRAMS),
+        getRecords<DailyAreaChecklist>(COLLECTIONS.DAILY_CHECKLISTS),
+      ]);
+
+      if (remoteTasks.length > 0) setTasks(remoteTasks);
+      if (remoteComplaints.length > 0) setComplaints(remoteComplaints);
+      if (remoteDamage.length > 0) setDamageReports(remoteDamage);
+      if (remoteSpecial.length > 0) setSpecialJobs(remoteSpecial);
+      if (remoteMcp.length > 0) setMasterPrograms(remoteMcp);
+
+      // Server menang jika ada perbedaan pada daily_checklists
+      if (remoteDailyChecklists.length > 0) {
+        setDailyChecklists(remoteDailyChecklists);
+        for (const item of remoteDailyChecklists) {
+          checklistSnapshotRef.current.set(item.id, JSON.stringify(item));
+        }
+        dirtyChecklistIdsRef.current.clear();
+      }
+      serverSuccess = true;
+    } catch (err) {
+      console.warn('[Sync] Server tidak terjangkau saat reloadSystemData, beralih ke data lokal:', err);
+    }
+
+    // 2. Reload data lokal dari localStorage (dan fallback jika server gagal)
     try {
       const savedProjects = localStorage.getItem('sco_projects');
       if (savedProjects) setProjects(JSON.parse(savedProjects));
@@ -1521,28 +1700,34 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       const savedSchedules = localStorage.getItem('sco_schedules');
       if (savedSchedules) setSchedules(JSON.parse(savedSchedules));
 
-      const savedComplaints = localStorage.getItem('sco_complaints');
-      if (savedComplaints) setComplaints(JSON.parse(savedComplaints));
+      if (!serverSuccess) {
+        const savedComplaints = localStorage.getItem('sco_complaints');
+        if (savedComplaints) setComplaints(JSON.parse(savedComplaints));
 
-      const savedReports = localStorage.getItem('sco_damage_reports');
-      if (savedReports) setDamageReports(JSON.parse(savedReports));
+        const savedReports = localStorage.getItem('sco_damage_reports');
+        if (savedReports) setDamageReports(JSON.parse(savedReports));
 
-      const savedPrograms = localStorage.getItem('sco_master_programs');
-      if (savedPrograms) setMasterPrograms(JSON.parse(savedPrograms));
+        const savedPrograms = localStorage.getItem('sco_master_programs');
+        if (savedPrograms) setMasterPrograms(JSON.parse(savedPrograms));
 
-      const savedChecklists = localStorage.getItem('sco_daily_checklists');
-      if (savedChecklists) setDailyChecklists(JSON.parse(savedChecklists));
+        const savedChecklists = localStorage.getItem('sco_daily_checklists');
+        if (savedChecklists) setDailyChecklists(JSON.parse(savedChecklists));
+      }
     } catch (err) {
       console.warn('Reload sync info:', err);
     }
 
+    await new Promise((res) => setTimeout(res, 400));
+
     const nowTime = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB';
     const reloadNotif: AppNotification = {
       id: `notif-reload-${Date.now()}`,
-      title: '🔄 Data Sistem Berhasil Dimuat Ulang',
-      message: `Seluruh data operasional, jadwal, tiket, dan ceklist telah disegarkan per ${nowTime}.`,
+      title: serverSuccess ? '🔄 Data Sistem & Server Berhasil Dimuat Ulang' : '⚠️ Data Dimuat dari Penyimpanan Lokal',
+      message: serverSuccess
+        ? `Seluruh data operasional, tiket, dan ceklist telah disegarkan dari server per ${nowTime}.`
+        : `Server tidak terjangkau. Data operasional dan ceklist disegarkan dari penyimpanan lokal per ${nowTime}.`,
       timestamp: nowTime,
-      type: 'info',
+      type: serverSuccess ? 'info' : 'warning',
       targetRole: ['admin', 'supervisor', 'petugas', 'klien'],
       read: false,
     };
