@@ -256,7 +256,7 @@ app.delete('/api/records/:collection/:id', async (req: Request, res: Response) =
 
 // 5. POST /api/upload -> upload foto via Multer, kembalikan URL /uploads/...
 app.post('/api/upload', (req: Request, res: Response) => {
-  upload.single('file')(req, res, (err: any) => {
+  (upload.single('file') as any)(req, res, (err: any) => {
     if (err) {
       console.error('[POST /api/upload] Multer error:', err);
       return res.status(400).json({ error: err.message || 'Upload gagal' });
