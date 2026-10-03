@@ -81,6 +81,11 @@ import {
   onServerReconnect,
   fetchServerStatus,
   socket,
+  apiLogin,
+  apiLogout,
+  apiVerifySession,
+  getAuthToken,
+  setAuthToken,
 } from '../services/apiService';
 
 interface CleaningContextType {
@@ -1387,8 +1392,32 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   // Authentication & Session
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
     const saved = localStorage.getItem('sco_auth_state');
-    return saved === 'true';
+    const hasToken = typeof window !== 'undefined' && !!localStorage.getItem('sco_auth_token');
+    return saved === 'true' || hasToken;
   });
+
+  // Verify or restore session across origins / preview environments via Bearer token
+  useEffect(() => {
+    const existingToken = getAuthToken();
+    if (existingToken) {
+      apiVerifySession()
+        .then((res) => {
+          if (res && res.authenticated && res.user) {
+            setIsAuthenticated(true);
+            localStorage.setItem('sco_auth_state', 'true');
+            if (res.user.id) {
+              setActiveUserId(res.user.id);
+              localStorage.setItem('sco_active_user_id', res.user.id);
+            }
+            if (res.user.role) {
+              setUserRole(res.user.role);
+              localStorage.setItem('sco_role', res.user.role);
+            }
+          }
+        })
+        .catch(() => {});
+    }
+  }, []);
 
   const login = (identifier: string, pass: string): { success: boolean; message?: string } => {
     const cleanId = identifier.trim().toLowerCase();
@@ -1438,6 +1467,11 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     localStorage.setItem('sco_active_user_id', matchedUser.id);
     localStorage.setItem('sco_role', matchedUser.role);
 
+    // Call backend API login asynchronously to retrieve and persist Bearer token
+    apiLogin({ identifier: cleanId, password: cleanPass }).catch((err) => {
+      console.warn('[Login Token] Backend token issuance notice:', err);
+    });
+
     if (matchedUser.role === 'klien') {
       setActiveTab('klien-manpower');
     } else {
@@ -1469,6 +1503,11 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     localStorage.setItem('sco_active_user_id', matchedUser.id);
     localStorage.setItem('sco_role', matchedUser.role);
 
+    // Call backend API login asynchronously to retrieve and persist Bearer token
+    apiLogin({ userId }).catch((err) => {
+      console.warn('[Instant Login Token] Backend token issuance notice:', err);
+    });
+
     if (matchedUser.role === 'klien') {
       setActiveTab('klien-manpower');
     } else {
@@ -1481,6 +1520,9 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const logout = () => {
     setIsAuthenticated(false);
     localStorage.removeItem('sco_auth_state');
+    localStorage.removeItem('sco_auth_token');
+    setAuthToken(null);
+    apiLogout().catch(() => {});
     setActiveTab('dashboard');
   };
 

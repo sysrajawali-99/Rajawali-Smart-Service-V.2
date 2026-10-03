@@ -70,13 +70,144 @@ export interface BackendStatus {
   totalRecords: number;
 }
 
-// Socket.IO client using same origin as the frontend website
-export const socket: Socket = io({
+/**
+ * Configurable base URL for API, uploads, and Socket.IO.
+ * Read from VITE_API_URL. If empty/unset, defaults to current website origin (production default).
+ */
+export const VITE_API_URL: string = (
+  (import.meta as any).env?.VITE_API_URL || ''
+).trim().replace(/\/+$/, '');
+
+export function getBaseUrl(): string {
+  return VITE_API_URL;
+}
+
+export function getApiUrl(path: string): string {
+  const cleanPath = path.startsWith('/') ? path : `/${path}`;
+  return `${VITE_API_URL}${cleanPath}`;
+}
+
+export function getFullUploadUrl(url: string | undefined | null): string {
+  if (!url) return '';
+  if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('data:')) {
+    return url;
+  }
+  if (url.startsWith('/uploads/')) {
+    return `${VITE_API_URL}${url}`;
+  }
+  if (url.startsWith('uploads/')) {
+    return `${VITE_API_URL}/${url}`;
+  }
+  return url;
+}
+
+/**
+ * Token management for cross-origin preview / AI Studio & mobile PWA sessions
+ */
+export function getAuthToken(): string | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const queryToken = params.get('token');
+    if (queryToken) {
+      localStorage.setItem('sco_auth_token', queryToken);
+      params.delete('token');
+      const newQuery = params.toString() ? `?${params.toString()}` : '';
+      window.history.replaceState({}, '', `${window.location.pathname}${newQuery}${window.location.hash}`);
+      return queryToken;
+    }
+  } catch {}
+  return localStorage.getItem('sco_auth_token');
+}
+
+export function setAuthToken(token: string | null): void {
+  if (typeof window === 'undefined') return;
+  if (token) {
+    localStorage.setItem('sco_auth_token', token);
+  } else {
+    localStorage.removeItem('sco_auth_token');
+  }
+}
+
+export function getAuthHeaders(additionalHeaders: Record<string, string> = {}): Record<string, string> {
+  const headers: Record<string, string> = { ...additionalHeaders };
+  const token = getAuthToken();
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+  return headers;
+}
+
+// Socket.IO client using configurable server URL with Bearer token authentication
+export const socket: Socket = io(VITE_API_URL || undefined, {
   autoConnect: true,
   reconnection: true,
   reconnectionAttempts: Infinity,
   reconnectionDelay: 1000,
+  auth: (cb) => {
+    cb({ token: getAuthToken() });
+  },
 });
+
+/**
+ * API Authentication calls
+ */
+export async function apiLogin(payload: {
+  identifier?: string;
+  password?: string;
+  userId?: string;
+}): Promise<{
+  success: boolean;
+  token?: string;
+  user?: any;
+  error?: string;
+}> {
+  try {
+    const res = await fetch(getApiUrl('/api/auth/login'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if (res.ok && data.success && data.token) {
+      setAuthToken(data.token);
+      return data;
+    }
+    return { success: false, error: data.error || 'Login gagal' };
+  } catch (err: any) {
+    console.warn('[apiLogin] Server request notice:', err?.message || err);
+    return { success: false, error: err?.message || 'Koneksi ke backend server gagal' };
+  }
+}
+
+export async function apiVerifySession(): Promise<{ authenticated: boolean; user?: any; token?: string } | null> {
+  const token = getAuthToken();
+  try {
+    const res = await fetch(getApiUrl('/api/auth/me'), {
+      headers: getAuthHeaders(),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.authenticated && data.token) {
+        setAuthToken(data.token);
+        return data;
+      }
+    }
+  } catch (err) {
+    console.warn('[apiVerifySession] Verification notice:', err);
+  }
+  return null;
+}
+
+export async function apiLogout(): Promise<void> {
+  try {
+    await fetch(getApiUrl('/api/auth/logout'), {
+      method: 'POST',
+      headers: getAuthHeaders(),
+    });
+  } catch {}
+  setAuthToken(null);
+}
 
 /**
  * Uploads a photo to /api/upload via multipart FormData.
@@ -102,14 +233,15 @@ export async function uploadPhoto(fileOrBlobOrDataUrl: File | Blob | string): Pr
       const formData = new FormData();
       formData.append('file', file);
 
-      const uploadRes = await fetch('/api/upload', {
+      const uploadRes = await fetch(getApiUrl('/api/upload'), {
         method: 'POST',
+        headers: getAuthHeaders(),
         body: formData,
       });
 
       if (uploadRes.ok) {
         const json = await uploadRes.json();
-        return json.url;
+        return getFullUploadUrl(json.url);
       }
       console.warn('[uploadPhoto] Upload response not ok:', uploadRes.statusText);
     } catch (err) {
@@ -124,14 +256,15 @@ export async function uploadPhoto(fileOrBlobOrDataUrl: File | Blob | string): Pr
     const fileName = (fileOrBlobOrDataUrl as File).name || `photo-${Date.now()}.jpg`;
     formData.append('file', fileOrBlobOrDataUrl, fileName);
 
-    const uploadRes = await fetch('/api/upload', {
+    const uploadRes = await fetch(getApiUrl('/api/upload'), {
       method: 'POST',
+      headers: getAuthHeaders(),
       body: formData,
     });
 
     if (uploadRes.ok) {
       const json = await uploadRes.json();
-      return json.url;
+      return getFullUploadUrl(json.url);
     }
   } catch (err) {
     console.warn('[uploadPhoto] Error uploading File/Blob:', err);
@@ -182,7 +315,9 @@ export async function sanitizeRecordPhotos<T extends Record<string, any>>(record
  */
 export async function getRecords<T = any>(collection: string): Promise<T[]> {
   try {
-    const res = await fetch(`/api/records/${collection}`);
+    const res = await fetch(getApiUrl(`/api/records/${collection}`), {
+      headers: getAuthHeaders(),
+    });
     if (!res.ok) {
       const errorText = await res.text().catch(() => res.statusText);
       console.warn(`[API] Failed to get ${collection}: status ${res.status} (${errorText})`);
@@ -208,9 +343,9 @@ export async function upsertRecord<T extends { id?: string; moduleId?: string }>
   const recordId = (sanitized as any).id || (sanitized as any).moduleId || 'main';
   (sanitized as any).id = recordId;
 
-  const res = await fetch(`/api/records/${collection}/${recordId}`, {
+  const res = await fetch(getApiUrl(`/api/records/${collection}/${recordId}`), {
     method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
+    headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify(sanitized),
   });
 
@@ -227,8 +362,9 @@ export async function upsertRecord<T extends { id?: string; moduleId?: string }>
  * Deletes from PostgreSQL and broadcasts delete event via Socket.IO.
  */
 export async function deleteRecord(collection: string, id: string): Promise<boolean> {
-  const res = await fetch(`/api/records/${collection}/${id}`, {
+  const res = await fetch(getApiUrl(`/api/records/${collection}/${id}`), {
     method: 'DELETE',
+    headers: getAuthHeaders(),
   });
   if (!res.ok) {
     const errorText = await res.text().catch(() => res.statusText);
@@ -268,7 +404,9 @@ export async function fetchServerStatus(): Promise<{
   socketClients: number;
 } | null> {
   try {
-    const res = await fetch('/api/status');
+    const res = await fetch(getApiUrl('/api/status'), {
+      headers: getAuthHeaders(),
+    });
     if (res.ok) {
       return await res.json();
     }

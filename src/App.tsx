@@ -23,6 +23,8 @@ import { DamageReportView } from './components/web/DamageReportView';
 import { KlienModeView } from './components/web/klien/KlienModeView';
 import { LoginPage } from './components/auth/LoginPage';
 import { OverdueAlertBanner } from './components/layout/OverdueAlertBanner';
+import { InstallPrompt } from './components/InstallPrompt';
+import { TestModeBanner } from './components/common/TestModeBanner';
 import { ShieldAlert } from 'lucide-react';
 
 
@@ -30,7 +32,14 @@ const MainLayout: React.FC = () => {
   const { isAuthenticated, activeTab, userRole, hasAccess, setActiveTab, isInitialLoading } = useCleaning();
 
   if (!isAuthenticated) {
-    return <LoginPage />;
+    return (
+      <div className="h-screen flex flex-col overflow-hidden">
+        <TestModeBanner />
+        <div className="flex-1 overflow-auto">
+          <LoginPage />
+        </div>
+      </div>
+    );
   }
 
   if (isInitialLoading) {
@@ -129,6 +138,7 @@ const MainLayout: React.FC = () => {
 
   return (
     <div className="h-screen flex flex-col bg-slate-50 font-sans text-slate-900 antialiased selection:bg-sky-500 selection:text-white overflow-hidden">
+      <TestModeBanner />
       <Header />
       <OverdueAlertBanner />
 
@@ -142,6 +152,8 @@ const MainLayout: React.FC = () => {
           </div>
         </main>
       </div>
+
+      <InstallPrompt />
     </div>
   );
 };
