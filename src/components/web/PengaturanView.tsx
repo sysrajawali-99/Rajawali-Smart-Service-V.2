@@ -38,7 +38,16 @@ import { UserManagementSection } from './UserManagementSection';
 import { CompanyProfileSettingsSection } from './CompanyProfileSettingsSection';
 import { SuperAdminBulkDeleteSection } from './SuperAdminBulkDeleteSection';
 import { AuditTrailModal } from './AuditTrailModal';
+import { AuditLogSection } from './AuditLogSection';
 
+export type PengaturanSubTab =
+  | 'all'
+  | 'log'
+  | 'checklist'
+  | 'kpi'
+  | 'profile'
+  | 'users'
+  | 'bulk_delete';
 
 export const PengaturanView: React.FC = () => {
   const {
@@ -56,8 +65,10 @@ export const PengaturanView: React.FC = () => {
     rbacPermissions,
     updateRbacPermission,
     resetRbacPermissions,
+    auditLogs,
   } = useCleaning();
 
+  const [activeSubTab, setActiveSubTab] = useState<PengaturanSubTab>('all');
   const [deadlineAlertMins, setDeadlineAlertMins] = useState(15);
   const [autoQCThreshold, setAutoQCThreshold] = useState(85);
   const [isSaved, setIsSaved] = useState(false);
@@ -282,12 +293,16 @@ export const PengaturanView: React.FC = () => {
 
           <button
             type="button"
-            onClick={() => setIsAuditModalOpen(true)}
-            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-900 text-white font-semibold text-xs transition-colors shadow-xs"
-            title="Lihat riwayat audit trail siapa mengubah apa dan kapan"
+            onClick={() => setActiveSubTab(activeSubTab === 'log' ? 'all' : 'log')}
+            className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl font-semibold text-xs transition-colors shadow-xs cursor-pointer ${
+              activeSubTab === 'log'
+                ? 'bg-sky-600 hover:bg-sky-700 text-white'
+                : 'bg-slate-800 hover:bg-slate-900 text-white'
+            }`}
+            title="Lihat riwayat audit trail log"
           >
             <History className="w-3.5 h-3.5 text-sky-400" />
-            <span>Audit Trail Log</span>
+            <span>{activeSubTab === 'log' ? 'Tampilkan Semua Pengaturan' : `Audit Trail Log (${auditLogs.length})`}</span>
           </button>
 
           <button
@@ -302,10 +317,120 @@ export const PengaturanView: React.FC = () => {
 
       </div>
 
+      {/* Sub-Navigation Tabs */}
+      <div className="flex items-center gap-1.5 p-1 bg-slate-100/90 rounded-xl overflow-x-auto border border-slate-200/60 shadow-2xs">
+        <button
+          type="button"
+          onClick={() => setActiveSubTab('all')}
+          className={`flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg whitespace-nowrap transition-all cursor-pointer ${
+            activeSubTab === 'all'
+              ? 'bg-white text-slate-900 shadow-xs'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+          }`}
+        >
+          <SlidersHorizontal className="w-3.5 h-3.5 text-slate-500" />
+          <span>Semua Pengaturan</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveSubTab('log')}
+          className={`flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg whitespace-nowrap transition-all cursor-pointer ${
+            activeSubTab === 'log'
+              ? 'bg-white text-sky-800 shadow-xs ring-1 ring-sky-200'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+          }`}
+        >
+          <History className={`w-3.5 h-3.5 ${activeSubTab === 'log' ? 'text-sky-600' : 'text-slate-500'}`} />
+          <span>Log & Audit Trail</span>
+          <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${activeSubTab === 'log' ? 'bg-sky-100 text-sky-800' : 'bg-slate-200 text-slate-600'}`}>
+            {auditLogs.length}
+          </span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveSubTab('checklist')}
+          className={`flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg whitespace-nowrap transition-all cursor-pointer ${
+            activeSubTab === 'checklist'
+              ? 'bg-white text-emerald-800 shadow-xs ring-1 ring-emerald-200'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+          }`}
+        >
+          <ClipboardList className="w-3.5 h-3.5 text-emerald-600" />
+          <span>Master SOP Ceklis</span>
+          <span className="text-[10px] px-1.5 py-0.2 rounded-full font-bold bg-slate-200 text-slate-600">
+            {checklistTemplates.length}
+          </span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveSubTab('kpi')}
+          className={`flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg whitespace-nowrap transition-all cursor-pointer ${
+            activeSubTab === 'kpi'
+              ? 'bg-white text-blue-800 shadow-xs ring-1 ring-blue-200'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+          }`}
+        >
+          <BarChart3 className="w-3.5 h-3.5 text-blue-600" />
+          <span>Tampilan KPI Dashboard</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveSubTab('profile')}
+          className={`flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg whitespace-nowrap transition-all cursor-pointer ${
+            activeSubTab === 'profile'
+              ? 'bg-white text-purple-800 shadow-xs ring-1 ring-purple-200'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+          }`}
+        >
+          <Building className="w-3.5 h-3.5 text-purple-600" />
+          <span>Profil Perusahaan & Kop</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveSubTab('users')}
+          className={`flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg whitespace-nowrap transition-all cursor-pointer ${
+            activeSubTab === 'users'
+              ? 'bg-white text-indigo-800 shadow-xs ring-1 ring-indigo-200'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+          }`}
+        >
+          <Users className="w-3.5 h-3.5 text-indigo-600" />
+          <span>Pengguna & RBAC</span>
+        </button>
+
+        {userRole === 'admin' && (
+          <button
+            type="button"
+            onClick={() => setActiveSubTab('bulk_delete')}
+            className={`flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg whitespace-nowrap transition-all cursor-pointer ${
+              activeSubTab === 'bulk_delete'
+                ? 'bg-white text-rose-700 shadow-xs ring-1 ring-rose-200'
+                : 'text-rose-600 hover:text-rose-700 hover:bg-rose-50'
+            }`}
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+            <span>Hapus Data Masal</span>
+          </button>
+        )}
+      </div>
+
+      {/* SECTION: Log Aktivitas Sistem & Audit Trail */}
+      {(activeSubTab === 'all' || activeSubTab === 'log') && (
+        <AuditLogSection />
+      )}
+
       {/* SECTION: Profil Perusahaan, Logo & Kop Surat Resmi (PDF & Login) */}
-      <CompanyProfileSettingsSection />
+      {(activeSubTab === 'all' || activeSubTab === 'profile') && (
+        <CompanyProfileSettingsSection />
+      )}
 
       {/* SECTION: Pengaturan Tampilan KPI & Widget Dashboard (Dipindahkan dari Dashboard) */}
+      {(activeSubTab === 'all' || activeSubTab === 'kpi') && (
       <div
         id="section-kpi-settings"
         className="p-5 sm:p-6 rounded-2xl bg-white border border-blue-200/80 shadow-xs space-y-5 relative overflow-hidden"
@@ -491,8 +616,10 @@ export const PengaturanView: React.FC = () => {
           })}
         </div>
       </div>
+      )}
 
       {/* Section 1: Master Data Item Ceklist Kebersihan Area */}
+      {(activeSubTab === 'all' || activeSubTab === 'checklist') && (
       <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-xs space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
           <div className="flex items-center gap-2">
@@ -678,7 +805,7 @@ export const PengaturanView: React.FC = () => {
           )}
         </div>
       </div>
-
+      )}
 
       {deleteToast && (
         <div className="fixed bottom-6 right-6 bg-slate-900 text-white px-4 py-3 rounded-xl shadow-lg flex items-center gap-2 text-xs z-50 animate-in fade-in slide-in-from-bottom-2">
@@ -688,6 +815,8 @@ export const PengaturanView: React.FC = () => {
       )}
 
       {/* Section 2: User Management & Project Access Control (Super Admin) */}
+      {(activeSubTab === 'all' || activeSubTab === 'users') && (
+      <>
       <UserManagementSection />
 
       <form onSubmit={handleSave} className="space-y-6">
@@ -968,9 +1097,13 @@ export const PengaturanView: React.FC = () => {
           </button>
         </div>
       </form>
+      </>
+      )}
 
       {/* SECTION: Hapus Data Masal per Sub-Menu (Khusus Super Admin) */}
-      <SuperAdminBulkDeleteSection />
+      {(activeSubTab === 'all' || activeSubTab === 'bulk_delete') && userRole === 'admin' && (
+        <SuperAdminBulkDeleteSection />
+      )}
 
       {/* MODAL: Audit Trail Log */}
       <AuditTrailModal

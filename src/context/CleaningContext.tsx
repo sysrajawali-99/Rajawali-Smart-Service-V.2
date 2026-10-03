@@ -1224,6 +1224,9 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   const clearAuditLogs = () => {
+    for (const log of auditLogs) {
+      deleteRecord(COLLECTIONS.AUDIT_LOGS, log.id).catch(() => {});
+    }
     setAuditLogs([]);
   };
 
@@ -3749,6 +3752,13 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       read: false,
     };
     setNotifications((prev) => [auditNotif, ...prev]);
+
+    addAuditLog({
+      action: 'bulk_delete',
+      module: 'pengaturan',
+      entityName: label,
+      details: `Super Admin telah menghapus ${deletedCount} data pada sub-menu "${label}" (${scope === 'active_project' ? 'Proyek Aktif' : 'Semua Proyek'}).`,
+    });
 
     return { count: deletedCount, label };
   };
