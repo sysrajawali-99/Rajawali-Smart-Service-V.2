@@ -106,6 +106,7 @@ interface CleaningContextType {
     lastSyncedAt: string | null;
   };
   syncToSupabase: () => Promise<void>;
+  isInitialLoading: boolean;
 
   // Connection & Offline Queue
   isOnline: boolean;
@@ -430,35 +431,36 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const [activeTab, setActiveTab] = useState<string>('dashboard');
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>('task-101');
 
+  // Error notification helper for server operations
+  const notifyServerError = (actionDesc: string, err?: any) => {
+    const nowStr = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB';
+    const notif: AppNotification = {
+      id: `notif-err-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      title: '⚠️ Gagal Menyimpan ke Database Server',
+      message: `${actionDesc}: ${err?.message || 'Koneksi ke backend bermasalah'}.`,
+      timestamp: nowStr,
+      type: 'urgent',
+      targetRole: ['admin', 'supervisor', 'petugas', 'klien'],
+      read: false,
+    };
+    setNotifications((prev) => [notif, ...prev]);
+  };
+
   // Dashboard KPI Visibility Configuration (Semua widget dinonaktifkan secara default sesuai instruksi user, dikonfigurasi melalui Pengaturan & Master Data)
-  const [kpiConfig, setKpiConfig] = useState<DashboardKpiVisibilityConfig>(() => {
-    try {
-      const saved = localStorage.getItem('sco_dashboard_kpi_config');
-      if (saved) {
-        return { ...DEFAULT_KPI_VISIBILITY_OFF, ...JSON.parse(saved) };
-      }
-    } catch (e) {
-      console.error('Failed to load dashboard KPI config:', e);
-    }
-    return DEFAULT_KPI_VISIBILITY_OFF;
-  });
+  const [kpiConfig, setKpiConfig] = useState<DashboardKpiVisibilityConfig>(DEFAULT_KPI_VISIBILITY_OFF);
 
   const updateKpiConfig = (newConfig: DashboardKpiVisibilityConfig) => {
     setKpiConfig(newConfig);
-    try {
-      localStorage.setItem('sco_dashboard_kpi_config', JSON.stringify(newConfig));
-    } catch (e) {
-      console.error('Failed to save dashboard KPI config:', e);
-    }
+    upsertRecord(COLLECTIONS.KPI_CONFIG, { ...newConfig, id: 'main' }).catch((err) =>
+      notifyServerError('pengaturan KPI', err)
+    );
   };
 
   const resetKpiConfig = () => {
     setKpiConfig(DEFAULT_KPI_VISIBILITY_OFF);
-    try {
-      localStorage.setItem('sco_dashboard_kpi_config', JSON.stringify(DEFAULT_KPI_VISIBILITY_OFF));
-    } catch (e) {
-      console.error('Failed to reset dashboard KPI config:', e);
-    }
+    upsertRecord(COLLECTIONS.KPI_CONFIG, { ...DEFAULT_KPI_VISIBILITY_OFF, id: 'main' }).catch((err) =>
+      notifyServerError('reset konfigurasi KPI', err)
+    );
   };
 
   const toggleKpiWidget = (key: keyof DashboardKpiVisibilityConfig) => {
@@ -467,37 +469,23 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   // Pengaturan Data Perusahaan & Kop Surat Laporan PDF / Login Page
-  const [companyProfile, setCompanyProfile] = useState<CompanyProfile>(() => {
-    try {
-      const saved = localStorage.getItem('sco_company_profile');
-      if (saved) {
-        return { ...DEFAULT_COMPANY_PROFILE, ...JSON.parse(saved) };
-      }
-    } catch (e) {
-      console.error('Failed to load company profile:', e);
-    }
-    return DEFAULT_COMPANY_PROFILE;
-  });
+  const [companyProfile, setCompanyProfile] = useState<CompanyProfile>(DEFAULT_COMPANY_PROFILE);
 
   const updateCompanyProfile = (updates: Partial<CompanyProfile>) => {
     setCompanyProfile((prev) => {
       const updated = { ...prev, ...updates };
-      try {
-        localStorage.setItem('sco_company_profile', JSON.stringify(updated));
-      } catch (e) {
-        console.error('Failed to save company profile:', e);
-      }
+      upsertRecord(COLLECTIONS.COMPANY_PROFILE, { ...updated, id: 'main' }).catch((err) =>
+        notifyServerError('profil perusahaan', err)
+      );
       return updated;
     });
   };
 
   const resetCompanyProfile = () => {
     setCompanyProfile(DEFAULT_COMPANY_PROFILE);
-    try {
-      localStorage.setItem('sco_company_profile', JSON.stringify(DEFAULT_COMPANY_PROFILE));
-    } catch (e) {
-      console.error('Failed to reset company profile:', e);
-    }
+    upsertRecord(COLLECTIONS.COMPANY_PROFILE, { ...DEFAULT_COMPANY_PROFILE, id: 'main' }).catch((err) =>
+      notifyServerError('reset profil perusahaan', err)
+    );
   };
 
   // 2. Offline Mode & Auto Sync Management
@@ -508,19 +496,9 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     return true;
   });
 
-  const [offlineQueue, setOfflineQueue] = useState<OfflineSyncEntry[]>(() => {
-    const saved = localStorage.getItem('sco_offline_queue');
-    return saved ? JSON.parse(saved) : [];
-  });
-
+  const [offlineQueue, setOfflineQueue] = useState<OfflineSyncEntry[]>([]);
   const [isSyncing, setIsSyncing] = useState(false);
-  const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(() => {
-    return localStorage.getItem('sco_last_synced') || null;
-  });
-
-  useEffect(() => {
-    localStorage.setItem('sco_offline_queue', JSON.stringify(offlineQueue));
-  }, [offlineQueue]);
+  const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
 
   const addOfflineQueueEntry = (entry: Omit<OfflineSyncEntry, 'id' | 'timestamp' | 'status'>) => {
     const newEntry: OfflineSyncEntry = {
@@ -587,10 +565,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   }, [offlineQueue.length]);
 
   // 3. Project Locations
-  const [projects, setProjects] = useState<ProjectLocation[]>(() => {
-    const saved = localStorage.getItem('sco_projects');
-    return saved ? JSON.parse(saved) : INITIAL_PROJECTS;
-  });
+  const [projects, setProjects] = useState<ProjectLocation[]>(INITIAL_PROJECTS);
 
   const [activeProjectId, setActiveProjectIdState] = useState<string>(() => {
     const saved = localStorage.getItem('sco_active_project_id');
@@ -598,18 +573,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   });
 
   // 3. Users & Project Assignments
-  const [users, setUsers] = useState<AppUser[]>(() => {
-    const saved = localStorage.getItem('sco_users');
-    if (!saved) return INITIAL_USERS;
-    try {
-      const parsed: AppUser[] = JSON.parse(saved);
-      const existingIds = new Set(parsed.map((u) => u.id));
-      const missing = INITIAL_USERS.filter((u) => !existingIds.has(u.id));
-      return [...parsed, ...missing];
-    } catch {
-      return INITIAL_USERS;
-    }
-  });
+  const [users, setUsers] = useState<AppUser[]>(INITIAL_USERS);
 
   const [activeUserId, setActiveUserId] = useState<string>(() => {
     return localStorage.getItem('sco_active_user_id') || 'usr-admin';
@@ -653,259 +617,42 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const visibleProjects = userRole === 'admin' ? projects : allowedProjects;
 
   // 4. Checklist Master & 24-Hour Checklist Data
-  const [checklistLocations, setChecklistLocations] = useState<ChecklistLocation[]>(() => {
-    const saved = localStorage.getItem('sco_checklist_locations');
-    if (!saved) return INITIAL_CHECKLIST_LOCATIONS;
-    try {
-      const parsed: ChecklistLocation[] = JSON.parse(saved);
-      // Ensure any newly added initial locations (like proj-3) are merged in if missing
-      const existingIds = new Set(parsed.map((l) => l.id));
-      const missingInitials = INITIAL_CHECKLIST_LOCATIONS.filter((l) => !existingIds.has(l.id));
-      return [...parsed, ...missingInitials].map((l) => ({
-        ...l,
-        projectId: l.projectId || 'proj-1',
-      }));
-    } catch {
-      return INITIAL_CHECKLIST_LOCATIONS;
-    }
-  });
-
-  const [checklistTemplates, setChecklistTemplates] = useState<ChecklistTemplateItem[]>(() => {
-    const saved = localStorage.getItem('sco_checklist_templates');
-    return saved ? JSON.parse(saved) : INITIAL_CHECKLIST_TEMPLATES;
-  });
-
-  const [dailyChecklists, setDailyChecklists] = useState<DailyAreaChecklist[]>(() => {
-    const saved = localStorage.getItem('sco_daily_checklists');
-    const raw: DailyAreaChecklist[] = saved ? JSON.parse(saved) : INITIAL_DAILY_CHECKLISTS;
-    return raw.map((d) => ({
+  const [checklistLocations, setChecklistLocations] = useState<ChecklistLocation[]>(INITIAL_CHECKLIST_LOCATIONS);
+  const [checklistTemplates, setChecklistTemplates] = useState<ChecklistTemplateItem[]>(INITIAL_CHECKLIST_TEMPLATES);
+  const [dailyChecklists, setDailyChecklists] = useState<DailyAreaChecklist[]>(() =>
+    INITIAL_DAILY_CHECKLISTS.map((d) => ({
       ...d,
       hourlySlots: (d.hourlySlots || []).map((slot) => ({
         ...slot,
         items: ensureCompleteSlotItems(slot.items, d.category || 'toilet', INITIAL_CHECKLIST_TEMPLATES),
       })),
-    }));
-  });
+    }))
+  );
 
   // 5. Core Operational Data
-  const [areas, setAreas] = useState<Area[]>(() => {
-    const saved = localStorage.getItem('sco_areas');
-    if (!saved) return INITIAL_AREAS;
-    try {
-      const parsed: Area[] = JSON.parse(saved);
-      const normalized = parsed.map((a) => ({
-        ...a,
-        projectId: a.projectId || 'proj-1',
-      }));
-      const existingIds = new Set(normalized.map((a) => a.id));
-      const missing = INITIAL_AREAS.filter((a) => !existingIds.has(a.id));
-      return [...normalized, ...missing];
-    } catch {
-      return INITIAL_AREAS;
-    }
-  });
-
-  const [cleaners, setCleaners] = useState<Cleaner[]>(() => {
-    const saved = localStorage.getItem('sco_cleaners');
-    if (!saved) return INITIAL_CLEANERS;
-    try {
-      const parsed: Cleaner[] = JSON.parse(saved);
-      const normalized = parsed.map((c, idx) => ({
-        ...c,
-        projectId:
-          c.projectId ||
-          (c.id === 'cln-5' || c.id === 'cln-7'
-            ? 'proj-2'
-            : c.id === 'cln-6' || c.id === 'cln-8'
-            ? 'proj-3'
-            : 'proj-1'),
-        workPlotting: c.workPlotting || INITIAL_CLEANERS[idx]?.workPlotting || 'Lobby & Koridor Utama',
-        workPlottingUpdatedAt: c.workPlottingUpdatedAt || '07:00 WIB',
-      }));
-      const existingIds = new Set(normalized.map((c) => c.id));
-      const missing = INITIAL_CLEANERS.filter((c) => !existingIds.has(c.id));
-      return [...normalized, ...missing];
-    } catch {
-      return INITIAL_CLEANERS;
-    }
-  });
-
-  const [shifts, setShifts] = useState<Shift[]>(() => {
-    const saved = localStorage.getItem('sco_shifts');
-    if (saved) {
-      try {
-        const parsed: Shift[] = JSON.parse(saved);
-        return parsed.map((s) => {
-          const init = INITIAL_SHIFTS.find((i) => i.id === s.id);
-          return {
-            ...s,
-            plottingAllocations:
-              s.plottingAllocations && s.plottingAllocations.length > 0
-                ? s.plottingAllocations
-                : init?.plottingAllocations || [],
-          };
-        });
-      } catch (e) {
-        console.error('Failed to parse saved shifts', e);
-      }
-    }
-    return INITIAL_SHIFTS;
-  });
-
-  const [schedules, setSchedules] = useState<CleaningSchedule[]>(() => {
-    const saved = localStorage.getItem('sco_schedules');
-    return saved ? JSON.parse(saved) : INITIAL_SCHEDULES;
-  });
-
-  const [tasks, setTasks] = useState<CleaningTask[]>(() => {
-    const saved = localStorage.getItem('sco_tasks');
-    if (!saved) return INITIAL_TASKS;
-    try {
-      const parsed: CleaningTask[] = JSON.parse(saved);
-      const normalized = parsed.map((t) => ({
-        ...t,
-        projectId: t.projectId || 'proj-1',
-      }));
-      const existingIds = new Set(normalized.map((t) => t.id));
-      const missing = INITIAL_TASKS.filter((t) => !existingIds.has(t.id));
-      return [...normalized, ...missing];
-    } catch {
-      return INITIAL_TASKS;
-    }
-  });
-
-  const [inspections, setInspections] = useState<QCInspection[]>(() => {
-    const saved = localStorage.getItem('sco_inspections');
-    return saved ? JSON.parse(saved) : INITIAL_INSPECTIONS;
-  });
-
-  const [complaints, setComplaints] = useState<Complaint[]>(() => {
-    const saved = localStorage.getItem('sco_complaints');
-    return saved ? JSON.parse(saved) : INITIAL_COMPLAINTS;
-  });
-
-  const [notifications, setNotifications] = useState<AppNotification[]>(() => {
-    const saved = localStorage.getItem('sco_notifs');
-    return saved ? JSON.parse(saved) : INITIAL_NOTIFICATIONS;
-  });
-
-  const [masterPrograms, setMasterPrograms] = useState<MasterCleaningProgramItem[]>(() => {
-    const saved = localStorage.getItem('sco_master_programs');
-    if (saved) {
-      try {
-        const parsed: MasterCleaningProgramItem[] = JSON.parse(saved);
-        const existingIds = new Set(parsed.map((p) => p.id));
-        const missingInitials = INITIAL_MASTER_PROGRAMS.filter((p) => !existingIds.has(p.id));
-        return [...parsed, ...missingInitials].map((p) => ({
-          ...p,
-          frequency: normalizeFrequencyCode(p.frequency),
-        }));
-      } catch (e) {
-        console.error('Failed to parse master programs', e);
-      }
-    }
-    return INITIAL_MASTER_PROGRAMS.map((p) => ({
+  const [areas, setAreas] = useState<Area[]>(INITIAL_AREAS);
+  const [cleaners, setCleaners] = useState<Cleaner[]>(INITIAL_CLEANERS);
+  const [shifts, setShifts] = useState<Shift[]>(INITIAL_SHIFTS);
+  const [schedules, setSchedules] = useState<CleaningSchedule[]>(INITIAL_SCHEDULES);
+  const [tasks, setTasks] = useState<CleaningTask[]>(INITIAL_TASKS);
+  const [inspections, setInspections] = useState<QCInspection[]>(INITIAL_INSPECTIONS);
+  const [complaints, setComplaints] = useState<Complaint[]>(INITIAL_COMPLAINTS);
+  const [notifications, setNotifications] = useState<AppNotification[]>(INITIAL_NOTIFICATIONS);
+  const [masterPrograms, setMasterPrograms] = useState<MasterCleaningProgramItem[]>(() =>
+    INITIAL_MASTER_PROGRAMS.map((p) => ({
       ...p,
       frequency: normalizeFrequencyCode(p.frequency),
-    }));
-  });
-
-  const [damageReports, setDamageReports] = useState<FacilityDamageReport[]>(() => {
-    const saved = localStorage.getItem('sco_damage_reports');
-    if (saved) {
-      try {
-        const parsed: FacilityDamageReport[] = JSON.parse(saved);
-        const existingIds = new Set(parsed.map((r) => r.id));
-        const missingInitials = INITIAL_DAMAGE_REPORTS.filter((r) => !existingIds.has(r.id));
-        return [...parsed, ...missingInitials];
-      } catch (e) {
-        console.error('Failed to parse damage reports', e);
-      }
-    }
-    return INITIAL_DAMAGE_REPORTS;
-  });
+    }))
+  );
+  const [damageReports, setDamageReports] = useState<FacilityDamageReport[]>(INITIAL_DAMAGE_REPORTS);
 
   // Klien Mode States (Turnover, Custom Checklist Items, Inspections)
-  const [employeeTurnovers, setEmployeeTurnovers] = useState<EmployeeTurnoverRecord[]>(() => {
-    const saved = localStorage.getItem('sco_employee_turnovers');
-    if (saved) {
-      try {
-        const parsed: EmployeeTurnoverRecord[] = JSON.parse(saved);
-        const existingIds = new Set(parsed.map((t) => t.id));
-        const missing = INITIAL_EMPLOYEE_TURNOVERS.filter((t) => !existingIds.has(t.id));
-        return [...parsed, ...missing];
-      } catch (e) {
-        console.error('Failed to parse employee turnovers', e);
-      }
-    }
-    return INITIAL_EMPLOYEE_TURNOVERS;
-  });
-
-  const [klienChecklistItems, setKlienChecklistItems] = useState<KlienChecklistItem[]>(() => {
-    const saved = localStorage.getItem('sco_klien_checklist_items');
-    if (saved) {
-      try {
-        const parsed: KlienChecklistItem[] = JSON.parse(saved);
-        const existingIds = new Set(parsed.map((i) => i.id));
-        const missing = INITIAL_KLIEN_CHECKLIST_ITEMS.filter((i) => !existingIds.has(i.id));
-        return [...parsed, ...missing];
-      } catch (e) {
-        console.error('Failed to parse klien checklist items', e);
-      }
-    }
-    return INITIAL_KLIEN_CHECKLIST_ITEMS;
-  });
-
-  const [klienChecklistInspections, setKlienChecklistInspections] = useState<KlienChecklistInspection[]>(() => {
-    const saved = localStorage.getItem('sco_klien_checklist_inspections');
-    if (saved) {
-      try {
-        const parsed: KlienChecklistInspection[] = JSON.parse(saved);
-        const existingIds = new Set(parsed.map((i) => i.id));
-        const missing = INITIAL_KLIEN_CHECKLIST_INSPECTIONS.filter((i) => !existingIds.has(i.id));
-        return [...parsed, ...missing];
-      } catch (e) {
-        console.error('Failed to parse klien checklist inspections', e);
-      }
-    }
-    return INITIAL_KLIEN_CHECKLIST_INSPECTIONS;
-  });
-
-  const [specialJobs, setSpecialJobs] = useState<SpecialJobItem[]>(() => {
-    const saved = localStorage.getItem('sco_special_jobs');
-    if (saved) {
-      try {
-        const parsed: SpecialJobItem[] = JSON.parse(saved);
-        const existingIds = new Set(parsed.map((j) => j.id));
-        const missing = INITIAL_SPECIAL_JOBS.filter((j) => !existingIds.has(j.id));
-        return [...parsed, ...missing];
-      } catch (e) {
-        console.error('Failed to parse special jobs', e);
-      }
-    }
-    return INITIAL_SPECIAL_JOBS;
-  });
-
-  // Synchronize localStorage
-  useEffect(() => {
-    localStorage.setItem('sco_damage_reports', JSON.stringify(damageReports));
-  }, [damageReports]);
-
-  useEffect(() => {
-    localStorage.setItem('sco_employee_turnovers', JSON.stringify(employeeTurnovers));
-  }, [employeeTurnovers]);
-
-  useEffect(() => {
-    localStorage.setItem('sco_klien_checklist_items', JSON.stringify(klienChecklistItems));
-  }, [klienChecklistItems]);
-
-  useEffect(() => {
-    localStorage.setItem('sco_klien_checklist_inspections', JSON.stringify(klienChecklistInspections));
-  }, [klienChecklistInspections]);
-
-  useEffect(() => {
-    localStorage.setItem('sco_special_jobs', JSON.stringify(specialJobs));
-  }, [specialJobs]);
+  const [employeeTurnovers, setEmployeeTurnovers] = useState<EmployeeTurnoverRecord[]>(INITIAL_EMPLOYEE_TURNOVERS);
+  const [klienChecklistItems, setKlienChecklistItems] = useState<KlienChecklistItem[]>(INITIAL_KLIEN_CHECKLIST_ITEMS);
+  const [klienChecklistInspections, setKlienChecklistInspections] = useState<KlienChecklistInspection[]>(INITIAL_KLIEN_CHECKLIST_INSPECTIONS);
+  const [specialJobs, setSpecialJobs] = useState<SpecialJobItem[]>(INITIAL_SPECIAL_JOBS);
+  const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>(INITIAL_AUDIT_LOGS);
+  const [rbacPermissions, setRbacPermissions] = useState<RoleModulePermission[]>(DEFAULT_RBAC_PERMISSIONS);
 
   // ==================== VPS POSTGRESQL & SOCKET.IO REALTIME SYNC ====================
   const [supabaseStatus, setSupabaseStatus] = useState<{
@@ -918,6 +665,8 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     lastSyncedAt: null,
   });
 
+  const [isInitialLoading, setIsInitialLoading] = useState<boolean>(true);
+
   // Refs for daily_checklists synchronization (Point A, B, C, D)
   const initialSyncDone = useRef<boolean>(false);
   const checklistSnapshotRef = useRef<Map<string, string>>(new Map());
@@ -928,97 +677,158 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     dailyChecklistsRef.current = dailyChecklists;
   }, [dailyChecklists]);
 
+  // Helper to load remote collection or seed once if empty on server
+  const loadOrSeedCollection = async <T extends { id?: string; moduleId?: string }>(
+    collection: string,
+    remoteItems: T[],
+    seedItems: T[],
+    setter: React.Dispatch<React.SetStateAction<T[]>>
+  ) => {
+    if (remoteItems.length > 0) {
+      setter(remoteItems);
+    } else if (seedItems && seedItems.length > 0) {
+      console.debug(`[Seed] Koleksi '${collection}' kosong di server. Menyemai ${seedItems.length} data awal...`);
+      setter(seedItems);
+      for (const item of seedItems) {
+        try {
+          await upsertRecord(collection, item);
+        } catch (e) {
+          console.warn(`[Seed Error] Gagal menyemai item ${collection}:`, e);
+        }
+      }
+    }
+  };
+
   // Pull all collections from backend (auto-pull on load & reconnect)
   const pullAllDataFromServer = async () => {
     try {
       setSupabaseStatus((prev) => ({ ...prev, status: 'SYNCING' }));
       const [
+        remoteProjects,
+        remoteUsers,
+        remoteRbac,
+        remoteAreas,
+        remoteCleaners,
+        remoteShifts,
+        remoteSchedules,
+        remoteChecklistLocs,
+        remoteChecklistTpls,
+        remoteDailyChecklists,
         remoteTasks,
+        remoteInspections,
         remoteComplaints,
         remoteDamage,
         remoteSpecial,
         remoteMcp,
-        remoteDailyChecklists,
+        remoteTurnovers,
+        remoteKlienItems,
+        remoteKlienInspections,
+        remoteNotifs,
+        remoteAuditLogs,
+        remoteProfile,
+        remoteKpi,
       ] = await Promise.all([
+        getRecords<ProjectLocation>(COLLECTIONS.PROJECTS),
+        getRecords<AppUser>(COLLECTIONS.USERS),
+        getRecords<RoleModulePermission>(COLLECTIONS.RBAC_PERMISSIONS),
+        getRecords<Area>(COLLECTIONS.AREAS),
+        getRecords<Cleaner>(COLLECTIONS.CLEANERS),
+        getRecords<Shift>(COLLECTIONS.SHIFTS),
+        getRecords<CleaningSchedule>(COLLECTIONS.SCHEDULES),
+        getRecords<ChecklistLocation>(COLLECTIONS.CHECKLIST_LOCATIONS),
+        getRecords<ChecklistTemplateItem>(COLLECTIONS.CHECKLIST_TEMPLATES),
+        getRecords<DailyAreaChecklist>(COLLECTIONS.DAILY_CHECKLISTS),
         getRecords<CleaningTask>(COLLECTIONS.TASKS),
+        getRecords<QCInspection>(COLLECTIONS.INSPECTIONS),
         getRecords<Complaint>(COLLECTIONS.COMPLAINTS),
         getRecords<FacilityDamageReport>(COLLECTIONS.DAMAGE_REPORTS),
         getRecords<SpecialJobItem>(COLLECTIONS.SPECIAL_JOBS),
         getRecords<MasterCleaningProgramItem>(COLLECTIONS.MASTER_PROGRAMS),
-        getRecords<DailyAreaChecklist>(COLLECTIONS.DAILY_CHECKLISTS),
+        getRecords<EmployeeTurnoverRecord>(COLLECTIONS.EMPLOYEE_TURNOVERS),
+        getRecords<KlienChecklistItem>(COLLECTIONS.KLIEN_CHECKLIST_ITEMS),
+        getRecords<KlienChecklistInspection>(COLLECTIONS.KLIEN_CHECKLIST_INSPECTIONS),
+        getRecords<AppNotification>(COLLECTIONS.NOTIFICATIONS),
+        getRecords<AuditLogEntry>(COLLECTIONS.AUDIT_LOGS),
+        getRecords<CompanyProfile>(COLLECTIONS.COMPANY_PROFILE),
+        getRecords<DashboardKpiVisibilityConfig>(COLLECTIONS.KPI_CONFIG),
       ]);
 
-      if (remoteTasks.length > 0) setTasks(remoteTasks);
-      if (remoteComplaints.length > 0) setComplaints(remoteComplaints);
-      if (remoteDamage.length > 0) setDamageReports(remoteDamage);
-      if (remoteSpecial.length > 0) setSpecialJobs(remoteSpecial);
-      if (remoteMcp.length > 0) setMasterPrograms(remoteMcp);
+      await Promise.all([
+        loadOrSeedCollection(COLLECTIONS.PROJECTS, remoteProjects, INITIAL_PROJECTS, setProjects),
+        loadOrSeedCollection(COLLECTIONS.USERS, remoteUsers, INITIAL_USERS, setUsers),
+        loadOrSeedCollection(COLLECTIONS.RBAC_PERMISSIONS, remoteRbac, DEFAULT_RBAC_PERMISSIONS, setRbacPermissions),
+        loadOrSeedCollection(COLLECTIONS.AREAS, remoteAreas, INITIAL_AREAS, setAreas),
+        loadOrSeedCollection(COLLECTIONS.CLEANERS, remoteCleaners, INITIAL_CLEANERS, setCleaners),
+        loadOrSeedCollection(COLLECTIONS.SHIFTS, remoteShifts, INITIAL_SHIFTS, setShifts),
+        loadOrSeedCollection(COLLECTIONS.SCHEDULES, remoteSchedules, INITIAL_SCHEDULES, setSchedules),
+        loadOrSeedCollection(COLLECTIONS.CHECKLIST_LOCATIONS, remoteChecklistLocs, INITIAL_CHECKLIST_LOCATIONS, setChecklistLocations),
+        loadOrSeedCollection(COLLECTIONS.CHECKLIST_TEMPLATES, remoteChecklistTpls, INITIAL_CHECKLIST_TEMPLATES, setChecklistTemplates),
+        loadOrSeedCollection(COLLECTIONS.TASKS, remoteTasks, INITIAL_TASKS, setTasks),
+        loadOrSeedCollection(COLLECTIONS.INSPECTIONS, remoteInspections, INITIAL_INSPECTIONS, setInspections),
+        loadOrSeedCollection(COLLECTIONS.COMPLAINTS, remoteComplaints, INITIAL_COMPLAINTS, setComplaints),
+        loadOrSeedCollection(COLLECTIONS.DAMAGE_REPORTS, remoteDamage, INITIAL_DAMAGE_REPORTS, setDamageReports),
+        loadOrSeedCollection(COLLECTIONS.SPECIAL_JOBS, remoteSpecial, INITIAL_SPECIAL_JOBS, setSpecialJobs),
+        loadOrSeedCollection(COLLECTIONS.MASTER_PROGRAMS, remoteMcp, INITIAL_MASTER_PROGRAMS, setMasterPrograms),
+        loadOrSeedCollection(COLLECTIONS.EMPLOYEE_TURNOVERS, remoteTurnovers, INITIAL_EMPLOYEE_TURNOVERS, setEmployeeTurnovers),
+        loadOrSeedCollection(COLLECTIONS.KLIEN_CHECKLIST_ITEMS, remoteKlienItems, INITIAL_KLIEN_CHECKLIST_ITEMS, setKlienChecklistItems),
+        loadOrSeedCollection(COLLECTIONS.KLIEN_CHECKLIST_INSPECTIONS, remoteKlienInspections, INITIAL_KLIEN_CHECKLIST_INSPECTIONS, setKlienChecklistInspections),
+        loadOrSeedCollection(COLLECTIONS.NOTIFICATIONS, remoteNotifs, INITIAL_NOTIFICATIONS, setNotifications),
+        loadOrSeedCollection(COLLECTIONS.AUDIT_LOGS, remoteAuditLogs, INITIAL_AUDIT_LOGS, setAuditLogs),
+      ]);
 
-      // Point B: Daily Checklists merge & initial sync
-      const serverMap = new Map(remoteDailyChecklists.map((c) => [c.id, c]));
-      const localOnlyChecklists: DailyAreaChecklist[] = [];
-      const mergedChecklists: DailyAreaChecklist[] = [];
-
-      setDailyChecklists((prevLocal) => {
-        if (!initialSyncDone.current) {
-          // Initial sync: Server wins on conflict
-          for (const remote of remoteDailyChecklists) {
-            mergedChecklists.push(remote);
-          }
-          for (const local of prevLocal) {
-            if (!serverMap.has(local.id)) {
-              mergedChecklists.push(local);
-              localOnlyChecklists.push(local);
+      // Daily Checklists:
+      if (remoteDailyChecklists.length > 0) {
+        const serverMap = new Map(remoteDailyChecklists.map((c) => [c.id, c]));
+        setDailyChecklists((prevLocal) => {
+          const merged: DailyAreaChecklist[] = [];
+          if (!initialSyncDone.current) {
+            merged.push(...remoteDailyChecklists);
+            for (const loc of prevLocal) {
+              if (!serverMap.has(loc.id)) merged.push(loc);
             }
-          }
-        } else {
-          // Reconnection pull: keep local for dirty checklists, server wins for others
-          for (const remote of remoteDailyChecklists) {
-            if (dirtyChecklistIdsRef.current.has(remote.id)) {
-              const localDirty = prevLocal.find((l) => l.id === remote.id);
-              if (localDirty) {
-                mergedChecklists.push(localDirty);
-                continue;
+          } else {
+            for (const rem of remoteDailyChecklists) {
+              if (dirtyChecklistIdsRef.current.has(rem.id)) {
+                const dirty = prevLocal.find((d) => d.id === rem.id);
+                if (dirty) {
+                  merged.push(dirty);
+                  continue;
+                }
               }
+              merged.push(rem);
             }
-            mergedChecklists.push(remote);
-          }
-          for (const local of prevLocal) {
-            if (!serverMap.has(local.id)) {
-              mergedChecklists.push(local);
-              if (dirtyChecklistIdsRef.current.has(local.id)) {
-                localOnlyChecklists.push(local);
-              }
+            for (const loc of prevLocal) {
+              if (!serverMap.has(loc.id)) merged.push(loc);
             }
           }
-        }
-
-        // Fill snapshot Map with merged data
-        for (const item of mergedChecklists) {
-          if (!dirtyChecklistIdsRef.current.has(item.id)) {
-            checklistSnapshotRef.current.set(item.id, JSON.stringify(item));
+          for (const item of merged) {
+            if (!dirtyChecklistIdsRef.current.has(item.id)) {
+              checklistSnapshotRef.current.set(item.id, JSON.stringify(item));
+            }
           }
+          return merged;
+        });
+      } else if (INITIAL_DAILY_CHECKLISTS && INITIAL_DAILY_CHECKLISTS.length > 0) {
+        console.debug(`[Seed] Koleksi 'daily_checklists' kosong di server. Menyemai data awal...`);
+        setDailyChecklists(INITIAL_DAILY_CHECKLISTS);
+        for (const item of INITIAL_DAILY_CHECKLISTS) {
+          checklistSnapshotRef.current.set(item.id, JSON.stringify(item));
+          upsertRecord(COLLECTIONS.DAILY_CHECKLISTS, item).catch(() => {});
         }
-
-        return mergedChecklists;
-      });
-
+      }
       initialSyncDone.current = true;
 
-      // Push local-only checklists to server once
-      if (localOnlyChecklists.length > 0) {
-        for (const localItem of localOnlyChecklists) {
-          console.debug('[Sync] Mengirim initial local-only daily_checklist ke server:', localItem.id);
-          upsertRecord(COLLECTIONS.DAILY_CHECKLISTS, localItem)
-            .then(() => {
-              checklistSnapshotRef.current.set(localItem.id, JSON.stringify(localItem));
-              dirtyChecklistIdsRef.current.delete(localItem.id);
-            })
-            .catch((err) => {
-              console.warn('[Sync] Gagal mengirim local-only checklist ke server:', localItem.id, err);
-              dirtyChecklistIdsRef.current.add(localItem.id);
-            });
-        }
+      // Company profile & KPI config:
+      if (remoteProfile.length > 0) {
+        setCompanyProfile(remoteProfile[0]);
+      } else {
+        upsertRecord(COLLECTIONS.COMPANY_PROFILE, { ...DEFAULT_COMPANY_PROFILE, id: 'main' }).catch(() => {});
+      }
+
+      if (remoteKpi.length > 0) {
+        setKpiConfig(remoteKpi[0]);
+      } else {
+        upsertRecord(COLLECTIONS.KPI_CONFIG, { ...DEFAULT_KPI_VISIBILITY_OFF, id: 'main' }).catch(() => {});
       }
 
       const nowStr = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB';
@@ -1027,9 +837,11 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         status: 'CONNECTED',
         lastSyncedAt: nowStr,
       });
+      setIsInitialLoading(false);
     } catch (err) {
       console.warn('[Auto-Pull] Gagal mengambil data dari server:', err);
       setSupabaseStatus((prev) => ({ ...prev, status: 'ERROR' }));
+      setIsInitialLoading(false);
     }
   };
 
@@ -1037,21 +849,19 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const syncToSupabase = async () => {
     try {
       setSupabaseStatus((prev) => ({ ...prev, status: 'SYNCING' }));
-      for (const t of tasks) {
-        await upsertRecord(COLLECTIONS.TASKS, t);
-      }
-      for (const c of complaints) {
-        await upsertRecord(COLLECTIONS.COMPLAINTS, c);
-      }
-      for (const d of damageReports) {
-        await upsertRecord(COLLECTIONS.DAMAGE_REPORTS, d);
-      }
-      for (const s of specialJobs) {
-        await upsertRecord(COLLECTIONS.SPECIAL_JOBS, s);
-      }
-      for (const m of masterPrograms) {
-        await upsertRecord(COLLECTIONS.MASTER_PROGRAMS, m);
-      }
+      for (const p of projects) await upsertRecord(COLLECTIONS.PROJECTS, p);
+      for (const u of users) await upsertRecord(COLLECTIONS.USERS, u);
+      for (const a of areas) await upsertRecord(COLLECTIONS.AREAS, a);
+      for (const c of cleaners) await upsertRecord(COLLECTIONS.CLEANERS, c);
+      for (const s of shifts) await upsertRecord(COLLECTIONS.SHIFTS, s);
+      for (const sch of schedules) await upsertRecord(COLLECTIONS.SCHEDULES, sch);
+      for (const cl of checklistLocations) await upsertRecord(COLLECTIONS.CHECKLIST_LOCATIONS, cl);
+      for (const ct of checklistTemplates) await upsertRecord(COLLECTIONS.CHECKLIST_TEMPLATES, ct);
+      for (const t of tasks) await upsertRecord(COLLECTIONS.TASKS, t);
+      for (const comp of complaints) await upsertRecord(COLLECTIONS.COMPLAINTS, comp);
+      for (const d of damageReports) await upsertRecord(COLLECTIONS.DAMAGE_REPORTS, d);
+      for (const sp of specialJobs) await upsertRecord(COLLECTIONS.SPECIAL_JOBS, sp);
+      for (const m of masterPrograms) await upsertRecord(COLLECTIONS.MASTER_PROGRAMS, m);
       for (const chk of dailyChecklists) {
         await upsertRecord(COLLECTIONS.DAILY_CHECKLISTS, chk);
         checklistSnapshotRef.current.set(chk.id, JSON.stringify(chk));
@@ -1072,7 +882,6 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   // Point A & D: Debounced effect to push changed dailyChecklists to server
   useEffect(() => {
-    // Point B: Do NOT send anything before initialSync is done
     if (!initialSyncDone.current) return;
 
     const changedChecklists: DailyAreaChecklist[] = [];
@@ -1120,7 +929,6 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         lastSyncedAt: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB',
       }));
       await pullAllDataFromServer();
-      // Retry sending any unsent/dirty checklists
       if (dirtyChecklistIdsRef.current.size > 0) {
         for (const dirtyId of Array.from(dirtyChecklistIdsRef.current)) {
           const item = dailyChecklistsRef.current.find((c) => c.id === dirtyId);
@@ -1138,91 +946,217 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       }
     });
 
-    // 3. Real-time updates without page refresh via Socket.IO
+    // 3. Auto-pull when tab becomes active again
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        console.debug('[Sync] Tab aktif kembali, menyinkronkan data...');
+        pullAllDataFromServer();
+      }
+    };
+    const handleWindowFocus = () => {
+      pullAllDataFromServer();
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', handleWindowFocus);
+
+    // 4. Periodic backup pull every 30 seconds
+    const backupInterval = setInterval(() => {
+      pullAllDataFromServer();
+    }, 30000);
+
+    // 5. Real-time updates without page refresh via Socket.IO
     const unsubscribeChanges = onRecordChange((evt) => {
       if (!isMounted) return;
       const { collection, id, data, isDeleted, action } = evt;
 
       if (action === 'delete' || isDeleted) {
-        if (collection === COLLECTIONS.TASKS) setTasks((prev) => prev.filter((t) => t.id !== id));
-        if (collection === COLLECTIONS.COMPLAINTS) setComplaints((prev) => prev.filter((c) => c.id !== id));
-        if (collection === COLLECTIONS.DAMAGE_REPORTS) setDamageReports((prev) => prev.filter((d) => d.id !== id));
-        if (collection === COLLECTIONS.SPECIAL_JOBS) setSpecialJobs((prev) => prev.filter((s) => s.id !== id));
-        if (collection === COLLECTIONS.MASTER_PROGRAMS) setMasterPrograms((prev) => prev.filter((m) => m.id !== id));
-        if (collection === COLLECTIONS.DAILY_CHECKLISTS) {
-          console.debug('[Sync] Menerima delete daily_checklist dari server:', id);
-          checklistSnapshotRef.current.delete(id);
-          dirtyChecklistIdsRef.current.delete(id);
-          setDailyChecklists((prev) => prev.filter((dc) => dc.id !== id));
+        switch (collection) {
+          case COLLECTIONS.PROJECTS: setProjects((prev) => prev.filter((p) => p.id !== id)); break;
+          case COLLECTIONS.USERS: setUsers((prev) => prev.filter((u) => u.id !== id)); break;
+          case COLLECTIONS.RBAC_PERMISSIONS: setRbacPermissions((prev) => prev.filter((p) => p.moduleId !== id)); break;
+          case COLLECTIONS.AREAS: setAreas((prev) => prev.filter((a) => a.id !== id)); break;
+          case COLLECTIONS.CLEANERS: setCleaners((prev) => prev.filter((c) => c.id !== id)); break;
+          case COLLECTIONS.SHIFTS: setShifts((prev) => prev.filter((s) => s.id !== id)); break;
+          case COLLECTIONS.SCHEDULES: setSchedules((prev) => prev.filter((s) => s.id !== id)); break;
+          case COLLECTIONS.CHECKLIST_LOCATIONS: setChecklistLocations((prev) => prev.filter((l) => l.id !== id)); break;
+          case COLLECTIONS.CHECKLIST_TEMPLATES: setChecklistTemplates((prev) => prev.filter((t) => t.id !== id)); break;
+          case COLLECTIONS.DAILY_CHECKLISTS:
+            checklistSnapshotRef.current.delete(id);
+            dirtyChecklistIdsRef.current.delete(id);
+            setDailyChecklists((prev) => prev.filter((dc) => dc.id !== id));
+            break;
+          case COLLECTIONS.TASKS: setTasks((prev) => prev.filter((t) => t.id !== id)); break;
+          case COLLECTIONS.INSPECTIONS: setInspections((prev) => prev.filter((i) => i.id !== id)); break;
+          case COLLECTIONS.COMPLAINTS: setComplaints((prev) => prev.filter((c) => c.id !== id)); break;
+          case COLLECTIONS.DAMAGE_REPORTS: setDamageReports((prev) => prev.filter((d) => d.id !== id)); break;
+          case COLLECTIONS.SPECIAL_JOBS: setSpecialJobs((prev) => prev.filter((s) => s.id !== id)); break;
+          case COLLECTIONS.MASTER_PROGRAMS: setMasterPrograms((prev) => prev.filter((m) => m.id !== id)); break;
+          case COLLECTIONS.EMPLOYEE_TURNOVERS: setEmployeeTurnovers((prev) => prev.filter((e) => e.id !== id)); break;
+          case COLLECTIONS.KLIEN_CHECKLIST_ITEMS: setKlienChecklistItems((prev) => prev.filter((k) => k.id !== id)); break;
+          case COLLECTIONS.KLIEN_CHECKLIST_INSPECTIONS: setKlienChecklistInspections((prev) => prev.filter((k) => k.id !== id)); break;
+          case COLLECTIONS.NOTIFICATIONS: setNotifications((prev) => prev.filter((n) => n.id !== id)); break;
+          case COLLECTIONS.AUDIT_LOGS: setAuditLogs((prev) => prev.filter((a) => a.id !== id)); break;
         }
         return;
       }
 
       if (data) {
-        if (collection === COLLECTIONS.TASKS) {
-          setTasks((prev) => {
-            const idx = prev.findIndex((t) => t.id === id);
-            if (idx >= 0) {
-              const updated = [...prev];
-              updated[idx] = { ...updated[idx], ...data };
-              return updated;
-            }
-            return [data, ...prev];
-          });
-        } else if (collection === COLLECTIONS.COMPLAINTS) {
-          setComplaints((prev) => {
-            const idx = prev.findIndex((c) => c.id === id);
-            if (idx >= 0) {
-              const updated = [...prev];
-              updated[idx] = { ...updated[idx], ...data };
-              return updated;
-            }
-            return [data, ...prev];
-          });
-        } else if (collection === COLLECTIONS.DAMAGE_REPORTS) {
-          setDamageReports((prev) => {
-            const idx = prev.findIndex((d) => d.id === id);
-            if (idx >= 0) {
-              const updated = [...prev];
-              updated[idx] = { ...updated[idx], ...data };
-              return updated;
-            }
-            return [data, ...prev];
-          });
-        } else if (collection === COLLECTIONS.SPECIAL_JOBS) {
-          setSpecialJobs((prev) => {
-            const idx = prev.findIndex((s) => s.id === id);
-            if (idx >= 0) {
-              const updated = [...prev];
-              updated[idx] = { ...updated[idx], ...data };
-              return updated;
-            }
-            return [data, ...prev];
-          });
-        } else if (collection === COLLECTIONS.MASTER_PROGRAMS) {
-          setMasterPrograms((prev) => {
-            const idx = prev.findIndex((m) => m.id === id);
-            if (idx >= 0) {
-              const updated = [...prev];
-              updated[idx] = { ...updated[idx], ...data };
-              return updated;
-            }
-            return [data, ...prev];
-          });
-        } else if (collection === COLLECTIONS.DAILY_CHECKLISTS) {
-          console.debug('[Sync] Menerima update daily_checklist dari server:', id);
-          // Point C: Update snapshot Map BEFORE or simultaneously with setDailyChecklists to prevent echo
-          checklistSnapshotRef.current.set(id, JSON.stringify(data));
-          dirtyChecklistIdsRef.current.delete(id);
-          setDailyChecklists((prev) => {
-            const idx = prev.findIndex((dc) => dc.id === id);
-            if (idx >= 0) {
-              const updated = [...prev];
-              updated[idx] = { ...updated[idx], ...data };
-              return updated;
-            }
-            return [data, ...prev];
-          });
+        switch (collection) {
+          case COLLECTIONS.PROJECTS:
+            setProjects((prev) => {
+              const idx = prev.findIndex((p) => p.id === id);
+              if (idx >= 0) { const next = [...prev]; next[idx] = { ...next[idx], ...data }; return next; }
+              return [...prev, data];
+            });
+            break;
+          case COLLECTIONS.USERS:
+            setUsers((prev) => {
+              const idx = prev.findIndex((u) => u.id === id);
+              if (idx >= 0) { const next = [...prev]; next[idx] = { ...next[idx], ...data }; return next; }
+              return [...prev, data];
+            });
+            break;
+          case COLLECTIONS.RBAC_PERMISSIONS:
+            setRbacPermissions((prev) => {
+              const idx = prev.findIndex((p) => p.moduleId === (data.moduleId || id));
+              if (idx >= 0) { const next = [...prev]; next[idx] = { ...next[idx], ...data }; return next; }
+              return [...prev, data];
+            });
+            break;
+          case COLLECTIONS.AREAS:
+            setAreas((prev) => {
+              const idx = prev.findIndex((a) => a.id === id);
+              if (idx >= 0) { const next = [...prev]; next[idx] = { ...next[idx], ...data }; return next; }
+              return [...prev, data];
+            });
+            break;
+          case COLLECTIONS.CLEANERS:
+            setCleaners((prev) => {
+              const idx = prev.findIndex((c) => c.id === id);
+              if (idx >= 0) { const next = [...prev]; next[idx] = { ...next[idx], ...data }; return next; }
+              return [...prev, data];
+            });
+            break;
+          case COLLECTIONS.SHIFTS:
+            setShifts((prev) => {
+              const idx = prev.findIndex((s) => s.id === id);
+              if (idx >= 0) { const next = [...prev]; next[idx] = { ...next[idx], ...data }; return next; }
+              return [...prev, data];
+            });
+            break;
+          case COLLECTIONS.SCHEDULES:
+            setSchedules((prev) => {
+              const idx = prev.findIndex((s) => s.id === id);
+              if (idx >= 0) { const next = [...prev]; next[idx] = { ...next[idx], ...data }; return next; }
+              return [...prev, data];
+            });
+            break;
+          case COLLECTIONS.CHECKLIST_LOCATIONS:
+            setChecklistLocations((prev) => {
+              const idx = prev.findIndex((l) => l.id === id);
+              if (idx >= 0) { const next = [...prev]; next[idx] = { ...next[idx], ...data }; return next; }
+              return [...prev, data];
+            });
+            break;
+          case COLLECTIONS.CHECKLIST_TEMPLATES:
+            setChecklistTemplates((prev) => {
+              const idx = prev.findIndex((t) => t.id === id);
+              if (idx >= 0) { const next = [...prev]; next[idx] = { ...next[idx], ...data }; return next; }
+              return [...prev, data];
+            });
+            break;
+          case COLLECTIONS.DAILY_CHECKLISTS:
+            checklistSnapshotRef.current.set(id, JSON.stringify(data));
+            dirtyChecklistIdsRef.current.delete(id);
+            setDailyChecklists((prev) => {
+              const idx = prev.findIndex((dc) => dc.id === id);
+              if (idx >= 0) { const next = [...prev]; next[idx] = { ...next[idx], ...data }; return next; }
+              return [...prev, data];
+            });
+            break;
+          case COLLECTIONS.TASKS:
+            setTasks((prev) => {
+              const idx = prev.findIndex((t) => t.id === id);
+              if (idx >= 0) { const next = [...prev]; next[idx] = { ...next[idx], ...data }; return next; }
+              return [data, ...prev];
+            });
+            break;
+          case COLLECTIONS.INSPECTIONS:
+            setInspections((prev) => {
+              const idx = prev.findIndex((i) => i.id === id);
+              if (idx >= 0) { const next = [...prev]; next[idx] = { ...next[idx], ...data }; return next; }
+              return [data, ...prev];
+            });
+            break;
+          case COLLECTIONS.COMPLAINTS:
+            setComplaints((prev) => {
+              const idx = prev.findIndex((c) => c.id === id);
+              if (idx >= 0) { const next = [...prev]; next[idx] = { ...next[idx], ...data }; return next; }
+              return [data, ...prev];
+            });
+            break;
+          case COLLECTIONS.DAMAGE_REPORTS:
+            setDamageReports((prev) => {
+              const idx = prev.findIndex((d) => d.id === id);
+              if (idx >= 0) { const next = [...prev]; next[idx] = { ...next[idx], ...data }; return next; }
+              return [data, ...prev];
+            });
+            break;
+          case COLLECTIONS.SPECIAL_JOBS:
+            setSpecialJobs((prev) => {
+              const idx = prev.findIndex((s) => s.id === id);
+              if (idx >= 0) { const next = [...prev]; next[idx] = { ...next[idx], ...data }; return next; }
+              return [data, ...prev];
+            });
+            break;
+          case COLLECTIONS.MASTER_PROGRAMS:
+            setMasterPrograms((prev) => {
+              const idx = prev.findIndex((m) => m.id === id);
+              if (idx >= 0) { const next = [...prev]; next[idx] = { ...next[idx], ...data }; return next; }
+              return [data, ...prev];
+            });
+            break;
+          case COLLECTIONS.EMPLOYEE_TURNOVERS:
+            setEmployeeTurnovers((prev) => {
+              const idx = prev.findIndex((e) => e.id === id);
+              if (idx >= 0) { const next = [...prev]; next[idx] = { ...next[idx], ...data }; return next; }
+              return [data, ...prev];
+            });
+            break;
+          case COLLECTIONS.KLIEN_CHECKLIST_ITEMS:
+            setKlienChecklistItems((prev) => {
+              const idx = prev.findIndex((k) => k.id === id);
+              if (idx >= 0) { const next = [...prev]; next[idx] = { ...next[idx], ...data }; return next; }
+              return [...prev, data];
+            });
+            break;
+          case COLLECTIONS.KLIEN_CHECKLIST_INSPECTIONS:
+            setKlienChecklistInspections((prev) => {
+              const idx = prev.findIndex((k) => k.id === id);
+              if (idx >= 0) { const next = [...prev]; next[idx] = { ...next[idx], ...data }; return next; }
+              return [data, ...prev];
+            });
+            break;
+          case COLLECTIONS.NOTIFICATIONS:
+            setNotifications((prev) => {
+              const idx = prev.findIndex((n) => n.id === id);
+              if (idx >= 0) { const next = [...prev]; next[idx] = { ...next[idx], ...data }; return next; }
+              return [data, ...prev];
+            });
+            break;
+          case COLLECTIONS.AUDIT_LOGS:
+            setAuditLogs((prev) => {
+              const idx = prev.findIndex((a) => a.id === id);
+              if (idx >= 0) { const next = [...prev]; next[idx] = { ...next[idx], ...data }; return next; }
+              return [data, ...prev];
+            });
+            break;
+          case COLLECTIONS.COMPANY_PROFILE:
+            setCompanyProfile(data);
+            break;
+          case COLLECTIONS.KPI_CONFIG:
+            setKpiConfig(data);
+            break;
         }
       }
     });
@@ -1239,88 +1173,18 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       unsubscribeReconnect();
       unsubscribeChanges();
       socket.off('disconnect', onSocketDisconnect);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', handleWindowFocus);
+      clearInterval(backupInterval);
     };
   }, []);
 
   useEffect(() => {
-    localStorage.setItem('sco_master_programs', JSON.stringify(masterPrograms));
-  }, [masterPrograms]);
-  useEffect(() => {
     localStorage.setItem('sco_role', userRole);
   }, [userRole]);
-
-  useEffect(() => {
-    localStorage.setItem('sco_projects', JSON.stringify(projects));
-  }, [projects]);
-
-  useEffect(() => {
-    localStorage.setItem('sco_users', JSON.stringify(users));
-  }, [users]);
-
   useEffect(() => {
     localStorage.setItem('sco_active_user_id', activeUserId);
   }, [activeUserId]);
-
-  useEffect(() => {
-    localStorage.setItem('sco_checklist_locations', JSON.stringify(checklistLocations));
-  }, [checklistLocations]);
-
-  useEffect(() => {
-    localStorage.setItem('sco_checklist_templates', JSON.stringify(checklistTemplates));
-  }, [checklistTemplates]);
-
-  useEffect(() => {
-    localStorage.setItem('sco_daily_checklists', JSON.stringify(dailyChecklists));
-  }, [dailyChecklists]);
-
-  useEffect(() => {
-    localStorage.setItem('sco_areas', JSON.stringify(areas));
-  }, [areas]);
-
-  useEffect(() => {
-    localStorage.setItem('sco_cleaners', JSON.stringify(cleaners));
-  }, [cleaners]);
-
-  useEffect(() => {
-    localStorage.setItem('sco_shifts', JSON.stringify(shifts));
-  }, [shifts]);
-
-  useEffect(() => {
-    localStorage.setItem('sco_tasks', JSON.stringify(tasks));
-  }, [tasks]);
-
-  useEffect(() => {
-    localStorage.setItem('sco_inspections', JSON.stringify(inspections));
-  }, [inspections]);
-
-  useEffect(() => {
-    localStorage.setItem('sco_complaints', JSON.stringify(complaints));
-  }, [complaints]);
-
-  useEffect(() => {
-    localStorage.setItem('sco_schedules', JSON.stringify(schedules));
-  }, [schedules]);
-
-  useEffect(() => {
-    localStorage.setItem('sco_notifs', JSON.stringify(notifications));
-  }, [notifications]);
-
-  // Audit Logs (Multi-Proyek)
-  const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>(() => {
-    const saved = localStorage.getItem('sco_audit_logs');
-    if (saved) {
-      try {
-        return JSON.parse(saved);
-      } catch (e) {
-        console.error('Failed to parse audit logs', e);
-      }
-    }
-    return INITIAL_AUDIT_LOGS;
-  });
-
-  useEffect(() => {
-    localStorage.setItem('sco_audit_logs', JSON.stringify(auditLogs));
-  }, [auditLogs]);
 
   const addAuditLog = (
     entry: Omit<AuditLogEntry, 'id' | 'timestamp' | 'userId' | 'userName' | 'userRole'>
@@ -1356,6 +1220,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     };
 
     setAuditLogs((prev) => [newLog, ...prev]);
+    upsertRecord(COLLECTIONS.AUDIT_LOGS, newLog).catch(() => {});
   };
 
   const clearAuditLogs = () => {
@@ -1376,8 +1241,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setTasks((prev) =>
       prev.map((t) => {
         if (t.id === taskId) {
-          affectedTask = t;
-          return {
+          affectedTask = {
             ...t,
             status: action === 'approved' ? 'completed' : 'in_progress',
             controllerApprovalStatus: action,
@@ -1386,10 +1250,17 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             controllerRejectionReason: action === 'rejected' ? notes : undefined,
             remarks: action === 'rejected' && notes ? `[Catatan Controller: ${notes}] ${t.remarks || ''}` : t.remarks,
           };
+          return affectedTask;
         }
         return t;
       })
     );
+
+    if (affectedTask) {
+      upsertRecord(COLLECTIONS.TASKS, affectedTask).catch((err) =>
+        notifyServerError('verifikasi approval tugas', err)
+      );
+    }
 
     // Kirim notifikasi hasil approval ke petugas
     const notif: AppNotification = {
@@ -1406,6 +1277,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       projectId: affectedTask?.projectId || safeActiveProjectId,
     };
     setNotifications((prev) => [notif, ...prev]);
+    upsertRecord(COLLECTIONS.NOTIFICATIONS, notif).catch(() => {});
 
     // Catat Audit Trail
     addAuditLog({
@@ -1609,36 +1481,32 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setActiveTab('dashboard');
   };
 
-  // Role-Based Access Control (RBAC) Permissions Matrix
-  const [rbacPermissions, setRbacPermissions] = useState<RoleModulePermission[]>(() => {
-    const saved = localStorage.getItem('sco_rbac_permissions');
-    if (saved) {
-      try {
-        const parsed: RoleModulePermission[] = JSON.parse(saved);
-        const existingModuleIds = new Set(parsed.map((p) => p.moduleId));
-        const missing = DEFAULT_RBAC_PERMISSIONS.filter((p) => !existingModuleIds.has(p.moduleId));
-        return [...parsed, ...missing];
-      } catch (e) {
-        console.error('Failed to parse RBAC permissions', e);
-      }
-    }
-    return DEFAULT_RBAC_PERMISSIONS;
-  });
-
-  useEffect(() => {
-    localStorage.setItem('sco_rbac_permissions', JSON.stringify(rbacPermissions));
-  }, [rbacPermissions]);
-
   const updateRbacPermission = (moduleId: string, role: UserRole, allowed: boolean) => {
     if (role === 'admin') return; // Super admin always has full access
+    let updatedPerm: RoleModulePermission | undefined;
     setRbacPermissions((prev) =>
-      prev.map((perm) => (perm.moduleId === moduleId ? { ...perm, [role]: allowed } : perm))
+      prev.map((perm) => {
+        if (perm.moduleId === moduleId) {
+          updatedPerm = { ...perm, [role]: allowed };
+          return updatedPerm;
+        }
+        return perm;
+      })
     );
+    if (updatedPerm) {
+      upsertRecord(COLLECTIONS.RBAC_PERMISSIONS, updatedPerm).catch((err) =>
+        notifyServerError('memperbarui hak akses RBAC', err)
+      );
+    }
   };
 
   const resetRbacPermissions = () => {
     setRbacPermissions(DEFAULT_RBAC_PERMISSIONS);
-    localStorage.setItem('sco_rbac_permissions', JSON.stringify(DEFAULT_RBAC_PERMISSIONS));
+    for (const perm of DEFAULT_RBAC_PERMISSIONS) {
+      upsertRecord(COLLECTIONS.RBAC_PERMISSIONS, perm).catch((err) =>
+        notifyServerError('reset hak akses RBAC', err)
+      );
+    }
   };
 
   const hasAccess = (role: UserRole, moduleId: string): boolean => {
@@ -1655,77 +1523,20 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setIsReloading(true);
     let serverSuccess = false;
 
-    // 1. Tarik data terbaru dari server untuk koleksi yang disinkronkan (termasuk daily_checklists)
     try {
-      const [
-        remoteTasks,
-        remoteComplaints,
-        remoteDamage,
-        remoteSpecial,
-        remoteMcp,
-        remoteDailyChecklists,
-      ] = await Promise.all([
-        getRecords<CleaningTask>(COLLECTIONS.TASKS),
-        getRecords<Complaint>(COLLECTIONS.COMPLAINTS),
-        getRecords<FacilityDamageReport>(COLLECTIONS.DAMAGE_REPORTS),
-        getRecords<SpecialJobItem>(COLLECTIONS.SPECIAL_JOBS),
-        getRecords<MasterCleaningProgramItem>(COLLECTIONS.MASTER_PROGRAMS),
-        getRecords<DailyAreaChecklist>(COLLECTIONS.DAILY_CHECKLISTS),
-      ]);
-
-      if (remoteTasks.length > 0) setTasks(remoteTasks);
-      if (remoteComplaints.length > 0) setComplaints(remoteComplaints);
-      if (remoteDamage.length > 0) setDamageReports(remoteDamage);
-      if (remoteSpecial.length > 0) setSpecialJobs(remoteSpecial);
-      if (remoteMcp.length > 0) setMasterPrograms(remoteMcp);
-
-      // Server menang jika ada perbedaan pada daily_checklists
-      if (remoteDailyChecklists.length > 0) {
-        setDailyChecklists(remoteDailyChecklists);
-        for (const item of remoteDailyChecklists) {
-          checklistSnapshotRef.current.set(item.id, JSON.stringify(item));
-        }
-        dirtyChecklistIdsRef.current.clear();
-      }
+      await pullAllDataFromServer();
       serverSuccess = true;
     } catch (err) {
-      console.warn('[Sync] Server tidak terjangkau saat reloadSystemData, beralih ke data lokal:', err);
+      console.warn('[Sync] Server tidak terjangkau saat reloadSystemData:', err);
     }
-
-    // 2. Reload data lokal dari localStorage (dan fallback jika server gagal)
-    try {
-      const savedProjects = localStorage.getItem('sco_projects');
-      if (savedProjects) setProjects(JSON.parse(savedProjects));
-
-      const savedSchedules = localStorage.getItem('sco_schedules');
-      if (savedSchedules) setSchedules(JSON.parse(savedSchedules));
-
-      if (!serverSuccess) {
-        const savedComplaints = localStorage.getItem('sco_complaints');
-        if (savedComplaints) setComplaints(JSON.parse(savedComplaints));
-
-        const savedReports = localStorage.getItem('sco_damage_reports');
-        if (savedReports) setDamageReports(JSON.parse(savedReports));
-
-        const savedPrograms = localStorage.getItem('sco_master_programs');
-        if (savedPrograms) setMasterPrograms(JSON.parse(savedPrograms));
-
-        const savedChecklists = localStorage.getItem('sco_daily_checklists');
-        if (savedChecklists) setDailyChecklists(JSON.parse(savedChecklists));
-      }
-    } catch (err) {
-      console.warn('Reload sync info:', err);
-    }
-
-    await new Promise((res) => setTimeout(res, 400));
 
     const nowTime = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB';
     const reloadNotif: AppNotification = {
       id: `notif-reload-${Date.now()}`,
-      title: serverSuccess ? '🔄 Data Sistem & Server Berhasil Dimuat Ulang' : '⚠️ Data Dimuat dari Penyimpanan Lokal',
+      title: serverSuccess ? '🔄 Data Sistem & Server Berhasil Dimuat Ulang' : '⚠️ Server Tidak Terjangkau',
       message: serverSuccess
-        ? `Seluruh data operasional, tiket, dan ceklist telah disegarkan dari server per ${nowTime}.`
-        : `Server tidak terjangkau. Data operasional dan ceklist disegarkan dari penyimpanan lokal per ${nowTime}.`,
+        ? `Seluruh data operasional, tiket, dan ceklist telah disegarkan dari database server per ${nowTime}.`
+        : `Server tidak terjangkau. Menggunakan data memori saat ini per ${nowTime}.`,
       timestamp: nowTime,
       type: serverSuccess ? 'info' : 'warning',
       targetRole: ['admin', 'supervisor', 'petugas', 'klien'],
@@ -1738,10 +1549,12 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   // Delete helpers for Schedule and Complaint
   const deleteSchedule = (id: string) => {
     setSchedules((prev) => prev.filter((s) => s.id !== id));
+    deleteRecord(COLLECTIONS.SCHEDULES, id).catch((err) => notifyServerError('menghapus jadwal', err));
   };
 
   const deleteComplaint = (id: string) => {
     setComplaints((prev) => prev.filter((c) => c.id !== id));
+    deleteRecord(COLLECTIONS.COMPLAINTS, id).catch((err) => notifyServerError('menghapus komplain', err));
   };
 
   // Project Location CRUD
@@ -1754,24 +1567,42 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     });
     const newProj: ProjectLocation = { ...proj, id, createdAt };
     setProjects((prev) => [...prev, newProj]);
+    upsertRecord(COLLECTIONS.PROJECTS, newProj).catch((err) => notifyServerError('menambah proyek', err));
 
     // Give super admin access automatically
-    setUsers((prev) =>
-      prev.map((u) =>
+    setUsers((prev) => {
+      const updated = prev.map((u) =>
         u.role === 'admin'
           ? { ...u, assignedProjectIds: [...(u.assignedProjectIds || []), id] }
           : u
-      )
-    );
+      );
+      updated.filter((u) => u.role === 'admin').forEach((adminUser) => {
+        upsertRecord(COLLECTIONS.USERS, adminUser).catch((e) => notifyServerError('memperbarui akses admin', e));
+      });
+      return updated;
+    });
   };
 
   const updateProject = (id: string, updates: Partial<ProjectLocation>) => {
-    setProjects((prev) => prev.map((p) => (p.id === id ? { ...p, ...updates } : p)));
+    let updatedProj: ProjectLocation | undefined;
+    setProjects((prev) =>
+      prev.map((p) => {
+        if (p.id === id) {
+          updatedProj = { ...p, ...updates };
+          return updatedProj;
+        }
+        return p;
+      })
+    );
+    if (updatedProj) {
+      upsertRecord(COLLECTIONS.PROJECTS, updatedProj).catch((err) => notifyServerError('memperbarui proyek', err));
+    }
   };
 
   const deleteProject = (id: string) => {
     if (projects.length <= 1) return;
     setProjects((prev) => prev.filter((p) => p.id !== id));
+    deleteRecord(COLLECTIONS.PROJECTS, id).catch((err) => notifyServerError('menghapus proyek', err));
     if (safeActiveProjectId === id) {
       const remaining = projects.filter((p) => p.id !== id);
       setActiveProjectId(remaining[0]?.id || 'proj-1');
@@ -1779,9 +1610,19 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   const updateUserProjectAssignment = (userId: string, projectIds: string[]) => {
+    let updatedUser: AppUser | undefined;
     setUsers((prev) =>
-      prev.map((u) => (u.id === userId ? { ...u, assignedProjectIds: projectIds } : u))
+      prev.map((u) => {
+        if (u.id === userId) {
+          updatedUser = { ...u, assignedProjectIds: projectIds };
+          return updatedUser;
+        }
+        return u;
+      })
     );
+    if (updatedUser) {
+      upsertRecord(COLLECTIONS.USERS, updatedUser).catch((err) => notifyServerError('memperbarui hak akses proyek pengguna', err));
+    }
   };
 
   const addUser = (userData: Omit<AppUser, 'id'>): AppUser => {
@@ -1799,6 +1640,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         }),
     };
     setUsers((prev) => [...prev, newUser]);
+    upsertRecord(COLLECTIONS.USERS, newUser).catch((err) => notifyServerError('menambah pengguna', err));
 
     // If added user is a petugas, provision corresponding cleaner profile if not exists
     if (userData.role === 'petugas') {
@@ -1810,26 +1652,25 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           (userData.assignedProjectIds && userData.assignedProjectIds[0]) || safeActiveProjectId;
         const newCleanerId = `cln-${Date.now()}`;
         const newNik = `CLN-${new Date().getFullYear()}-${String(cleaners.length + 1).padStart(3, '0')}`;
-        setCleaners((prev) => [
-          ...prev,
-          {
-            id: newCleanerId,
-            projectId: firstProjId,
-            nik: newNik,
-            name: userData.name,
-            phone: userData.phone || '0812-3456-7890',
-            photoUrl:
-              'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80',
-            shiftId: 'shift-1',
-            shiftName: 'Pagi (06:00 - 14:00)',
-            assignedAreas: [],
-            status: 'active',
-            rating: 5,
-            tasksCompletedToday: 0,
-            totalTasksToday: 0,
-            isClockedIn: false,
-          },
-        ]);
+        const newCleanerItem: Cleaner = {
+          id: newCleanerId,
+          projectId: firstProjId,
+          nik: newNik,
+          name: userData.name,
+          phone: userData.phone || '0812-3456-7890',
+          photoUrl:
+            'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80',
+          shiftId: 'shift-1',
+          shiftName: 'Pagi (06:00 - 14:00)',
+          assignedAreas: [],
+          status: 'active',
+          rating: 5,
+          tasksCompletedToday: 0,
+          totalTasksToday: 0,
+          isClockedIn: false,
+        };
+        setCleaners((prev) => [...prev, newCleanerItem]);
+        upsertRecord(COLLECTIONS.CLEANERS, newCleanerItem).catch((err) => notifyServerError('menambah petugas', err));
       }
     }
 
@@ -1837,9 +1678,19 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   const updateUser = (userId: string, updates: Partial<AppUser>) => {
+    let updatedUser: AppUser | undefined;
     setUsers((prev) =>
-      prev.map((u) => (u.id === userId ? { ...u, ...updates } : u))
+      prev.map((u) => {
+        if (u.id === userId) {
+          updatedUser = { ...u, ...updates };
+          return updatedUser;
+        }
+        return u;
+      })
     );
+    if (updatedUser) {
+      upsertRecord(COLLECTIONS.USERS, updatedUser).catch((err) => notifyServerError('memperbarui pengguna', err));
+    }
   };
 
   const deleteUser = (userId: string): { success: boolean; message?: string } => {
@@ -1858,6 +1709,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
 
     setUsers((prev) => prev.filter((u) => u.id !== userId));
+    deleteRecord(COLLECTIONS.USERS, userId).catch((err) => notifyServerError('menghapus pengguna', err));
 
     // If deleting current active user, fallback safely to an admin
     if (activeUserId === userId) {
@@ -1876,20 +1728,35 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     const id = `cloc-${Date.now()}`;
     const newLoc: ChecklistLocation = { ...loc, id, projectId: loc.projectId || safeActiveProjectId };
     setChecklistLocations((prev) => [...prev, newLoc]);
+    upsertRecord(COLLECTIONS.CHECKLIST_LOCATIONS, newLoc).catch((err) => notifyServerError('menambah lokasi ceklis', err));
   };
 
   const updateChecklistLocation = (id: string, updates: Partial<ChecklistLocation>) => {
-    setChecklistLocations((prev) => prev.map((l) => (l.id === id ? { ...l, ...updates } : l)));
+    let updatedLoc: ChecklistLocation | undefined;
+    setChecklistLocations((prev) =>
+      prev.map((l) => {
+        if (l.id === id) {
+          updatedLoc = { ...l, ...updates };
+          return updatedLoc;
+        }
+        return l;
+      })
+    );
+    if (updatedLoc) {
+      upsertRecord(COLLECTIONS.CHECKLIST_LOCATIONS, updatedLoc).catch((err) => notifyServerError('memperbarui lokasi ceklis', err));
+    }
   };
 
   const deleteChecklistLocation = (id: string) => {
     setChecklistLocations((prev) => prev.filter((l) => l.id !== id));
+    deleteRecord(COLLECTIONS.CHECKLIST_LOCATIONS, id).catch((err) => notifyServerError('menghapus lokasi ceklis', err));
   };
 
   const addChecklistTemplate = (tpl: Omit<ChecklistTemplateItem, 'id'>) => {
     const id = `tpl-custom-${Date.now()}`;
     const newTpl: ChecklistTemplateItem = { ...tpl, id };
     setChecklistTemplates((prev) => [...prev, newTpl]);
+    upsertRecord(COLLECTIONS.CHECKLIST_TEMPLATES, newTpl).catch((err) => notifyServerError('menambah template SOP', err));
     addAuditLog({
       action: 'create',
       module: 'pengaturan',
@@ -1900,7 +1767,19 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   const updateChecklistTemplate = (id: string, updates: Partial<ChecklistTemplateItem>) => {
-    setChecklistTemplates((prev) => prev.map((t) => (t.id === id ? { ...t, ...updates } : t)));
+    let updatedTpl: ChecklistTemplateItem | undefined;
+    setChecklistTemplates((prev) =>
+      prev.map((t) => {
+        if (t.id === id) {
+          updatedTpl = { ...t, ...updates };
+          return updatedTpl;
+        }
+        return t;
+      })
+    );
+    if (updatedTpl) {
+      upsertRecord(COLLECTIONS.CHECKLIST_TEMPLATES, updatedTpl).catch((err) => notifyServerError('memperbarui template SOP', err));
+    }
     addAuditLog({
       action: 'update',
       module: 'pengaturan',
@@ -1913,6 +1792,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const deleteChecklistTemplate = (id: string) => {
     const target = checklistTemplates.find((t) => t.id === id);
     setChecklistTemplates((prev) => prev.filter((t) => t.id !== id));
+    deleteRecord(COLLECTIONS.CHECKLIST_TEMPLATES, id).catch((err) => notifyServerError('menghapus template SOP', err));
     addAuditLog({
       action: 'delete',
       module: 'pengaturan',
@@ -2305,10 +2185,12 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       createdAt: new Date().toISOString(),
     };
     setEmployeeTurnovers((prev) => [newRecord, ...prev]);
+    upsertRecord(COLLECTIONS.EMPLOYEE_TURNOVERS, newRecord).catch((err) => notifyServerError('menambah pergantian karyawan', err));
   };
 
   const deleteEmployeeTurnover = (id: string) => {
     setEmployeeTurnovers((prev) => prev.filter((r) => r.id !== id));
+    deleteRecord(COLLECTIONS.EMPLOYEE_TURNOVERS, id).catch((err) => notifyServerError('menghapus pergantian karyawan', err));
   };
 
   const addKlienChecklistItem = (item: Omit<KlienChecklistItem, 'id'>) => {
@@ -2318,16 +2200,28 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       projectId: item.projectId || safeActiveProjectId,
     };
     setKlienChecklistItems((prev) => [...prev, newItem]);
+    upsertRecord(COLLECTIONS.KLIEN_CHECKLIST_ITEMS, newItem).catch((err) => notifyServerError('menambah item checklist klien', err));
   };
 
   const updateKlienChecklistItem = (id: string, updates: Partial<KlienChecklistItem>) => {
+    let updatedItem: KlienChecklistItem | undefined;
     setKlienChecklistItems((prev) =>
-      prev.map((item) => (item.id === id ? { ...item, ...updates } : item))
+      prev.map((item) => {
+        if (item.id === id) {
+          updatedItem = { ...item, ...updates };
+          return updatedItem;
+        }
+        return item;
+      })
     );
+    if (updatedItem) {
+      upsertRecord(COLLECTIONS.KLIEN_CHECKLIST_ITEMS, updatedItem).catch((err) => notifyServerError('memperbarui item checklist klien', err));
+    }
   };
 
   const deleteKlienChecklistItem = (id: string) => {
     setKlienChecklistItems((prev) => prev.filter((item) => item.id !== id));
+    deleteRecord(COLLECTIONS.KLIEN_CHECKLIST_ITEMS, id).catch((err) => notifyServerError('menghapus item checklist klien', err));
   };
 
   const resetKlienChecklistItems = () => {
@@ -2339,6 +2233,9 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       ...prev.filter((item) => (item.projectId || 'proj-1') !== safeActiveProjectId),
       ...defaults,
     ]);
+    defaults.forEach((item) => {
+      upsertRecord(COLLECTIONS.KLIEN_CHECKLIST_ITEMS, item).catch(() => {});
+    });
   };
 
   const submitKlienChecklistInspection = (
@@ -2351,10 +2248,12 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       timestamp: new Date().toISOString(),
     };
     setKlienChecklistInspections((prev) => [newInsp, ...prev]);
+    upsertRecord(COLLECTIONS.KLIEN_CHECKLIST_INSPECTIONS, newInsp).catch((err) => notifyServerError('menyimpan inspeksi klien', err));
   };
 
   const deleteKlienChecklistInspection = (id: string) => {
     setKlienChecklistInspections((prev) => prev.filter((i) => i.id !== id));
+    deleteRecord(COLLECTIONS.KLIEN_CHECKLIST_INSPECTIONS, id).catch((err) => notifyServerError('menghapus inspeksi klien', err));
   };
 
   // Global areas/tasks filtered by user's assigned projects for non-admin
@@ -2465,17 +2364,22 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const activeCleaner = filteredCleaners.find((c) => c.id === activeCleanerId) || filteredCleaners[0] || cleaners[0];
 
   const toggleTaskChecklist = (taskId: string, checklistId: string) => {
+    let updatedTask: CleaningTask | undefined;
     setTasks((prev) =>
       prev.map((task) => {
         if (task.id !== taskId) return task;
-        return {
+        updatedTask = {
           ...task,
           checklistArea: task.checklistArea.map((item) =>
             item.id === checklistId ? { ...item, checked: !item.checked } : item
           ),
         };
+        return updatedTask;
       })
     );
+    if (updatedTask) {
+      upsertRecord(COLLECTIONS.TASKS, updatedTask).catch((err) => notifyServerError('memperbarui ceklis tugas', err));
+    }
   };
 
   const updateTaskMeta = (
@@ -2496,20 +2400,26 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       >
     >
   ) => {
+    let updatedTask: CleaningTask | undefined;
     setTasks((prev) =>
       prev.map((task) => {
         if (task.id !== taskId) return task;
-        return {
+        updatedTask = {
           ...task,
           ...updates,
         };
+        return updatedTask;
       })
     );
+    if (updatedTask) {
+      upsertRecord(COLLECTIONS.TASKS, updatedTask).catch((err) => notifyServerError('memperbarui jadwal/petugas tugas', err));
+    }
   };
 
   const addTaskChecklistItem = (taskId: string, label: string) => {
     const trimmed = label.trim();
     if (!trimmed) return;
+    let updatedTask: CleaningTask | undefined;
     setTasks((prev) =>
       prev.map((task) => {
         if (task.id !== taskId) return task;
@@ -2518,12 +2428,16 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           label: trimmed,
           checked: false,
         };
-        return {
+        updatedTask = {
           ...task,
           checklistArea: [...task.checklistArea, newItem],
         };
+        return updatedTask;
       })
     );
+    if (updatedTask) {
+      upsertRecord(COLLECTIONS.TASKS, updatedTask).catch((err) => notifyServerError('menambah item ceklis tugas', err));
+    }
   };
 
   const addCleaningTask = (payload: Omit<CleaningTask, 'id'>) => {
@@ -2534,6 +2448,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       projectId: payload.projectId || safeActiveProjectId,
     };
     setTasks((prev) => [newTask, ...prev]);
+    upsertRecord(COLLECTIONS.TASKS, newTask).catch((err) => notifyServerError('menambah tugas cleaning', err));
   };
 
   const updateTaskSupply = (taskId: string, supplyId: string, amount: number) => {
@@ -2541,23 +2456,38 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   const updateTaskRemark = (taskId: string, remarks: string) => {
+    let updatedTask: CleaningTask | undefined;
     setTasks((prev) =>
-      prev.map((t) => (t.id === taskId ? { ...t, remarks } : t))
+      prev.map((t) => {
+        if (t.id === taskId) {
+          updatedTask = { ...t, remarks };
+          return updatedTask;
+        }
+        return t;
+      })
     );
+    if (updatedTask) {
+      upsertRecord(COLLECTIONS.TASKS, updatedTask).catch((err) => notifyServerError('memperbarui catatan tugas', err));
+    }
   };
 
   const updateTaskPhotos = (taskId: string, before?: string, progress?: string, after?: string) => {
+    let updatedTask: CleaningTask | undefined;
     setTasks((prev) =>
       prev.map((t) => {
         if (t.id !== taskId) return t;
-        return {
+        updatedTask = {
           ...t,
           ...(before !== undefined ? { photoBefore: before } : {}),
           ...(progress !== undefined ? { photoProgress: progress } : {}),
           ...(after !== undefined ? { photoAfter: after } : {}),
         };
+        return updatedTask;
       })
     );
+    if (updatedTask) {
+      upsertRecord(COLLECTIONS.TASKS, updatedTask).catch((err) => notifyServerError('memperbarui foto tugas', err));
+    }
   };
 
   const exportTaskToMonthlyReport = (taskId: string, targetMonth?: string) => {
@@ -2567,6 +2497,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       year: 'numeric',
     });
 
+    let updatedTask: CleaningTask | undefined;
     setTasks((prev) => {
       const task = prev.find((t) => t.id === taskId);
       if (!task) return prev;
@@ -2576,24 +2507,33 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       );
       const nextOrder = existingInMonth.length + 1;
 
-      return prev.map((t) =>
-        t.id === taskId
-          ? {
-              ...t,
-              exportedToMonthlyReport: true,
-              monthPeriod: month,
-              monthlyOrderNo: t.monthlyOrderNo || nextOrder,
-              monthlyReportExportDate: todayStr,
-            }
-          : t
-      );
+      return prev.map((t) => {
+        if (t.id === taskId) {
+          updatedTask = {
+            ...t,
+            exportedToMonthlyReport: true,
+            monthPeriod: month,
+            monthlyOrderNo: t.monthlyOrderNo || nextOrder,
+            monthlyReportExportDate: todayStr,
+          };
+          return updatedTask;
+        }
+        return t;
+      });
     });
+    if (updatedTask) {
+      upsertRecord(COLLECTIONS.TASKS, updatedTask).catch((err) => notifyServerError('ekspor tugas ke laporan bulanan', err));
+    }
   };
 
   const removeTaskFromMonthlyReport = (taskId: string) => {
+    let targetMonth = '2026-09';
+    let affectedTasks: CleaningTask[] = [];
+
     setTasks((prev) => {
       const target = prev.find((t) => t.id === taskId);
       const month = target?.monthPeriod || '2026-09';
+      targetMonth = month;
 
       const updated = prev.map((t) =>
         t.id === taskId
@@ -2606,7 +2546,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       );
 
       let counter = 1;
-      return updated.map((t) => {
+      const result = updated.map((t) => {
         if (t.monthPeriod === month && t.exportedToMonthlyReport) {
           const item = { ...t, monthlyOrderNo: counter };
           counter++;
@@ -2614,7 +2554,13 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         }
         return t;
       });
+      affectedTasks = result.filter((t) => t.id === taskId || (t.monthPeriod === month && t.exportedToMonthlyReport));
+      return result;
     });
+
+    for (const t of affectedTasks) {
+      upsertRecord(COLLECTIONS.TASKS, t).catch(() => {});
+    }
   };
 
   const bulkExportToMonthlyReport = (taskIds: string[], targetMonth?: string) => {
@@ -2624,6 +2570,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       year: 'numeric',
     });
 
+    const affectedTasks: CleaningTask[] = [];
     setTasks((prev) => {
       const month = targetMonth || '2026-09';
       let currentMaxOrder = prev
@@ -2633,23 +2580,39 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       return prev.map((t) => {
         if (taskIds.includes(t.id) && !t.exportedToMonthlyReport) {
           currentMaxOrder++;
-          return {
+          const updated = {
             ...t,
             exportedToMonthlyReport: true,
             monthPeriod: month,
             monthlyOrderNo: currentMaxOrder,
             monthlyReportExportDate: todayStr,
           };
+          affectedTasks.push(updated);
+          return updated;
         }
         return t;
       });
     });
+
+    for (const t of affectedTasks) {
+      upsertRecord(COLLECTIONS.TASKS, t).catch(() => {});
+    }
   };
 
   const updateTaskWorkDescription = (taskId: string, description: string) => {
+    let updatedTask: CleaningTask | undefined;
     setTasks((prev) =>
-      prev.map((t) => (t.id === taskId ? { ...t, workDescription: description } : t))
+      prev.map((t) => {
+        if (t.id === taskId) {
+          updatedTask = { ...t, workDescription: description };
+          return updatedTask;
+        }
+        return t;
+      })
     );
+    if (updatedTask) {
+      upsertRecord(COLLECTIONS.TASKS, updatedTask).catch((err) => notifyServerError('memperbarui deskripsi tugas', err));
+    }
   };
 
   const updateTaskStatus = (taskId: string, status: TaskStatus) => {
@@ -2731,6 +2694,16 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         projectId: currentTask.projectId || safeActiveProjectId,
       };
       setNotifications((prev) => [newNotif, ...prev]);
+      upsertRecord(COLLECTIONS.NOTIFICATIONS, newNotif).catch(() => {});
+
+      const updatedArea = areas.find((a) => a.id === currentTask.areaId);
+      if (updatedArea) {
+        upsertRecord(COLLECTIONS.AREAS, { ...updatedArea, status: 'in_progress', lastCleaned: `Hari ini, ${nowStr}` }).catch(() => {});
+      }
+      const currentCleaner = cleaners.find((c) => c.id === currentTask.cleanerId);
+      if (currentCleaner) {
+        upsertRecord(COLLECTIONS.CLEANERS, { ...currentCleaner, tasksCompletedToday: currentCleaner.tasksCompletedToday + 1 }).catch(() => {});
+      }
     }
 
     try {
@@ -2797,23 +2770,22 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     };
 
     setInspections((prev) => [newInspection, ...prev]);
+    upsertRecord(COLLECTIONS.INSPECTIONS, newInspection).catch((err) => notifyServerError('menyimpan inspeksi QC', err));
 
     if (task) {
+      const updatedTask: CleaningTask = {
+        ...task,
+        status: payload.status === 'passed' ? 'completed' : 'pending',
+        qcScore: payload.score,
+        qcStatus: payload.status === 'passed' ? 'approved' : 'rejected',
+        qcNotes: payload.notes,
+        inspectedBy: 'Hendra Wijaya',
+        inspectedAt: nowStr,
+      };
       setTasks((prev) =>
-        prev.map((t) =>
-          t.id === payload.taskId
-            ? {
-                ...t,
-                status: payload.status === 'passed' ? 'completed' : 'pending',
-                qcScore: payload.score,
-                qcStatus: payload.status === 'passed' ? 'approved' : 'rejected',
-                qcNotes: payload.notes,
-                inspectedBy: 'Hendra Wijaya',
-                inspectedAt: nowStr,
-              }
-            : t
-        )
+        prev.map((t) => (t.id === payload.taskId ? updatedTask : t))
       );
+      upsertRecord(COLLECTIONS.TASKS, updatedTask).catch((err) => notifyServerError('memperbarui status tugas QC', err));
 
       setAreas((prev) =>
         prev.map((a) =>
@@ -2822,6 +2794,10 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             : a
         )
       );
+      const targetArea = areas.find((a) => a.id === task.areaId);
+      if (targetArea) {
+        upsertRecord(COLLECTIONS.AREAS, { ...targetArea, status: payload.status === 'passed' ? 'inspected' : 'needs_cleaning' }).catch(() => {});
+      }
     }
 
     const notif: AppNotification = {
@@ -2836,6 +2812,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       projectId: task?.projectId || safeActiveProjectId,
     };
     setNotifications((prev) => [notif, ...prev]);
+    upsertRecord(COLLECTIONS.NOTIFICATIONS, notif).catch(() => {});
 
     if (payload.status === 'passed') {
       try {
@@ -3297,28 +3274,58 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const addArea = (newArea: Omit<Area, 'id'>) => {
     const id = `area-${Date.now()}`;
-    setAreas((prev) => [...prev, { ...newArea, id, projectId: newArea.projectId || safeActiveProjectId }]);
+    const item: Area = { ...newArea, id, projectId: newArea.projectId || safeActiveProjectId };
+    setAreas((prev) => [...prev, item]);
+    upsertRecord(COLLECTIONS.AREAS, item).catch((err) => notifyServerError('menambah area', err));
   };
 
   const updateArea = (id: string, updates: Partial<Area>) => {
-    setAreas((prev) => prev.map((a) => (a.id === id ? { ...a, ...updates } : a)));
+    let updated: Area | undefined;
+    setAreas((prev) =>
+      prev.map((a) => {
+        if (a.id === id) {
+          updated = { ...a, ...updates };
+          return updated;
+        }
+        return a;
+      })
+    );
+    if (updated) {
+      upsertRecord(COLLECTIONS.AREAS, updated).catch((err) => notifyServerError('memperbarui area', err));
+    }
   };
 
   const deleteArea = (id: string) => {
     setAreas((prev) => prev.filter((a) => a.id !== id));
+    deleteRecord(COLLECTIONS.AREAS, id).catch((err) => notifyServerError('menghapus area', err));
   };
 
   const addCleaner = (newCleaner: Omit<Cleaner, 'id'>) => {
     const id = `cln-${Date.now()}`;
-    setCleaners((prev) => [...prev, { ...newCleaner, id, projectId: newCleaner.projectId || safeActiveProjectId }]);
+    const item: Cleaner = { ...newCleaner, id, projectId: newCleaner.projectId || safeActiveProjectId };
+    setCleaners((prev) => [...prev, item]);
+    upsertRecord(COLLECTIONS.CLEANERS, item).catch((err) => notifyServerError('menambah petugas', err));
   };
 
   const updateCleaner = (id: string, updates: Partial<Cleaner>) => {
-    setCleaners((prev) => prev.map((c) => (c.id === id ? { ...c, ...updates } : c)));
+    let updated: Cleaner | undefined;
+    setCleaners((prev) =>
+      prev.map((c) => {
+        if (c.id === id) {
+          updated = { ...c, ...updates };
+          return updated;
+        }
+        return c;
+      })
+    );
+    if (updated) {
+      upsertRecord(COLLECTIONS.CLEANERS, updated).catch((err) => notifyServerError('memperbarui petugas', err));
+    }
   };
 
   const deleteCleaner = (id: string) => {
     setCleaners((prev) => prev.filter((c) => c.id !== id));
+    deleteRecord(COLLECTIONS.CLEANERS, id).catch((err) => notifyServerError('menghapus petugas', err));
   };
 
   const updateCleanerAttendance = (
@@ -3327,6 +3334,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     status: AttendanceStatusCode,
     monthPeriod?: string
   ) => {
+    let updated: Cleaner | undefined;
     setCleaners((prev) =>
       prev.map((c) => {
         if (c.id !== cleanerId) return c;
@@ -3341,13 +3349,17 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           };
         }
 
-        return {
+        updated = {
           ...c,
           attendance: currentAtt,
           attendanceByMonth: currentByMonth,
         };
+        return updated;
       })
     );
+    if (updated) {
+      upsertRecord(COLLECTIONS.CLEANERS, updated).catch((err) => notifyServerError('memperbarui presensi petugas', err));
+    }
   };
 
   const batchSetCleanerAttendance = (
@@ -3355,6 +3367,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     days: Record<number, AttendanceStatusCode>,
     monthPeriod?: string
   ) => {
+    let updated: Cleaner | undefined;
     setCleaners((prev) =>
       prev.map((c) => {
         if (c.id !== cleanerId) return c;
@@ -3366,13 +3379,17 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             ...days,
           };
         }
-        return {
+        updated = {
           ...c,
           attendance: currentAtt,
           attendanceByMonth: currentByMonth,
         };
+        return updated;
       })
     );
+    if (updated) {
+      upsertRecord(COLLECTIONS.CLEANERS, updated).catch((err) => notifyServerError('memperbarui presensi petugas', err));
+    }
   };
 
   const addShift = (newShift: Omit<Shift, 'id'>) => {
@@ -3385,58 +3402,76 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       durationText: duration.text,
     };
     setShifts((prev) => [...prev, created]);
+    upsertRecord(COLLECTIONS.SHIFTS, created).catch((err) => notifyServerError('menambah shift', err));
   };
 
   const updateShift = (id: string, updates: Partial<Shift>) => {
+    let updated: Shift | undefined;
     setShifts((prev) =>
       prev.map((s) => {
         if (s.id !== id) return s;
         const startTime = updates.startTime !== undefined ? updates.startTime : s.startTime;
         const endTime = updates.endTime !== undefined ? updates.endTime : s.endTime;
         const duration = calculateShiftDuration(startTime, endTime);
-        return {
+        updated = {
           ...s,
           ...updates,
           workHoursDuration: duration.totalHoursDecimal,
           durationText: duration.text,
         };
+        return updated;
       })
     );
+    if (updated) {
+      upsertRecord(COLLECTIONS.SHIFTS, updated).catch((err) => notifyServerError('memperbarui shift', err));
+    }
   };
 
   const deleteShift = (id: string) => {
     setShifts((prev) => prev.filter((s) => s.id !== id));
+    deleteRecord(COLLECTIONS.SHIFTS, id).catch((err) => notifyServerError('menghapus shift', err));
   };
 
   const toggleClockInOut = (cleanerId: string) => {
     const nowStr = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB';
+    let updated: Cleaner | undefined;
     setCleaners((prev) =>
       prev.map((c) => {
         if (c.id !== cleanerId) return c;
         const nextClockedIn = !c.isClockedIn;
-        return {
+        updated = {
           ...c,
           isClockedIn: nextClockedIn,
           status: nextClockedIn ? 'active' : 'off',
           clockInTime: nextClockedIn ? nowStr : undefined,
         };
+        return updated;
       })
     );
+    if (updated) {
+      upsertRecord(COLLECTIONS.CLEANERS, updated).catch((err) => notifyServerError('clock in/out petugas', err));
+    }
   };
 
   const dismissNotification = (id: string) => {
     setNotifications((prev) => prev.filter((n) => n.id !== id));
+    deleteRecord(COLLECTIONS.NOTIFICATIONS, id).catch(() => {});
   };
 
   const acknowledgeComplaintNotifications = () => {
     setNotifications((prev) =>
-      prev.map((n) =>
-        n.isNewComplaint ||
-        n.title.includes('Komplain Baru') ||
-        n.title.includes('Keluhan Baru')
-          ? { ...n, read: true }
-          : n
-      )
+      prev.map((n) => {
+        if (
+          n.isNewComplaint ||
+          n.title.includes('Komplain Baru') ||
+          n.title.includes('Keluhan Baru')
+        ) {
+          const updated = { ...n, read: true };
+          upsertRecord(COLLECTIONS.NOTIFICATIONS, updated).catch(() => {});
+          return updated;
+        }
+        return n;
+      })
     );
   };
 
@@ -3458,6 +3493,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       projectId: safeActiveProjectId,
     };
     setNotifications((prev) => [notif, ...prev]);
+    upsertRecord(COLLECTIONS.NOTIFICATIONS, notif).catch(() => {});
   };
 
   const resetToInitialData = () => {
@@ -3479,7 +3515,6 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setMasterPrograms(INITIAL_MASTER_PROGRAMS);
     setDamageReports(INITIAL_DAMAGE_REPORTS);
     setKpiConfig(DEFAULT_KPI_VISIBILITY_OFF);
-    localStorage.setItem('sco_dashboard_kpi_config', JSON.stringify(DEFAULT_KPI_VISIBILITY_OFF));
     setUserRole('admin');
     setViewMode('web');
   };
@@ -3922,6 +3957,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         // Supabase Realtime State & Sync
         supabaseStatus,
         syncToSupabase,
+        isInitialLoading,
       }}
     >
       {children}

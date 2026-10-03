@@ -27,10 +27,24 @@ import { ShieldAlert } from 'lucide-react';
 
 
 const MainLayout: React.FC = () => {
-  const { isAuthenticated, activeTab, userRole, hasAccess, setActiveTab } = useCleaning();
+  const { isAuthenticated, activeTab, userRole, hasAccess, setActiveTab, isInitialLoading } = useCleaning();
 
   if (!isAuthenticated) {
     return <LoginPage />;
+  }
+
+  if (isInitialLoading) {
+    return (
+      <div className="h-screen flex flex-col items-center justify-center bg-slate-900 text-white select-none">
+        <div className="flex flex-col items-center space-y-4">
+          <div className="w-12 h-12 border-4 border-sky-400 border-t-transparent rounded-full animate-spin"></div>
+          <div className="text-center">
+            <h2 className="text-lg font-bold text-slate-100">Memuat Data Sistem</h2>
+            <p className="text-sm text-slate-400 mt-1">Mengambil data terbaru dari basis data server...</p>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   const isAllowed = hasAccess(userRole, activeTab);

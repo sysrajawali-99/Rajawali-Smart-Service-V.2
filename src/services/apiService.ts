@@ -39,11 +39,15 @@ export const COLLECTIONS = {
   NOTIFICATIONS: 'notifications',
   PROJECTS: 'projects',
   USERS: 'users',
+  CHECKLIST_LOCATIONS: 'checklist_locations',
+  CHECKLIST_TEMPLATES: 'checklist_templates',
+  RBAC_PERMISSIONS: 'rbac_permissions',
   EMPLOYEE_TURNOVERS: 'employee_turnovers',
   KLIEN_CHECKLIST_ITEMS: 'klien_checklist_items',
   KLIEN_CHECKLIST_INSPECTIONS: 'klien_checklist_inspections',
   COMPANY_PROFILE: 'company_profile',
   KPI_CONFIG: 'kpi_config',
+  AUDIT_LOGS: 'audit_logs',
 } as const;
 
 export type CollectionName = typeof COLLECTIONS[keyof typeof COLLECTIONS] | string;
@@ -172,20 +176,23 @@ export async function sanitizeRecordPhotos<T extends Record<string, any>>(record
 }
 
 /**
- * Fetch all records for a given collection from the backend
+ * Fetch all records for a given collection from the backend.
+ * Throws an error if the server is unreachable or returns a non-2xx status,
+ * so the caller can distinguish between server error vs truly empty collection.
  */
 export async function getRecords<T = any>(collection: string): Promise<T[]> {
   try {
     const res = await fetch(`/api/records/${collection}`);
     if (!res.ok) {
-      console.warn(`[API] Failed to get ${collection}: status ${res.status}`);
-      return [];
+      const errorText = await res.text().catch(() => res.statusText);
+      console.warn(`[API] Failed to get ${collection}: status ${res.status} (${errorText})`);
+      throw new Error(`Gagal mengambil data ${collection}: HTTP ${res.status}`);
     }
     const data = await res.json();
     return Array.isArray(data) ? data : [];
   } catch (err) {
     console.warn(`[API] Network error fetching ${collection}:`, err);
-    return [];
+    throw err;
   }
 }
 
@@ -193,26 +200,26 @@ export async function getRecords<T = any>(collection: string): Promise<T[]> {
  * Upsert a single record in the collection.
  * Sanitizes base64 photos into URLs, saves to PostgreSQL, and broadcasts via Socket.IO.
  */
-export async function upsertRecord<T extends { id: string }>(
+export async function upsertRecord<T extends { id?: string; moduleId?: string }>(
   collection: string,
   record: T
 ): Promise<T> {
-  try {
-    const sanitized = await sanitizeRecordPhotos(record);
-    const res = await fetch(`/api/records/${collection}/${record.id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(sanitized),
-    });
+  const sanitized = await sanitizeRecordPhotos(record);
+  const recordId = (sanitized as any).id || (sanitized as any).moduleId || 'main';
+  (sanitized as any).id = recordId;
 
-    if (!res.ok) {
-      console.warn(`[API] Failed to upsert ${collection}/${record.id}:`, res.statusText);
-    }
-    return sanitized;
-  } catch (err) {
-    console.warn(`[API] Network error upserting ${collection}/${record.id}:`, err);
-    return record;
+  const res = await fetch(`/api/records/${collection}/${recordId}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(sanitized),
+  });
+
+  if (!res.ok) {
+    const errorText = await res.text().catch(() => res.statusText);
+    console.error(`[API] Failed to upsert ${collection}/${recordId}:`, errorText);
+    throw new Error(`Gagal menyimpan ke server (${collection}/${recordId}): ${errorText}`);
   }
+  return sanitized;
 }
 
 /**
@@ -220,15 +227,15 @@ export async function upsertRecord<T extends { id: string }>(
  * Deletes from PostgreSQL and broadcasts delete event via Socket.IO.
  */
 export async function deleteRecord(collection: string, id: string): Promise<boolean> {
-  try {
-    const res = await fetch(`/api/records/${collection}/${id}`, {
-      method: 'DELETE',
-    });
-    return res.ok;
-  } catch (err) {
-    console.warn(`[API] Network error deleting ${collection}/${id}:`, err);
-    return false;
+  const res = await fetch(`/api/records/${collection}/${id}`, {
+    method: 'DELETE',
+  });
+  if (!res.ok) {
+    const errorText = await res.text().catch(() => res.statusText);
+    console.error(`[API] Failed to delete ${collection}/${id}:`, errorText);
+    throw new Error(`Gagal menghapus dari server (${collection}/${id}): ${errorText}`);
   }
+  return true;
 }
 
 /**
