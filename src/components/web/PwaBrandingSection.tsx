@@ -20,31 +20,10 @@ import {
   Wand2,
 } from 'lucide-react';
 import { useCleaning } from '../../context/CleaningContext';
-import { generateAllPwaIcons, PWA_ICON_CONFIGS } from '../../utils/pwaIconGenerator';
+import { generateAllPwaIcons, PWA_ICON_CONFIGS, PwaIconItem, DEFAULT_PWA_ICONS } from '../../utils/pwaIconGenerator';
 import { updateDocumentFavicon, updateDocumentTitle } from '../../utils/dynamicFavicon';
 
-export interface PwaIconItem {
-  id: string;
-  name: string;
-  size: string;
-  purpose: string;
-  path: string;
-  isCustom?: boolean;
-}
-
-const DEFAULT_PWA_ICONS: PwaIconItem[] = [
-  { id: 'def-1', name: 'icon-192.png', size: '192x192', purpose: 'Any (Android Launcher / Splash)', path: '/icons/icon-192.png' },
-  { id: 'def-2', name: 'icon-512.png', size: '512x512', purpose: 'Any (PWA Splash Screen & Store)', path: '/icons/icon-512.png' },
-  { id: 'def-3', name: 'maskable-192.png', size: '192x192', purpose: 'Maskable (Android Circle/Squircle)', path: '/icons/maskable-192.png' },
-  { id: 'def-4', name: 'maskable-512.png', size: '512x512', purpose: 'Maskable (Solid Safe Zone 80%)', path: '/icons/maskable-512.png' },
-  { id: 'def-5', name: 'apple-touch-icon-180.png', size: '180x180', purpose: 'iOS Safari Home Screen (iPhone)', path: '/icons/apple-touch-icon-180.png' },
-  { id: 'def-6', name: 'apple-touch-icon-167.png', size: '167x167', purpose: 'iPad Pro Retina', path: '/icons/apple-touch-icon-167.png' },
-  { id: 'def-7', name: 'apple-touch-icon-152.png', size: '152x152', purpose: 'iPad Standard', path: '/icons/apple-touch-icon-152.png' },
-  { id: 'def-8', name: 'badge-72.png', size: '72x72', purpose: 'Android Notification Bar (Monochrome)', path: '/icons/badge-72.png' },
-  { id: 'def-9', name: 'mstile-150.png', size: '150x150', purpose: 'Windows Start Menu Tile', path: '/icons/mstile-150.png' },
-  { id: 'def-10', name: 'favicon-32.png', size: '32x32', purpose: 'Browser Desktop Tab', path: '/icons/favicon-32.png' },
-  { id: 'def-11', name: 'favicon-16.png', size: '16x16', purpose: 'Browser Small Tab', path: '/icons/favicon-16.png' },
-];
+export type { PwaIconItem };
 
 export const PwaBrandingSection: React.FC = () => {
   const { userRole, companyProfile, updateCompanyProfile } = useCleaning();
@@ -93,6 +72,26 @@ export const PwaBrandingSection: React.FC = () => {
       localStorage.setItem('jti_pwa_icons', JSON.stringify(icons));
     } catch {}
   }, [icons]);
+
+  // Dengarkan siaran event pwa-icons-updated dari CleaningContext saat logo diperbarui secara otomatis
+  useEffect(() => {
+    const handlePwaIconsUpdated = (e: any) => {
+      if (e.detail?.icons && Array.isArray(e.detail.icons)) {
+        setIcons(e.detail.icons);
+      } else {
+        try {
+          const saved = localStorage.getItem('jti_pwa_icons');
+          if (saved) {
+            const parsed = JSON.parse(saved);
+            if (Array.isArray(parsed) && parsed.length > 0) setIcons(parsed);
+          }
+        } catch {}
+      }
+    };
+
+    window.addEventListener('pwa-icons-updated', handlePwaIconsUpdated);
+    return () => window.removeEventListener('pwa-icons-updated', handlePwaIconsUpdated);
+  }, []);
 
   const showToast = (text: string, type: 'success' | 'error' = 'success') => {
     setToastMessage({ type, text });

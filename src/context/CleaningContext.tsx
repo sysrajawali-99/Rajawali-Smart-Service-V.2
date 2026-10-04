@@ -93,6 +93,7 @@ import {
   clearCachedDataOnLogout,
 } from '../services/offlineDb';
 import { syncService } from '../services/syncService';
+import { autoSyncPwaIconsFromLogo, PwaIconItem } from '../utils/pwaIconGenerator';
 
 interface CleaningContextType {
   userRole: UserRole;
@@ -382,6 +383,8 @@ interface CleaningContextType {
   companyProfile: CompanyProfile;
   updateCompanyProfile: (updates: Partial<CompanyProfile>) => void;
   resetCompanyProfile: () => void;
+  isPwaIconsRegenerating: boolean;
+  regeneratePwaIcons: (customLogo?: string) => Promise<PwaIconItem[]>;
 
   // Hapus Data Masal per Sub Menu (Khusus Super Admin)
   bulkDeleteSubmenuData: (
@@ -528,6 +531,111 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       notifyServerError('reset profil perusahaan', err)
     );
   };
+
+  // --------------------------------------------------------------------------
+  // Sistem Deteksi Perubahan Logo & Auto-Regenerasi 11 Ikon PWA Standar
+  // --------------------------------------------------------------------------
+  const [isPwaIconsRegenerating, setIsPwaIconsRegenerating] = useState<boolean>(false);
+  const lastProcessedLogoUrlRef = useRef<string | undefined>(undefined);
+  const isSyncingPwaIconsRef = useRef<boolean>(false);
+
+  const regeneratePwaIcons = async (customLogo?: string): Promise<PwaIconItem[]> => {
+    const targetLogo = customLogo !== undefined ? customLogo : companyProfile?.logoUrl;
+    setIsPwaIconsRegenerating(true);
+    isSyncingPwaIconsRef.current = true;
+    try {
+      const result = await autoSyncPwaIconsFromLogo(
+        targetLogo,
+        '#0284c7',
+        companyProfile?.companyName
+      );
+      lastProcessedLogoUrlRef.current = targetLogo?.trim() || '';
+      return result;
+    } finally {
+      setIsPwaIconsRegenerating(false);
+      isSyncingPwaIconsRef.current = false;
+    }
+  };
+
+  // Deteksi Otomatis: Saat companyProfile.logoUrl diperbarui, sistem langsung
+  // memicu regenerasi atau pemetaan ulang ke-11 ikon PWA secara otomatis tanpa interaksi manual.
+  useEffect(() => {
+    const currentLogo = companyProfile?.logoUrl?.trim() || '';
+
+    // Inisialisasi awal (mount pertama)
+    if (lastProcessedLogoUrlRef.current === undefined) {
+      lastProcessedLogoUrlRef.current = currentLogo;
+
+      // Jika profil sudah memiliki custom logo, pastikan 11 ikon PWA terpetakan di penyimpanan lokal
+      if (currentLogo) {
+        const savedIcons = localStorage.getItem('jti_pwa_icons');
+        let needsInitialSync = true;
+        if (savedIcons) {
+          try {
+            const parsed = JSON.parse(savedIcons);
+            if (Array.isArray(parsed) && parsed.length === 11) {
+              needsInitialSync = false;
+            }
+          } catch {}
+        }
+
+        if (needsInitialSync && !isSyncingPwaIconsRef.current) {
+          isSyncingPwaIconsRef.current = true;
+          setIsPwaIconsRegenerating(true);
+          autoSyncPwaIconsFromLogo(
+            currentLogo,
+            '#0284c7',
+            companyProfile?.companyName
+          )
+            .catch((err) => console.warn('[PWA Auto-Sync Initial] Notice:', err))
+            .finally(() => {
+              isSyncingPwaIconsRef.current = false;
+              setIsPwaIconsRegenerating(false);
+            });
+        }
+      }
+      return;
+    }
+
+    // Deteksi jika companyProfile.logoUrl mengalami perubahan nilai
+    if (lastProcessedLogoUrlRef.current !== currentLogo) {
+      // Verifikasi apakah logo saat ini bukan dataUrl yang baru saja dihasilkan favicon generator untuk mencegah perulangan rekursif
+      const savedIcons = localStorage.getItem('jti_pwa_icons');
+      let isAlreadyMapped = false;
+      if (savedIcons && currentLogo.startsWith('data:')) {
+        try {
+          const parsed = JSON.parse(savedIcons);
+          if (Array.isArray(parsed) && parsed.some((p: any) => p.path === currentLogo || p.dataUrl === currentLogo)) {
+            isAlreadyMapped = true;
+          }
+        } catch {}
+      }
+
+      lastProcessedLogoUrlRef.current = currentLogo;
+
+      if (!isAlreadyMapped && !isSyncingPwaIconsRef.current) {
+        isSyncingPwaIconsRef.current = true;
+        setIsPwaIconsRegenerating(true);
+        console.log('[CleaningContext] Terdeteksi pembaruan companyProfile.logoUrl. Memulai regenerasi otomatis 11 ikon PWA...');
+
+        autoSyncPwaIconsFromLogo(
+          currentLogo,
+          '#0284c7',
+          companyProfile?.companyName
+        )
+          .then((newIcons) => {
+            console.log(`[CleaningContext] Sukses: Ke-11 ikon PWA otomatis diregenerasi dan disinkronkan (${newIcons.length} varian).`);
+          })
+          .catch((err) => {
+            console.warn('[CleaningContext] Peringatan saat regenerasi otomatis ikon PWA:', err);
+          })
+          .finally(() => {
+            isSyncingPwaIconsRef.current = false;
+            setIsPwaIconsRegenerating(false);
+          });
+      }
+    }
+  }, [companyProfile?.logoUrl, companyProfile?.companyName]);
 
   // 2. Offline Mode & Auto Sync Management
   const [isOnline, setIsOnlineState] = useState<boolean>(() => {
@@ -3924,6 +4032,8 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         companyProfile,
         updateCompanyProfile,
         resetCompanyProfile,
+        isPwaIconsRegenerating,
+        regeneratePwaIcons,
         bulkDeleteSubmenuData,
         userRole,
         setUserRole,
