@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="id">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>Mode Offline - Smart Cleaning Operations</title>
+    <meta name="theme-color" content="#0284c7" />
+    <style>
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        background-color: #0f172a;
+        color: #f8fafc;
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 24px;
+        text-align: center;
+      }
+      .card {
+        background-color: #1e293b;
+        border: 1px solid #334155;
+        border-radius: 20px;
+        padding: 32px 24px;
+        max-width: 420px;
+        width: 100%;
+        box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5);
+      }
+      .icon-box {
+        width: 72px;
+        height: 72px;
+        border-radius: 20px;
+        background: linear-gradient(135deg, #0284c7, #0369a1);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin: 0 auto 20px;
+        box-shadow: 0 10px 15px -3px rgba(2, 132, 199, 0.4);
+      }
+      .badge {
+        display: inline-block;
+        padding: 4px 12px;
+        border-radius: 9999px;
+        background-color: #f59e0b20;
+        color: #fbbf24;
+        font-size: 12px;
+        font-weight: 600;
+        margin-bottom: 12px;
+        border: 1px solid #f59e0b40;
+      }
+      h1 {
+        font-size: 20px;
+        font-weight: 700;
+        margin-bottom: 8px;
+        color: #f8fafc;
+      }
+      p {
+        font-size: 14px;
+        color: #94a3b8;
+        line-height: 1.6;
+        margin-bottom: 24px;
+      }
+      .btn {
+        display: block;
+        width: 100%;
+        padding: 12px 20px;
+        background-color: #0284c7;
+        color: #ffffff;
+        font-weight: 600;
+        font-size: 14px;
+        border: none;
+        border-radius: 12px;
+        cursor: pointer;
+        transition: background-color 0.2s;
+        text-decoration: none;
+      }
+      .btn:hover { background-color: #0369a1; }
+      .tips {
+        margin-top: 20px;
+        font-size: 12px;
+        color: #64748b;
+        background-color: #0f172a80;
+        padding: 12px;
+        border-radius: 10px;
+        border: 1px dashed #334155;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <div class="icon-box">
+        <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="1" y1="1" x2="23" y2="23"></line>
+          <path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55"></path>
+          <path d="M5 12.55a10.94 10.94 0 0 1 5.17-2.39"></path>
+          <path d="M10.71 5.05A16 16 0 0 1 22.58 9"></path>
+          <path d="M1.42 9a15.91 15.91 0 0 1 4.7-2.88"></path>
+          <path d="M8.53 16.11a6 6 0 0 1 6.95 0"></path>
+          <line x1="12" y1="20" x2="12.01" y2="20"></line>
+        </svg>
+      </div>
+      <div class="badge">Koneksi Internet Terputus</div>
+      <h1>Anda Sedang Offline</h1>
+      <p>
+        Aplikasi Smart Cleaning Operations tetap dapat digunakan untuk mengisi ceklist area dalam mode offline. Data yang Anda simpan akan otomatis tersinkronisasi saat sinyal kembali normal.
+      </p>
+      <button class="btn" onclick="window.location.reload()">Coba Muat Ulang Halaman</button>
+      <div class="tips">
+        💡 Data yang tersimpan di perangkat aman dalam antrean outbox lokal dan tidak akan hilang.
+      </div>
+    </div>
+  </body>
+</html>

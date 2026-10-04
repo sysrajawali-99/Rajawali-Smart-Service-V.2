@@ -87,6 +87,12 @@ import {
   getAuthToken,
   setAuthToken,
 } from '../services/apiService';
+import {
+  cacheOfflineData,
+  saveChecklistToOutbox,
+  clearCachedDataOnLogout,
+} from '../services/offlineDb';
+import { syncService } from '../services/syncService';
 
 interface CleaningContextType {
   userRole: UserRole;
@@ -843,6 +849,18 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         lastSyncedAt: nowStr,
       });
       setIsInitialLoading(false);
+
+      // Cache operational data in Dexie IndexedDB for instant offline availability
+      cacheOfflineData({
+        templates: remoteChecklistTpls?.length ? remoteChecklistTpls : INITIAL_CHECKLIST_TEMPLATES,
+        areas: remoteAreas?.length ? remoteAreas : INITIAL_AREAS,
+        locations: remoteChecklistLocs?.length ? remoteChecklistLocs : INITIAL_CHECKLIST_LOCATIONS,
+        checklists: remoteDailyChecklists?.length ? remoteDailyChecklists : INITIAL_DAILY_CHECKLISTS,
+        tasks: remoteTasks?.length ? remoteTasks : INITIAL_TASKS,
+      }).catch(() => {});
+
+      // Auto-trigger sync of any pending outbox items from earlier offline session
+      syncService.triggerSync().catch(() => {});
     } catch (err) {
       console.warn('[Auto-Pull] Gagal mengambil data dari server:', err);
       setSupabaseStatus((prev) => ({ ...prev, status: 'ERROR' }));
@@ -1522,6 +1540,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     localStorage.removeItem('sco_auth_state');
     localStorage.removeItem('sco_auth_token');
     setAuthToken(null);
+    clearCachedDataOnLogout().catch(() => {});
     apiLogout().catch(() => {});
     setActiveTab('dashboard');
   };
@@ -1927,6 +1946,21 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       })
     );
 
+    // Save to Dexie outbox for resilient offline storage & background sync
+    saveChecklistToOutbox({
+      type: 'hourly_slot_update',
+      projectId: safeActiveProjectId,
+      checklistId: dailyChecklistId,
+      locationName,
+      slotHour: hour,
+      answers: [],
+      captured_at: new Date().toISOString(),
+    }).catch(() => {});
+
+    if (typeof navigator !== 'undefined' && navigator.onLine) {
+      syncService.triggerSync().catch(() => {});
+    }
+
     // If offline, save in offline queue for auto-sync when connection returns
     if (!isOnline) {
       addOfflineQueueEntry({
@@ -1986,6 +2020,21 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         return { ...d, hourlySlots: updatedSlots };
       })
     );
+
+    // Save batch update to Dexie outbox
+    saveChecklistToOutbox({
+      type: 'hourly_slot_batch',
+      projectId: safeActiveProjectId,
+      checklistId: dailyChecklistId,
+      locationName,
+      slotHour: hour,
+      answers: [],
+      captured_at: new Date().toISOString(),
+    }).catch(() => {});
+
+    if (typeof navigator !== 'undefined' && navigator.onLine) {
+      syncService.triggerSync().catch(() => {});
+    }
 
     if (!isOnline) {
       addOfflineQueueEntry({

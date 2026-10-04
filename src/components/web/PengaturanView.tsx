@@ -31,6 +31,7 @@ import {
   EyeOff,
   ArrowRight,
   History,
+  Smartphone,
 } from 'lucide-react';
 import { useCleaning } from '../../context/CleaningContext';
 import { ChecklistLocationCategory, DashboardKpiVisibilityConfig, ChecklistTemplateItem } from '../../types';
@@ -39,9 +40,13 @@ import { CompanyProfileSettingsSection } from './CompanyProfileSettingsSection';
 import { SuperAdminBulkDeleteSection } from './SuperAdminBulkDeleteSection';
 import { AuditTrailModal } from './AuditTrailModal';
 import { AuditLogSection } from './AuditLogSection';
+import { PwaBrandingSection } from './PwaBrandingSection';
+import { NotificationSettingsSection } from './NotificationSettingsSection';
 
 export type PengaturanSubTab =
   | 'all'
+  | 'branding'
+  | 'notifications'
   | 'log'
   | 'checklist'
   | 'kpi'
@@ -334,6 +339,32 @@ export const PengaturanView: React.FC = () => {
 
         <button
           type="button"
+          onClick={() => setActiveSubTab('branding')}
+          className={`flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg whitespace-nowrap transition-all cursor-pointer ${
+            activeSubTab === 'branding'
+              ? 'bg-white text-sky-800 shadow-xs ring-1 ring-sky-200'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+          }`}
+        >
+          <Smartphone className="w-3.5 h-3.5 text-sky-600" />
+          <span>Tampilan Aplikasi & PWA</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveSubTab('notifications')}
+          className={`flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg whitespace-nowrap transition-all cursor-pointer ${
+            activeSubTab === 'notifications'
+              ? 'bg-white text-amber-800 shadow-xs ring-1 ring-amber-200'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+          }`}
+        >
+          <Bell className="w-3.5 h-3.5 text-amber-600" />
+          <span>Notifikasi Web Push</span>
+        </button>
+
+        <button
+          type="button"
           onClick={() => setActiveSubTab('log')}
           className={`flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg whitespace-nowrap transition-all cursor-pointer ${
             activeSubTab === 'log'
@@ -418,6 +449,16 @@ export const PengaturanView: React.FC = () => {
           </button>
         )}
       </div>
+
+      {/* SECTION: Tampilan Aplikasi & PWA (Khusus Super Admin) */}
+      {(activeSubTab === 'all' || activeSubTab === 'branding') && (
+        <PwaBrandingSection />
+      )}
+
+      {/* SECTION: Pengaturan Notifikasi Web Push */}
+      {(activeSubTab === 'all' || activeSubTab === 'notifications') && (
+        <NotificationSettingsSection />
+      )}
 
       {/* SECTION: Log Aktivitas Sistem & Audit Trail */}
       {(activeSubTab === 'all' || activeSubTab === 'log') && (

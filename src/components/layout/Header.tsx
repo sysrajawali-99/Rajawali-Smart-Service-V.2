@@ -425,8 +425,19 @@ export const Header: React.FC = () => {
                   </div>
                   <div className="flex items-center gap-2">
                     <button
+                      onClick={() => {
+                        setShowNotifDropdown(false);
+                        setActiveTab('pengaturan');
+                      }}
+                      className="text-[11px] text-sky-600 hover:text-sky-800 font-medium hover:underline flex items-center gap-1 cursor-pointer"
+                      title="Buka Pengaturan Web Push"
+                    >
+                      <Bell className="w-3 h-3 text-sky-500" />
+                      <span>Atur Push</span>
+                    </button>
+                    <button
                       onClick={triggerDeadlinePushNotification}
-                      className="text-[11px] text-amber-600 hover:text-amber-800 font-medium hover:underline flex items-center gap-1"
+                      className="text-[11px] text-amber-600 hover:text-amber-800 font-medium hover:underline flex items-center gap-1 cursor-pointer"
                       title="Tes Push Notifikasi Deadline"
                     >
                       <Clock className="w-3 h-3" />
