@@ -457,11 +457,23 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setNotifications((prev) => [notif, ...prev]);
   };
 
-  // Dashboard KPI Visibility Configuration (Semua widget dinonaktifkan secara default sesuai instruksi user, dikonfigurasi melalui Pengaturan & Master Data)
-  const [kpiConfig, setKpiConfig] = useState<DashboardKpiVisibilityConfig>(DEFAULT_KPI_VISIBILITY_OFF);
+  // Dashboard KPI Visibility Configuration
+  const [kpiConfig, setKpiConfig] = useState<DashboardKpiVisibilityConfig>(() => {
+    try {
+      const saved = localStorage.getItem('jti_kpi_config');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed && typeof parsed === 'object') return parsed;
+      }
+    } catch {}
+    return DEFAULT_KPI_VISIBILITY_OFF;
+  });
 
   const updateKpiConfig = (newConfig: DashboardKpiVisibilityConfig) => {
     setKpiConfig(newConfig);
+    try {
+      localStorage.setItem('jti_kpi_config', JSON.stringify(newConfig));
+    } catch {}
     upsertRecord(COLLECTIONS.KPI_CONFIG, { ...newConfig, id: 'main' }).catch((err) =>
       notifyServerError('pengaturan KPI', err)
     );
@@ -469,6 +481,9 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const resetKpiConfig = () => {
     setKpiConfig(DEFAULT_KPI_VISIBILITY_OFF);
+    try {
+      localStorage.removeItem('jti_kpi_config');
+    } catch {}
     upsertRecord(COLLECTIONS.KPI_CONFIG, { ...DEFAULT_KPI_VISIBILITY_OFF, id: 'main' }).catch((err) =>
       notifyServerError('reset konfigurasi KPI', err)
     );
@@ -480,11 +495,23 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   // Pengaturan Data Perusahaan & Kop Surat Laporan PDF / Login Page
-  const [companyProfile, setCompanyProfile] = useState<CompanyProfile>(DEFAULT_COMPANY_PROFILE);
+  const [companyProfile, setCompanyProfile] = useState<CompanyProfile>(() => {
+    try {
+      const saved = localStorage.getItem('jti_company_profile');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed && typeof parsed === 'object') return parsed;
+      }
+    } catch {}
+    return DEFAULT_COMPANY_PROFILE;
+  });
 
   const updateCompanyProfile = (updates: Partial<CompanyProfile>) => {
     setCompanyProfile((prev) => {
       const updated = { ...prev, ...updates };
+      try {
+        localStorage.setItem('jti_company_profile', JSON.stringify(updated));
+      } catch {}
       upsertRecord(COLLECTIONS.COMPANY_PROFILE, { ...updated, id: 'main' }).catch((err) =>
         notifyServerError('profil perusahaan', err)
       );
@@ -494,6 +521,9 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const resetCompanyProfile = () => {
     setCompanyProfile(DEFAULT_COMPANY_PROFILE);
+    try {
+      localStorage.removeItem('jti_company_profile');
+    } catch {}
     upsertRecord(COLLECTIONS.COMPANY_PROFILE, { ...DEFAULT_COMPANY_PROFILE, id: 'main' }).catch((err) =>
       notifyServerError('reset profil perusahaan', err)
     );
@@ -832,14 +862,42 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       // Company profile & KPI config:
       if (remoteProfile.length > 0) {
         setCompanyProfile(remoteProfile[0]);
+        try {
+          localStorage.setItem('jti_company_profile', JSON.stringify(remoteProfile[0]));
+        } catch {}
       } else {
-        upsertRecord(COLLECTIONS.COMPANY_PROFILE, { ...DEFAULT_COMPANY_PROFILE, id: 'main' }).catch(() => {});
+        try {
+          const saved = localStorage.getItem('jti_company_profile');
+          if (saved) {
+            const parsed = JSON.parse(saved);
+            setCompanyProfile(parsed);
+            upsertRecord(COLLECTIONS.COMPANY_PROFILE, { ...parsed, id: 'main' }).catch(() => {});
+          } else {
+            upsertRecord(COLLECTIONS.COMPANY_PROFILE, { ...DEFAULT_COMPANY_PROFILE, id: 'main' }).catch(() => {});
+          }
+        } catch {
+          upsertRecord(COLLECTIONS.COMPANY_PROFILE, { ...DEFAULT_COMPANY_PROFILE, id: 'main' }).catch(() => {});
+        }
       }
 
       if (remoteKpi.length > 0) {
         setKpiConfig(remoteKpi[0]);
+        try {
+          localStorage.setItem('jti_kpi_config', JSON.stringify(remoteKpi[0]));
+        } catch {}
       } else {
-        upsertRecord(COLLECTIONS.KPI_CONFIG, { ...DEFAULT_KPI_VISIBILITY_OFF, id: 'main' }).catch(() => {});
+        try {
+          const saved = localStorage.getItem('jti_kpi_config');
+          if (saved) {
+            const parsed = JSON.parse(saved);
+            setKpiConfig(parsed);
+            upsertRecord(COLLECTIONS.KPI_CONFIG, { ...parsed, id: 'main' }).catch(() => {});
+          } else {
+            upsertRecord(COLLECTIONS.KPI_CONFIG, { ...DEFAULT_KPI_VISIBILITY_OFF, id: 'main' }).catch(() => {});
+          }
+        } catch {
+          upsertRecord(COLLECTIONS.KPI_CONFIG, { ...DEFAULT_KPI_VISIBILITY_OFF, id: 'main' }).catch(() => {});
+        }
       }
 
       const nowStr = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB';
@@ -1176,9 +1234,15 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             break;
           case COLLECTIONS.COMPANY_PROFILE:
             setCompanyProfile(data);
+            try {
+              localStorage.setItem('jti_company_profile', JSON.stringify(data));
+            } catch {}
             break;
           case COLLECTIONS.KPI_CONFIG:
             setKpiConfig(data);
+            try {
+              localStorage.setItem('jti_kpi_config', JSON.stringify(data));
+            } catch {}
             break;
         }
       }

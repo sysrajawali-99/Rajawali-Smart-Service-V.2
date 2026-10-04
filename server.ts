@@ -182,6 +182,48 @@ io.on('connection', (socket) => {
 let pool: pg.Pool | null = null;
 let useMemoryFallback = false;
 const memoryStore = new Map<string, Map<string, any>>();
+const MEMORY_STORE_FILE = path.resolve(process.cwd(), 'data', 'app_records_store.json');
+
+function loadMemoryStoreFromDisk() {
+  try {
+    if (fs.existsSync(MEMORY_STORE_FILE)) {
+      const raw = fs.readFileSync(MEMORY_STORE_FILE, 'utf8');
+      const obj = JSON.parse(raw);
+      for (const col of Object.keys(obj)) {
+        const colMap = new Map<string, any>();
+        for (const [id, val] of Object.entries(obj[col])) {
+          colMap.set(id, val);
+        }
+        memoryStore.set(col, colMap);
+      }
+      console.log(`[Persistence] Loaded ${memoryStore.size} collections from disk storage (${MEMORY_STORE_FILE})`);
+    }
+  } catch (e) {
+    console.warn('[Persistence] Notice reading store file:', e);
+  }
+}
+
+let saveStoreTimeout: NodeJS.Timeout | null = null;
+function scheduleSaveMemoryStore() {
+  if (saveStoreTimeout) clearTimeout(saveStoreTimeout);
+  saveStoreTimeout = setTimeout(() => {
+    try {
+      const dataDir = path.dirname(MEMORY_STORE_FILE);
+      if (!fs.existsSync(dataDir)) {
+        fs.mkdirSync(dataDir, { recursive: true });
+      }
+      const out: Record<string, Record<string, any>> = {};
+      for (const [col, colMap] of memoryStore.entries()) {
+        out[col] = Object.fromEntries(colMap.entries());
+      }
+      fs.writeFileSync(MEMORY_STORE_FILE, JSON.stringify(out, null, 2), 'utf8');
+    } catch (e) {
+      console.warn('[Persistence] Notice writing store file:', e);
+    }
+  }, 250);
+}
+
+loadMemoryStoreFromDisk();
 
 if (process.env.DATABASE_URL) {
   try {
@@ -473,6 +515,7 @@ app.put('/api/records/:collection/:id', async (req: Request, res: Response) => {
         memoryStore.set(collection, new Map());
       }
       memoryStore.get(collection)!.set(id, data);
+      scheduleSaveMemoryStore();
     }
 
     // Broadcast to ALL connected clients via Socket.IO
@@ -503,6 +546,7 @@ app.delete('/api/records/:collection/:id', async (req: Request, res: Response) =
       await pool.query('DELETE FROM records WHERE collection = $1 AND id = $2', [collection, id]);
     } else {
       memoryStore.get(collection)?.delete(id);
+      scheduleSaveMemoryStore();
     }
 
     // Broadcast delete event to all connected clients
@@ -545,6 +589,50 @@ app.post('/api/upload', (req: Request, res: Response) => {
       mimetype: req.file.mimetype,
     });
   });
+});
+
+// 6. POST /api/pwa/update-icons -> Batch write all 11 generated PWA icons to public/icons/
+app.post('/api/pwa/update-icons', async (req: Request, res: Response) => {
+  try {
+    const { icons } = req.body || {};
+    if (!Array.isArray(icons) || icons.length === 0) {
+      return res.status(400).json({ error: 'Array icons diperlukan' });
+    }
+
+    const publicIconsDir = path.resolve(process.cwd(), 'public', 'icons');
+    if (!fs.existsSync(publicIconsDir)) {
+      fs.mkdirSync(publicIconsDir, { recursive: true });
+    }
+
+    const updatedList: any[] = [];
+    for (const item of icons) {
+      if (!item.name || !item.dataUrl) continue;
+      const safeFilename = path.basename(item.name);
+      const targetFilePath = path.join(publicIconsDir, safeFilename);
+
+      const match = item.dataUrl.match(/^data:image\/[a-z0-9+]+;base64,(.+)$/i);
+      if (match) {
+        const buffer = Buffer.from(match[1], 'base64');
+        fs.writeFileSync(targetFilePath, buffer);
+        updatedList.push({
+          id: item.id || `icon-${safeFilename}`,
+          name: safeFilename,
+          path: `/icons/${safeFilename}?t=${Date.now()}`,
+          size: item.size,
+          purpose: item.purpose,
+        });
+      }
+    }
+
+    return res.json({
+      success: true,
+      message: `${updatedList.length} file ikon berhasil dibuat dan disinkronkan ke folder public/icons/`,
+      icons: updatedList,
+    });
+  } catch (err: any) {
+    console.error('[POST /api/pwa/update-icons] Error:', err);
+    return res.status(500).json({ error: 'Gagal memperbarui ikon PWA', details: err?.message });
+  }
 });
 
 // ==========================================

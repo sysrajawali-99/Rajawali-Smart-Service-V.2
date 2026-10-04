@@ -37,22 +37,36 @@ export const getProjectKop = (
   const profile = companyProfile || DEFAULT_COMPANY_PROFILE;
   const compName = profile.companyName?.trim() || 'PT RAJAWALI TALENTA INDONESIA';
   const subTitle = profile.documentHeaderTitle?.trim() || 'MANAJEMEN OPERASIONAL KEBERSIHAN & FASILITAS GEDUNG';
-  const clientTag = project?.clientName ? ` • KLIEN: ${project.clientName.toUpperCase()}` : '';
-  const facility = project?.name ? project.name.toUpperCase() : 'LOKASI OPERASIONAL GEDUNG';
-  const address = project?.address
-    ? `${project.address}, ${project.city}`
-    : `${profile.address}, ${profile.city}`;
-  const phone = profile.phone || '021-5558901 / 0812-3456-7890';
-  const email = profile.email || 'rajawalitalentaindonesia@gmail.com';
-  const website = profile.website || 'www.rajawali-smart.co.id';
-  const manager = project?.managerName ? `Facility Management: ${project.managerName} | ` : '';
+  const facility = project?.name ? project.name.trim().toUpperCase() : '';
+
+  // Clean address composition without trailing commas or empty lines
+  const rawAddr = project?.address?.trim() || profile.address?.trim() || '';
+  const rawCity = project?.city?.trim() || profile.city?.trim() || '';
+  const addrParts = [rawAddr, rawCity].filter(Boolean);
+  const address = addrParts.join(', ');
+
+  // Clean contact composition without empty pipes or missing labels
+  const contactParts: string[] = [];
+  if (project?.managerName?.trim()) {
+    contactParts.push(`Facility Management: ${project.managerName.trim()}`);
+  }
+  if (profile.phone?.trim()) {
+    contactParts.push(`Hotline: ${profile.phone.trim()}`);
+  }
+  if (profile.email?.trim()) {
+    contactParts.push(`Email: ${profile.email.trim()}`);
+  }
+  if (profile.website?.trim()) {
+    contactParts.push(`Web: ${profile.website.trim()}`);
+  }
+  const contactLine = contactParts.join('  |  ');
 
   return {
     institutionLine1: compName,
-    institutionLine2: `${subTitle}${clientTag}`,
+    institutionLine2: subTitle,
     facilityName: facility,
     addressLine1: address,
-    contactLine: `${manager}Hotline: ${phone} | Email: ${email} | Web: ${website}`,
+    contactLine: contactLine,
     logoUrl: profile.logoUrl || '',
     companyName: compName,
   };
@@ -65,66 +79,93 @@ export const drawKopSurat = (
   marginX: number,
   topY: number = 9
 ): number => {
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(10.5);
-  doc.setTextColor(20, 50, 95);
-  doc.text(kop.institutionLine1 || 'PT RAJAWALI TALENTA INDONESIA', pageWidth / 2, topY + 2.5, {
-    align: 'center',
-  });
+  let currY = topY + 2.5;
 
-  doc.setFontSize(8.5);
-  doc.setTextColor(30, 60, 110);
-  doc.text(
-    kop.institutionLine2 || 'MANAJEMEN OPERASIONAL KEBERSIHAN & FASILITAS GEDUNG',
-    pageWidth / 2,
-    topY + 6.8,
-    { align: 'center' }
-  );
+  // 1. Institution / Company Name (Bold 10.5)
+  if (kop.institutionLine1?.trim()) {
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(10.5);
+    doc.setTextColor(20, 50, 95);
+    doc.text(kop.institutionLine1.trim(), pageWidth / 2, currY, {
+      align: 'center',
+    });
+    currY += 4.5;
+  }
 
-  doc.setFontSize(11);
-  doc.setTextColor(15, 35, 75);
-  doc.text(kop.facilityName || 'LOKASI OPERASIONAL GEDUNG', pageWidth / 2, topY + 11.5, {
-    align: 'center',
-  });
+  // 2. Document Header Title (Bold 8.5)
+  if (kop.institutionLine2?.trim()) {
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8.5);
+    doc.setTextColor(30, 60, 110);
+    doc.text(
+      kop.institutionLine2.trim(),
+      pageWidth / 2,
+      currY,
+      { align: 'center' }
+    );
+    currY += 4.3;
+  }
 
+  // 3. Facility / Project Name (Bold 10)
+  if (kop.facilityName?.trim()) {
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(10);
+    doc.setTextColor(15, 35, 75);
+    doc.text(kop.facilityName.trim(), pageWidth / 2, currY, {
+      align: 'center',
+    });
+    currY += 4.0;
+  }
+
+  // 4. Address Line (Normal 7.5)
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(7.5);
   doc.setTextColor(70, 75, 85);
-  doc.text(kop.addressLine1 || '', pageWidth / 2, topY + 15.5, { align: 'center' });
-  doc.text(kop.contactLine || '', pageWidth / 2, topY + 19, { align: 'center' });
+  if (kop.addressLine1?.trim()) {
+    doc.text(kop.addressLine1.trim(), pageWidth / 2, currY, { align: 'center' });
+    currY += 3.5;
+  }
+
+  // 5. Contact Line (Normal 7.5)
+  if (kop.contactLine?.trim()) {
+    doc.text(kop.contactLine.trim(), pageWidth / 2, currY, { align: 'center' });
+    currY += 3.5;
+  }
 
   // Render Left Logo (Custom uploaded logo or professional corporate badge)
+  const logoSize = 18;
+  const logoY = topY;
   if (kop.logoUrl && kop.logoUrl.startsWith('data:image')) {
     try {
       const format = kop.logoUrl.includes('image/png') ? 'PNG' : 'JPEG';
-      doc.addImage(kop.logoUrl, format, marginX + 2, topY, 19, 19);
+      doc.addImage(kop.logoUrl, format, marginX + 2, logoY, logoSize, logoSize);
     } catch (e) {
       console.warn('Failed to add logo image to PDF Kop:', e);
       doc.setFillColor(14, 116, 144);
-      doc.roundedRect(marginX + 2, topY, 16, 16, 2, 2, 'F');
+      doc.roundedRect(marginX + 2, logoY, 16, 16, 2, 2, 'F');
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(8);
       doc.setTextColor(255, 255, 255);
-      doc.text((kop.institutionLine1 || 'RTI').slice(0, 3).toUpperCase(), marginX + 10, topY + 9, {
+      doc.text((kop.institutionLine1 || 'RTI').slice(0, 3).toUpperCase(), marginX + 10, logoY + 9, {
         align: 'center',
       });
     }
   } else {
     // Professional company seal
     doc.setFillColor(14, 116, 144);
-    doc.roundedRect(marginX + 2, topY, 16, 16, 2, 2, 'F');
+    doc.roundedRect(marginX + 2, logoY, 16, 16, 2, 2, 'F');
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(8);
     doc.setTextColor(255, 255, 255);
-    doc.text((kop.institutionLine1 || 'RTI').slice(0, 3).toUpperCase(), marginX + 10, topY + 9, {
+    doc.text((kop.institutionLine1 || 'RTI').slice(0, 3).toUpperCase(), marginX + 10, logoY + 9, {
       align: 'center',
     });
     doc.setFontSize(5);
-    doc.text('FACILITY', marginX + 10, topY + 13, { align: 'center' });
+    doc.text('FACILITY', marginX + 10, logoY + 13, { align: 'center' });
   }
 
-  // Double horizontal rule under Kop
-  const lineY = topY + 22;
+  // Double horizontal rule under Kop, positioned with proper breathing space
+  const lineY = Math.max(currY + 0.5, topY + 20.5);
   doc.setDrawColor(15, 35, 75);
   doc.setLineWidth(0.75);
   doc.line(marginX, lineY, pageWidth - marginX, lineY);

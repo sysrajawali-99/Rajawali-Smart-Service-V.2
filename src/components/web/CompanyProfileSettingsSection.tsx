@@ -77,6 +77,9 @@ export const CompanyProfileSettingsSection: React.FC = () => {
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
     updateCompanyProfile(formData);
+    try {
+      localStorage.setItem('jti_company_profile', JSON.stringify(formData));
+    } catch {}
     setSaveSuccess(true);
     setTimeout(() => setSaveSuccess(false), 3000);
   };
@@ -399,20 +402,50 @@ export const CompanyProfileSettingsSection: React.FC = () => {
                 {/* Center Text */}
                 <div className="flex-1 text-center space-y-0.5">
                   <h4 className="text-[11px] font-extrabold text-blue-950 uppercase tracking-tight leading-snug">
-                    {formData.companyName || 'PT RAJAWALI TALENTA INDONESIA'}
+                    {formData.companyName?.trim() || 'PT RAJAWALI TALENTA INDONESIA'}
                   </h4>
-                  <p className="text-[8.5px] font-semibold text-blue-900 leading-tight">
-                    {formData.documentHeaderTitle || 'MANAJEMEN OPERASIONAL KEBERSIHAN & FASILITAS GEDUNG'} • KLIEN: {activeProject.clientName.toUpperCase()}
-                  </p>
-                  <p className="text-[9.5px] font-bold text-slate-900 leading-tight">
-                    {activeProject.name.toUpperCase()}
-                  </p>
-                  <p className="text-[7.5px] text-slate-600 leading-tight">
-                    {formData.address}, {formData.city}
-                  </p>
-                  <p className="text-[7px] text-slate-500 leading-tight">
-                    Facility Management: {activeProject.managerName} | Hotline: {formData.phone} | Web: {formData.website}
-                  </p>
+                  {formData.documentHeaderTitle?.trim() && (
+                    <p className="text-[8.5px] font-semibold text-blue-900 leading-tight">
+                      {formData.documentHeaderTitle.trim()}
+                    </p>
+                  )}
+                  {activeProject.name?.trim() && (
+                    <p className="text-[9.5px] font-bold text-slate-900 leading-tight">
+                      {activeProject.name.trim().toUpperCase()}
+                    </p>
+                  )}
+                  {/* Address & City */}
+                  {(() => {
+                    const addressParts = [formData.address?.trim(), formData.city?.trim()].filter(Boolean);
+                    if (addressParts.length === 0) return null;
+                    return (
+                      <p className="text-[7.5px] text-slate-600 leading-tight">
+                        {addressParts.join(', ')}
+                      </p>
+                    );
+                  })()}
+                  {/* Contact Info dynamically joined */}
+                  {(() => {
+                    const contactItems: string[] = [];
+                    if (activeProject.managerName?.trim()) {
+                      contactItems.push(`Facility Management: ${activeProject.managerName.trim()}`);
+                    }
+                    if (formData.phone?.trim()) {
+                      contactItems.push(`Hotline: ${formData.phone.trim()}`);
+                    }
+                    if (formData.email?.trim()) {
+                      contactItems.push(`Email: ${formData.email.trim()}`);
+                    }
+                    if (formData.website?.trim()) {
+                      contactItems.push(`Web: ${formData.website.trim()}`);
+                    }
+                    if (contactItems.length === 0) return null;
+                    return (
+                      <p className="text-[7px] text-slate-500 leading-tight">
+                        {contactItems.join(' | ')}
+                      </p>
+                    );
+                  })()}
                 </div>
               </div>
 

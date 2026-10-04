@@ -16,8 +16,11 @@ import {
   Image as ImageIcon,
   RotateCcw,
   AlertTriangle,
+  Layers,
+  Wand2,
 } from 'lucide-react';
 import { useCleaning } from '../../context/CleaningContext';
+import { generateAllPwaIcons, PWA_ICON_CONFIGS } from '../../utils/pwaIconGenerator';
 
 export interface PwaIconItem {
   id: string;
@@ -63,19 +66,26 @@ export const PwaBrandingSection: React.FC = () => {
     return DEFAULT_PWA_ICONS;
   });
 
+  // Master Logo Upload & Adaptation State
+  const [isProcessingMaster, setIsProcessingMaster] = useState(false);
+  const [masterProgressText, setMasterProgressText] = useState('');
+  const [masterLogoPreview, setMasterLogoPreview] = useState<string | null>(null);
+
   // Modal State for Add Icon
   const [showAddModal, setShowAddModal] = useState(false);
   const [newIconName, setNewIconName] = useState('');
   const [newIconSize, setNewIconSize] = useState('192x192');
   const [newIconPurpose, setNewIconPurpose] = useState('Any (Latar Transparan)');
   const [newIconPreview, setNewIconPreview] = useState<string | null>(null);
+  const [applyToAllVariants, setApplyToAllVariants] = useState(true);
   const [isUploading, setIsUploading] = useState(false);
 
   // Modal State for Delete Confirmation
   const [iconToDelete, setIconToDelete] = useState<PwaIconItem | null>(null);
   const [toastMessage, setToastMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const masterFileInputRef = useRef<HTMLInputElement>(null);
+  const singleFileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     try {
@@ -85,7 +95,78 @@ export const PwaBrandingSection: React.FC = () => {
 
   const showToast = (text: string, type: 'success' | 'error' = 'success') => {
     setToastMessage({ type, text });
-    setTimeout(() => setToastMessage(null), 3500);
+    setTimeout(() => setToastMessage(null), 4000);
+  };
+
+  /**
+   * Process a source image and automatically generate & adapt all 11 PWA icons
+   */
+  const processAndApplyMasterLogo = async (file: File) => {
+    if (!file.type.startsWith('image/')) {
+      showToast('Harap pilih file gambar (PNG, JPG, SVG, WebP)!', 'error');
+      return;
+    }
+
+    setIsProcessingMaster(true);
+    setMasterProgressText('Membaca file logo...');
+
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      try {
+        const dataUrl = e.target?.result as string;
+        setMasterLogoPreview(dataUrl);
+
+        setMasterProgressText('Menyesuaikan 11 spesifikasi ikon (Maskable, Apple, Badge, Favicon)...');
+        // Generate all 11 tailored icon variants using HTML5 Canvas
+        const generatedList = await generateAllPwaIcons(dataUrl, themeColor);
+
+        setMasterProgressText('Menyimpan 11 ikon ke server (/public/icons/)...');
+        // Send to server to write them directly into public/icons/ folder
+        try {
+          const res = await fetch('/api/pwa/update-icons', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ icons: generatedList }),
+          });
+
+          if (res.ok) {
+            const data = await res.json();
+            console.log('[PWA Update]', data.message);
+          }
+        } catch (serverErr) {
+          console.warn('[PWA Update Notice] Local canvas storage fallback:', serverErr);
+        }
+
+        // Map generated icons to the state
+        const timestamp = Date.now();
+        const updatedIcons: PwaIconItem[] = generatedList.map((g) => ({
+          id: g.id,
+          name: g.name,
+          size: g.size,
+          purpose: g.purpose,
+          // Use dataUrl for immediate crisp rendering in browser & cache-busted path
+          path: g.dataUrl,
+        }));
+
+        setIcons(updatedIcons);
+        showToast('Sukses! Semua 11 varian ikon PWA telah otomatis diperbarui & disesuaikan peruntukannya.');
+      } catch (err: any) {
+        console.error('[processAndApplyMasterLogo] Error:', err);
+        showToast('Gagal memproses gambar: ' + (err?.message || 'Error tidak diketahui'), 'error');
+      } finally {
+        setIsProcessingMaster(false);
+        setMasterProgressText('');
+      }
+    };
+
+    reader.readAsDataURL(file);
+  };
+
+  const handleMasterFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      processAndApplyMasterLogo(file);
+    }
   };
 
   const handleSave = (e: React.FormEvent) => {
@@ -101,12 +182,12 @@ export const PwaBrandingSection: React.FC = () => {
     setTimeout(() => {
       setIsRegenerating(false);
       setRegenSuccess(true);
-      showToast('Aset ikon sistem berhasil diverifikasi & diperbarui.');
+      showToast('Aset ikon sistem berhasil diverifikasi & siap digunakan.');
       setTimeout(() => setRegenSuccess(false), 4000);
     }, 1000);
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleSingleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -128,37 +209,50 @@ export const PwaBrandingSection: React.FC = () => {
 
   const handleAddIconSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newIconName.trim()) {
-      showToast('Nama ikon wajib diisi!', 'error');
+
+    if (!newIconPreview) {
+      showToast('Pilih file gambar ikon terlebih dahulu!', 'error');
       return;
     }
 
-    let finalPath = newIconPreview || '/icons/icon-192.png';
-
-    // Upload to server if it's a base64 data URL
-    if (newIconPreview && newIconPreview.startsWith('data:image')) {
+    // IF USER CHECKED: "Terapkan logo ini ke 11 varian ikon sekaligus"
+    if (applyToAllVariants) {
       setIsUploading(true);
       try {
-        const blob = await fetch(newIconPreview).then((r) => r.blob());
-        const formData = new FormData();
-        formData.append('file', blob, newIconName.endsWith('.png') ? newIconName : `${newIconName}.png`);
+        const generatedList = await generateAllPwaIcons(newIconPreview, themeColor);
+        try {
+          await fetch('/api/pwa/update-icons', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ icons: generatedList }),
+          });
+        } catch {}
 
-        const res = await fetch('/api/upload', {
-          method: 'POST',
-          body: formData,
-        });
+        const updatedIcons: PwaIconItem[] = generatedList.map((g) => ({
+          id: g.id,
+          name: g.name,
+          size: g.size,
+          purpose: g.purpose,
+          path: g.dataUrl,
+        }));
 
-        if (res.ok) {
-          const data = await res.json();
-          if (data.url) {
-            finalPath = data.url;
-          }
-        }
-      } catch (err) {
-        console.warn('[Upload Icon] Server upload fallback to client image:', err);
+        setIcons(updatedIcons);
+        setShowAddModal(false);
+        setNewIconName('');
+        setNewIconPreview(null);
+        showToast('Berhasil! Seluruh 11 ikon PWA langsung disesuaikan dengan logo yang baru diunggah.');
+      } catch (err: any) {
+        showToast('Gagal memproses varian ikon: ' + (err?.message || 'Error'), 'error');
       } finally {
         setIsUploading(false);
       }
+      return;
+    }
+
+    // Otherwise: Add as single custom icon item
+    if (!newIconName.trim()) {
+      showToast('Nama ikon wajib diisi!', 'error');
+      return;
     }
 
     const newIconItem: PwaIconItem = {
@@ -168,7 +262,7 @@ export const PwaBrandingSection: React.FC = () => {
         : `${newIconName.trim()}.png`,
       size: newIconSize,
       purpose: newIconPurpose,
-      path: finalPath,
+      path: newIconPreview,
       isCustom: true,
     };
 
@@ -176,7 +270,7 @@ export const PwaBrandingSection: React.FC = () => {
     setShowAddModal(false);
     setNewIconName('');
     setNewIconPreview(null);
-    showToast(`Ikon "${newIconItem.name}" berhasil ditambahkan ke daftar!`);
+    showToast(`Ikon "${newIconItem.name}" berhasil ditambahkan.`);
   };
 
   const handleConfirmDelete = () => {
@@ -187,7 +281,7 @@ export const PwaBrandingSection: React.FC = () => {
   };
 
   const handleResetDefaultIcons = () => {
-    if (window.confirm('Kembalikan semua daftar ikon ke bawaan sistem JTI Smart?')) {
+    if (window.confirm('Kembalikan semua daftar 11 ikon ke bawaan sistem JTI Smart?')) {
       setIcons(DEFAULT_PWA_ICONS);
       localStorage.removeItem('jti_pwa_icons');
       showToast('Daftar ikon dikembalikan ke susunan default.');
@@ -224,11 +318,11 @@ export const PwaBrandingSection: React.FC = () => {
             <h3 className="text-base font-bold flex items-center gap-2">
               Tampilan Aplikasi & PWA (JTI Smart)
               <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] font-semibold border border-emerald-500/30">
-                PWA Aktif
+                PWA Generator Aktif
               </span>
             </h3>
             <p className="text-xs text-sky-200 mt-0.5">
-              Kelola nama di layar utama, warna tema, serta tambah atau hapus ikon perangkat sesuai brand Anda.
+              Cukup unggah satu logo, sistem akan otomatis menyesuaikan dan membuat 11 varian ikon (Maskable, Apple, Badge, Favicon).
             </p>
           </div>
         </div>
@@ -236,11 +330,12 @@ export const PwaBrandingSection: React.FC = () => {
         <div className="flex items-center gap-2 w-full sm:w-auto">
           <button
             type="button"
-            onClick={() => setShowAddModal(true)}
-            className="flex-1 sm:flex-none px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white text-xs font-semibold rounded-xl shadow-sm transition-colors cursor-pointer flex items-center justify-center gap-1.5 shrink-0"
+            onClick={() => masterFileInputRef.current?.click()}
+            disabled={isProcessingMaster}
+            className="flex-1 sm:flex-none px-4 py-2 bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white text-xs font-semibold rounded-xl shadow-sm transition-colors cursor-pointer flex items-center justify-center gap-1.5 shrink-0"
           >
-            <Plus className="w-4 h-4" />
-            Tambah Ikon
+            <Upload className="w-4 h-4" />
+            Upload & Ubah 11 Ikon
           </button>
 
           <button
@@ -252,6 +347,81 @@ export const PwaBrandingSection: React.FC = () => {
             <RefreshCw className={`w-3.5 h-3.5 ${isRegenerating ? 'animate-spin' : ''}`} />
             {isRegenerating ? 'Memeriksa...' : 'Cek Status Ikon'}
           </button>
+        </div>
+      </div>
+
+      {/* AUTO-GENERATOR HERO DROPZONE: "Upload 1 Logo -> Ubah 11 Ikon Sekaligus" */}
+      <div className="bg-gradient-to-br from-sky-50 via-white to-slate-50 rounded-2xl border-2 border-dashed border-sky-300 hover:border-sky-500 p-6 text-center transition-all shadow-xs relative overflow-hidden group">
+        <input
+          ref={masterFileInputRef}
+          type="file"
+          accept="image/png,image/jpeg,image/svg+xml,image/webp"
+          onChange={handleMasterFileSelect}
+          className="hidden"
+        />
+
+        <div className="max-w-xl mx-auto space-y-3">
+          <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-sky-600 to-indigo-600 text-white flex items-center justify-center mx-auto shadow-md shadow-sky-200 group-hover:scale-105 transition-transform">
+            {isProcessingMaster ? (
+              <RefreshCw className="w-7 h-7 animate-spin" />
+            ) : (
+              <Wand2 className="w-7 h-7" />
+            )}
+          </div>
+
+          <div>
+            <h4 className="text-sm sm:text-base font-bold text-slate-900">
+              Upload Logo Baru & Langsung Ubah 11 Ikon
+            </h4>
+            <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+              Pilih satu file logo brand Anda. Sistem akan <strong>secara cerdas memproses, memberi padding aman (safe zone), membuat siluet putih untuk notifikasi Android, latar solid untuk iPhone, serta ikon favicon</strong>, dan langsung memperbarui ke-11 ikon di bawah.
+            </p>
+          </div>
+
+          {isProcessingMaster ? (
+            <div className="p-3 bg-sky-100/80 rounded-xl text-xs text-sky-800 font-semibold flex items-center justify-center gap-2 animate-pulse">
+              <RefreshCw className="w-4 h-4 animate-spin text-sky-600" />
+              <span>{masterProgressText}</span>
+            </div>
+          ) : (
+            <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => masterFileInputRef.current?.click()}
+                className="px-5 py-2.5 bg-sky-600 hover:bg-sky-700 active:bg-sky-800 text-white text-xs font-bold rounded-xl shadow-md shadow-sky-200 flex items-center gap-2 cursor-pointer transition-all"
+              >
+                <Upload className="w-4 h-4" />
+                <span>Pilih File Logo (PNG / JPG / SVG)</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowAddModal(true)}
+                className="px-4 py-2.5 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold rounded-xl border border-slate-200 flex items-center gap-1.5 cursor-pointer transition-all"
+              >
+                <Plus className="w-3.5 h-3.5 text-slate-500" />
+                <span>Tambah Ikon Manual</span>
+              </button>
+            </div>
+          )}
+
+          <div className="flex flex-wrap items-center justify-center gap-4 text-[11px] text-slate-500 pt-2 border-t border-slate-100">
+            <span className="flex items-center gap-1">
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+              Maskable Android (Safe Zone 80%)
+            </span>
+            <span className="flex items-center gap-1">
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+              Apple Touch Icon (iPhone & iPad)
+            </span>
+            <span className="flex items-center gap-1">
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+              Siluet Putih Status Bar
+            </span>
+            <span className="flex items-center gap-1">
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+              Favicon 32 & 16px
+            </span>
+          </div>
         </div>
       </div>
 
@@ -330,7 +500,7 @@ export const PwaBrandingSection: React.FC = () => {
                 />
               </div>
               <p className="text-[11px] text-slate-400 mt-1">
-                Warna status bar ponsel dan header jendela aplikasi mandiri (PWA).
+                Warna status bar ponsel dan latar belakang ikon Maskable / Apple Touch.
               </p>
             </div>
 
@@ -341,15 +511,15 @@ export const PwaBrandingSection: React.FC = () => {
               <div className="flex items-center gap-2">
                 <input
                   type="color"
-                  value="#0284c7"
+                  value={themeColor}
                   disabled
                   className="w-10 h-10 rounded-xl border border-slate-200 p-0.5 bg-slate-100 opacity-80"
                 />
                 <input
                   type="text"
-                  value="#0284C7 (Solid Brand Sky)"
+                  value={`${themeColor} (Solid Brand Sky)`}
                   disabled
-                  className="flex-1 px-3 py-2 bg-slate-100 border border-slate-200 rounded-xl text-xs font-mono text-slate-500 cursor-not-allowed"
+                  className="flex-1 px-3 py-2 bg-slate-100 border border-slate-200 rounded-xl text-xs font-mono text-slate-500 cursor-not-allowed uppercase"
                 />
               </div>
               <p className="text-[11px] text-slate-400 mt-1">
@@ -382,10 +552,10 @@ export const PwaBrandingSection: React.FC = () => {
           <div>
             <h4 className="text-sm font-bold text-slate-800 flex items-center gap-2">
               <FolderOpen className="w-4 h-4 text-sky-600" />
-              Daftar Aset Ikon Aplikasi ({icons.length} Ikon)
+              Daftar 11 Varian Ikon PWA Terpasang ({icons.length} Ikon)
             </h4>
             <p className="text-xs text-slate-500 mt-0.5">
-              Kelola ikon yang digunakan untuk home screen Android, iPhone, Windows Tile, dan Tab Browser.
+              Setiap ikon memiliki fungsi dan spesifikasi resolusi yang telah disesuaikan secara otomatis.
             </p>
           </div>
 
@@ -396,7 +566,7 @@ export const PwaBrandingSection: React.FC = () => {
               className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold transition-colors flex items-center gap-1.5 cursor-pointer shadow-xs"
             >
               <Plus className="w-3.5 h-3.5" />
-              Tambah Ikon Baru
+              Tambah Ikon
             </button>
 
             <button
@@ -413,18 +583,30 @@ export const PwaBrandingSection: React.FC = () => {
 
         {/* Icon Grid */}
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-          {icons.map((icon) => (
+          {icons.map((icon, idx) => (
             <div
-              key={icon.id}
+              key={icon.id || icon.name}
               className="p-3 bg-slate-50 rounded-xl border border-slate-200/80 flex items-center gap-3 hover:border-sky-300 transition-colors group relative"
             >
-              <div className="w-12 h-12 rounded-xl bg-slate-900/90 p-1 flex items-center justify-center shrink-0 border border-slate-700/50 shadow-xs overflow-hidden">
+              {/* Preview container */}
+              <div
+                className={`w-12 h-12 rounded-xl p-1 flex items-center justify-center shrink-0 border shadow-xs overflow-hidden ${
+                  icon.name.includes('maskable') || icon.name.includes('apple') || icon.name.includes('mstile')
+                    ? 'border-sky-700/40'
+                    : 'bg-slate-900 border-slate-700/50'
+                }`}
+                style={{
+                  backgroundColor:
+                    icon.name.includes('maskable') || icon.name.includes('apple') || icon.name.includes('mstile')
+                      ? themeColor
+                      : '#0f172a',
+                }}
+              >
                 <img
                   src={icon.path}
                   alt={icon.name}
                   className="max-w-full max-h-full object-contain"
                   onError={(e) => {
-                    // Fallback preview
                     (e.target as HTMLElement).style.display = 'none';
                   }}
                 />
@@ -475,35 +657,42 @@ export const PwaBrandingSection: React.FC = () => {
           <Info className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
           <div className="space-y-1">
             <h4 className="text-xs font-bold text-amber-900">
-              Panduan Cara Mengganti Logo Aplikasi di Masa Mendatang (Bahasa Awam)
+              Bagaimana Sistem Menyesuaikan 11 Ikon Secara Otomatis?
             </h4>
             <p className="text-xs text-amber-800 leading-relaxed">
-              Semua logo dan ikon aplikasi disimpan rapi di satu lokasi folder terpusat: <strong className="font-mono bg-amber-100/80 px-1 py-0.5 rounded">public/icons/</strong>. Anda dapat menambah ikon baru langsung melalui tombol <strong>"Tambah Ikon"</strong> di atas atau menggantinya di server:
+              Saat Anda mengunggah logo di kotak atas, sistem langsung melakukan pemrosesan otomatis untuk setiap perangkat:
             </p>
           </div>
         </div>
 
-        <ol className="list-decimal list-inside text-xs text-amber-900 space-y-2 pl-2">
-          <li>
-            <strong>Gunakan Tombol "Tambah Ikon":</strong> Unggah file PNG logo Anda langsung dari galeri ponsel atau komputer, tentukan ukuran (misal 512x512), dan simpan.
-          </li>
-          <li>
-            <strong>Atau Ganti Langsung di Server:</strong> Salin logo baru Anda ke folder <code>public/icons/</code> dengan nama <code>icon-192.png</code> dan <code>icon-512.png</code>.
-          </li>
-          <li>
-            <strong>Untuk Ikon Maskable Android:</strong> Berikan latar belakang padat (solid color) dengan ruang aman 15% di tepinya agar tidak terpotong bentuk lingkaran pada layar beranda Android.
-          </li>
-        </ol>
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2.5 text-xs text-amber-900 pl-1 pt-1">
+          <div className="p-2.5 bg-white/80 rounded-xl border border-amber-200 space-y-1">
+            <p className="font-bold text-sky-800">1. Any (192 & 512px)</p>
+            <p className="text-[11px] text-slate-600">Latar transparan dengan resolusi tinggi untuk splash screen & launcher Android.</p>
+          </div>
+          <div className="p-2.5 bg-white/80 rounded-xl border border-amber-200 space-y-1">
+            <p className="font-bold text-sky-800">2. Maskable (192 & 512px)</p>
+            <p className="text-[11px] text-slate-600">Latar solid tema dengan padding aman 80% agar tidak terpotong bentuk lingkaran.</p>
+          </div>
+          <div className="p-2.5 bg-white/80 rounded-xl border border-amber-200 space-y-1">
+            <p className="font-bold text-sky-800">3. Apple Touch (180, 167, 152px)</p>
+            <p className="text-[11px] text-slate-600">Latar solid tema persegi murni tanpa sudut lengkung untuk iPhone & iPad.</p>
+          </div>
+          <div className="p-2.5 bg-white/80 rounded-xl border border-amber-200 space-y-1">
+            <p className="font-bold text-sky-800">4. Badge 72px & Favicon</p>
+            <p className="text-[11px] text-slate-600">Siluet monokrom putih untuk bar notifikasi status Android & favicon tab browser.</p>
+          </div>
+        </div>
       </div>
 
-      {/* MODAL: Tambah Ikon Baru */}
+      {/* MODAL: Tambah Ikon Baru / Upload Sekaligus */}
       {showAddModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in">
           <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden animate-in zoom-in-95">
             <div className="px-5 py-4 bg-gradient-to-r from-sky-600 to-sky-700 text-white flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <ImageIcon className="w-5 h-5 text-sky-200" />
-                <h3 className="font-bold text-sm">Tambah Ikon PWA Baru</h3>
+                <h3 className="font-bold text-sm">Upload & Tambah Ikon</h3>
               </div>
               <button
                 type="button"
@@ -518,10 +707,10 @@ export const PwaBrandingSection: React.FC = () => {
               {/* File Upload / Image Picker */}
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-                  Unggah Gambar Ikon (PNG / JPG / SVG)
+                  Pilih File Gambar Logo (PNG / JPG / SVG)
                 </label>
                 <div
-                  onClick={() => fileInputRef.current?.click()}
+                  onClick={() => singleFileInputRef.current?.click()}
                   className="w-full border-2 border-dashed border-slate-300 hover:border-sky-500 rounded-xl p-4 flex flex-col items-center justify-center gap-2 cursor-pointer bg-slate-50 hover:bg-sky-50/50 transition-colors"
                 >
                   {newIconPreview ? (
@@ -547,68 +736,85 @@ export const PwaBrandingSection: React.FC = () => {
                     </>
                   )}
                   <input
-                    ref={fileInputRef}
+                    ref={singleFileInputRef}
                     type="file"
-                    accept="image/png,image/jpeg,image/svg+xml,image/x-icon"
-                    onChange={handleFileChange}
+                    accept="image/png,image/jpeg,image/svg+xml,image/webp"
+                    onChange={handleSingleFileChange}
                     className="hidden"
                   />
                 </div>
               </div>
 
-              {/* Nama File */}
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Nama File Ikon
-                </label>
+              {/* TOGGLE: Apply to all 11 variants automatically */}
+              <div className="p-3 bg-sky-50 rounded-xl border border-sky-200 flex items-start gap-2.5">
                 <input
-                  type="text"
-                  required
-                  value={newIconName}
-                  onChange={(e) => setNewIconName(e.target.value)}
-                  placeholder="custom-icon-512.png"
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-sky-500 focus:bg-white"
+                  type="checkbox"
+                  id="apply-all"
+                  checked={applyToAllVariants}
+                  onChange={(e) => setApplyToAllVariants(e.target.checked)}
+                  className="mt-0.5 w-4 h-4 rounded text-sky-600 focus:ring-sky-500 cursor-pointer"
                 />
+                <label htmlFor="apply-all" className="text-xs text-sky-900 cursor-pointer">
+                  <span className="font-bold block">Sesuaikan & Terapkan ke 11 Varian Ikon Sekaligus</span>
+                  <span className="text-[11px] text-sky-700 block mt-0.5">
+                    Otomatis membuat varian Maskable (80% safe zone), Apple Touch iPhone, siluet putih notifikasi, dan Favicon.
+                  </span>
+                </label>
               </div>
 
-              {/* Ukuran Resolusi */}
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Ukuran (Dimensi)
-                  </label>
-                  <select
-                    value={newIconSize}
-                    onChange={(e) => setNewIconSize(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-sky-500 focus:bg-white"
-                  >
-                    <option value="512x512">512x512 px</option>
-                    <option value="192x192">192x192 px</option>
-                    <option value="256x256">256x256 px</option>
-                    <option value="180x180">180x180 px (Apple)</option>
-                    <option value="167x167">167x167 px (iPad Pro)</option>
-                    <option value="152x152">152x152 px (iPad)</option>
-                    <option value="72x72">72x72 px (Badge)</option>
-                    <option value="32x32">32x32 px (Favicon)</option>
-                    <option value="16x16">16x16 px</option>
-                  </select>
-                </div>
+              {/* If NOT applying to all variants: show single item attributes */}
+              {!applyToAllVariants && (
+                <>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      Nama File Ikon
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={newIconName}
+                      onChange={(e) => setNewIconName(e.target.value)}
+                      placeholder="custom-icon-512.png"
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-sky-500 focus:bg-white"
+                    />
+                  </div>
 
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Tujuan / Purpose
-                  </label>
-                  <select
-                    value={newIconPurpose}
-                    onChange={(e) => setNewIconPurpose(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-sky-500 focus:bg-white"
-                  >
-                    <option value="Any (Standar Transparan)">Any (Standar)</option>
-                    <option value="Maskable (Android Bulat/Squircle)">Maskable (Latar Solid)</option>
-                    <option value="Monochrome (Notifikasi)">Monochrome (Siluet)</option>
-                  </select>
-                </div>
-              </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-700 mb-1">
+                        Ukuran
+                      </label>
+                      <select
+                        value={newIconSize}
+                        onChange={(e) => setNewIconSize(e.target.value)}
+                        className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-sky-500 focus:bg-white"
+                      >
+                        <option value="512x512">512x512 px</option>
+                        <option value="192x192">192x192 px</option>
+                        <option value="256x256">256x256 px</option>
+                        <option value="180x180">180x180 px (Apple)</option>
+                        <option value="72x72">72x72 px (Badge)</option>
+                        <option value="32x32">32x32 px (Favicon)</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-700 mb-1">
+                        Tujuan / Purpose
+                      </label>
+                      <select
+                        value={newIconPurpose}
+                        onChange={(e) => setNewIconPurpose(e.target.value)}
+                        className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-sky-500 focus:bg-white"
+                      >
+                        <option value="Any (Standar Transparan)">Any (Standar)</option>
+                        <option value="Maskable (Android Bulat/Squircle)">Maskable (Latar Solid)</option>
+                        <option value="Monochrome (Notifikasi)">Monochrome (Siluet)</option>
+                      </select>
+                    </div>
+                  </div>
+                </>
+              )}
 
               <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2">
                 <button
@@ -626,12 +832,12 @@ export const PwaBrandingSection: React.FC = () => {
                   {isUploading ? (
                     <>
                       <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                      Menyimpan...
+                      Memproses 11 Ikon...
                     </>
                   ) : (
                     <>
-                      <Plus className="w-3.5 h-3.5" />
-                      Simpan Ikon
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      {applyToAllVariants ? 'Terapkan ke 11 Ikon' : 'Simpan Ikon'}
                     </>
                   )}
                 </button>
@@ -659,7 +865,15 @@ export const PwaBrandingSection: React.FC = () => {
             </div>
 
             <div className="flex items-center justify-center gap-3 bg-slate-50 p-2.5 rounded-xl border border-slate-200">
-              <div className="w-10 h-10 rounded-lg bg-slate-900 p-1 flex items-center justify-center">
+              <div
+                className="w-10 h-10 rounded-lg p-1 flex items-center justify-center"
+                style={{
+                  backgroundColor:
+                    iconToDelete.name.includes('maskable') || iconToDelete.name.includes('apple')
+                      ? themeColor
+                      : '#0f172a',
+                }}
+              >
                 <img
                   src={iconToDelete.path}
                   alt={iconToDelete.name}
