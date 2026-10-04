@@ -26,10 +26,32 @@ import { OverdueAlertBanner } from './components/layout/OverdueAlertBanner';
 import { InstallPrompt } from './components/InstallPrompt';
 import { TestModeBanner } from './components/common/TestModeBanner';
 import { ShieldAlert } from 'lucide-react';
+import { updateDocumentFavicon, updateDocumentTitle, getActiveAppIcon } from './utils/dynamicFavicon';
 
 
 const MainLayout: React.FC = () => {
-  const { isAuthenticated, activeTab, userRole, hasAccess, setActiveTab, isInitialLoading } = useCleaning();
+  const { isAuthenticated, activeTab, userRole, hasAccess, setActiveTab, isInitialLoading, companyProfile } = useCleaning();
+
+  // Real-time dynamic favicon and browser tab title synchronization
+  React.useEffect(() => {
+    const activeIcon = getActiveAppIcon(companyProfile?.logoUrl);
+    updateDocumentFavicon(activeIcon);
+    if (companyProfile?.companyName) {
+      updateDocumentTitle(companyProfile.companyName);
+    }
+
+    const handleIconsUpdated = (e: any) => {
+      if (e.detail?.icon) {
+        updateDocumentFavicon(e.detail.icon);
+      }
+      if (e.detail?.name) {
+        updateDocumentTitle(e.detail.name);
+      }
+    };
+
+    window.addEventListener('pwa-icons-updated', handleIconsUpdated);
+    return () => window.removeEventListener('pwa-icons-updated', handleIconsUpdated);
+  }, [companyProfile?.logoUrl, companyProfile?.companyName]);
 
   if (!isAuthenticated) {
     return (

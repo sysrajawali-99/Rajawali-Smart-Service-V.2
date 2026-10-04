@@ -19,6 +19,7 @@ import {
 import { useCleaning } from '../../context/CleaningContext';
 import { CompanyProfile, DEFAULT_COMPANY_PROFILE } from '../../types';
 import { uploadPhoto } from '../../services/apiService';
+import { updateDocumentFavicon, updateDocumentTitle } from '../../utils/dynamicFavicon';
 
 export const CompanyProfileSettingsSection: React.FC = () => {
   const { companyProfile, updateCompanyProfile, resetCompanyProfile, activeProject } = useCleaning();
@@ -51,6 +52,8 @@ export const CompanyProfileSettingsSection: React.FC = () => {
       const uploadedUrl = await uploadPhoto(file);
       if (uploadedUrl) {
         setFormData((prev) => ({ ...prev, logoUrl: uploadedUrl }));
+        updateDocumentFavicon(uploadedUrl);
+        window.dispatchEvent(new CustomEvent('pwa-icons-updated', { detail: { icon: uploadedUrl } }));
         return;
       }
     } catch {
@@ -62,6 +65,8 @@ export const CompanyProfileSettingsSection: React.FC = () => {
       const base64Url = event.target?.result as string;
       if (base64Url) {
         setFormData((prev) => ({ ...prev, logoUrl: base64Url }));
+        updateDocumentFavicon(base64Url);
+        window.dispatchEvent(new CustomEvent('pwa-icons-updated', { detail: { icon: base64Url } }));
       }
     };
     reader.readAsDataURL(file);
@@ -69,6 +74,8 @@ export const CompanyProfileSettingsSection: React.FC = () => {
 
   const handleRemoveLogo = () => {
     setFormData((prev) => ({ ...prev, logoUrl: '' }));
+    updateDocumentFavicon('/icons/favicon-32.png');
+    window.dispatchEvent(new CustomEvent('pwa-icons-updated', { detail: { icon: '/icons/favicon-32.png' } }));
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
@@ -80,6 +87,19 @@ export const CompanyProfileSettingsSection: React.FC = () => {
     try {
       localStorage.setItem('jti_company_profile', JSON.stringify(formData));
     } catch {}
+
+    if (formData.logoUrl) {
+      updateDocumentFavicon(formData.logoUrl);
+    }
+    if (formData.companyName) {
+      updateDocumentTitle(formData.companyName);
+    }
+    window.dispatchEvent(
+      new CustomEvent('pwa-icons-updated', {
+        detail: { icon: formData.logoUrl, name: formData.companyName },
+      })
+    );
+
     setSaveSuccess(true);
     setTimeout(() => setSaveSuccess(false), 3000);
   };

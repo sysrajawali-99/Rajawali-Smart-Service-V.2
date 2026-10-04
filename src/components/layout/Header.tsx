@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { useCleaning } from '../../context/CleaningContext';
 import { UserRole } from '../../types';
+import { getActiveAppIcon } from '../../utils/dynamicFavicon';
 import { SupabaseStatusModal } from '../modals/SupabaseStatusModal';
 
 export const Header: React.FC = () => {
@@ -40,6 +41,7 @@ export const Header: React.FC = () => {
     currentUser,
     logout,
     supabaseStatus,
+    companyProfile,
   } = useCleaning();
 
   const [showNotifDropdown, setShowNotifDropdown] = useState(false);
@@ -146,15 +148,26 @@ export const Header: React.FC = () => {
           </button>
 
           {/* Logo icon */}
-          <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-tr from-sky-600 to-cyan-500 flex items-center justify-center text-white shadow-xs shadow-sky-200 shrink-0">
-            <Sparkles className="w-5 h-5" />
+          <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-sky-600 flex items-center justify-center text-white shadow-xs shadow-sky-200 shrink-0 overflow-hidden p-1 border border-sky-400/30">
+            {companyProfile?.logoUrl || getActiveAppIcon() ? (
+              <img
+                src={companyProfile?.logoUrl || getActiveAppIcon()}
+                alt="Logo"
+                className="w-full h-full object-contain"
+                onError={(e) => {
+                  (e.target as HTMLElement).style.display = 'none';
+                }}
+              />
+            ) : (
+              <Sparkles className="w-5 h-5" />
+            )}
           </div>
 
           {/* Brand and Project Info */}
           <div className="min-w-0 flex-1 sm:flex-initial">
             <div className="flex items-center gap-1.5 sm:gap-2">
               <h1 className="text-sm sm:text-base font-bold tracking-tight text-slate-900 leading-tight whitespace-nowrap">
-                Smart Cleaning
+                {companyProfile?.companyName || 'Smart Cleaning'}
               </h1>
               <span className="hidden md:inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-sky-50 text-sky-700 border border-sky-200">
                 v2.5

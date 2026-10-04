@@ -614,6 +614,24 @@ app.post('/api/pwa/update-icons', async (req: Request, res: Response) => {
       if (match) {
         const buffer = Buffer.from(match[1], 'base64');
         fs.writeFileSync(targetFilePath, buffer);
+
+        // Also update root public/favicon.ico, favicon.png, and apple-touch-icon.png for direct browser tab fetches
+        if (safeFilename === 'favicon-32.png') {
+          try {
+            fs.writeFileSync(path.join(publicDir, 'favicon.ico'), buffer);
+            fs.writeFileSync(path.join(publicDir, 'favicon.png'), buffer);
+          } catch (e) {
+            console.warn('[PWA] Warning writing root favicon:', e);
+          }
+        }
+        if (safeFilename.includes('apple-touch-icon')) {
+          try {
+            fs.writeFileSync(path.join(publicDir, 'apple-touch-icon.png'), buffer);
+          } catch (e) {
+            console.warn('[PWA] Warning writing apple touch icon:', e);
+          }
+        }
+
         updatedList.push({
           id: item.id || `icon-${safeFilename}`,
           name: safeFilename,

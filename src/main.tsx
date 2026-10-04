@@ -2,6 +2,20 @@ import {StrictMode} from 'react';
 import {createRoot} from 'react-dom/client';
 import App from './App.tsx';
 import './index.css';
+import { updateDocumentFavicon, updateDocumentTitle, getActiveAppIcon } from './utils/dynamicFavicon';
+
+// Immediately apply saved custom icon & title from localStorage before React tree mounts
+try {
+  let initialLogo = '';
+  const savedProfile = localStorage.getItem('jti_company_profile');
+  if (savedProfile) {
+    const p = JSON.parse(savedProfile);
+    if (p?.logoUrl) initialLogo = p.logoUrl;
+    if (p?.companyName) updateDocumentTitle(p.companyName);
+  }
+  const activeIcon = getActiveAppIcon(initialLogo);
+  updateDocumentFavicon(activeIcon);
+} catch {}
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

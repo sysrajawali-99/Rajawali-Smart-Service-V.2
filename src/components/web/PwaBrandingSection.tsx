@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { useCleaning } from '../../context/CleaningContext';
 import { generateAllPwaIcons, PWA_ICON_CONFIGS } from '../../utils/pwaIconGenerator';
+import { updateDocumentFavicon, updateDocumentTitle } from '../../utils/dynamicFavicon';
 
 export interface PwaIconItem {
   id: string;
@@ -149,6 +150,20 @@ export const PwaBrandingSection: React.FC = () => {
         }));
 
         setIcons(updatedIcons);
+
+        // Instantly update browser tab favicon and title in real-time
+        const faviconVariant = generatedList.find((g) => g.name === 'favicon-32.png') || generatedList[0];
+        if (faviconVariant?.dataUrl) {
+          updateDocumentFavicon(faviconVariant.dataUrl);
+          updateDocumentTitle(appName || shortName);
+          window.dispatchEvent(
+            new CustomEvent('pwa-icons-updated', {
+              detail: { icon: faviconVariant.dataUrl, name: appName || shortName },
+            })
+          );
+          updateCompanyProfile({ logoUrl: faviconVariant.dataUrl });
+        }
+
         showToast('Sukses! Semua 11 varian ikon PWA telah otomatis diperbarui & disesuaikan peruntukannya.');
       } catch (err: any) {
         console.error('[processAndApplyMasterLogo] Error:', err);
@@ -172,6 +187,13 @@ export const PwaBrandingSection: React.FC = () => {
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
     setIsSaved(true);
+    updateDocumentTitle(appName || shortName);
+    updateCompanyProfile({ companyName: appName });
+    window.dispatchEvent(
+      new CustomEvent('pwa-icons-updated', {
+        detail: { name: appName || shortName },
+      })
+    );
     showToast('Identitas aplikasi berhasil disimpan!');
     setTimeout(() => setIsSaved(false), 3000);
   };
@@ -237,6 +259,19 @@ export const PwaBrandingSection: React.FC = () => {
         }));
 
         setIcons(updatedIcons);
+
+        const fav = generatedList.find((g) => g.name === 'favicon-32.png') || generatedList[0];
+        if (fav?.dataUrl) {
+          updateDocumentFavicon(fav.dataUrl);
+          updateDocumentTitle(appName || shortName);
+          window.dispatchEvent(
+            new CustomEvent('pwa-icons-updated', {
+              detail: { icon: fav.dataUrl, name: appName || shortName },
+            })
+          );
+          updateCompanyProfile({ logoUrl: fav.dataUrl });
+        }
+
         setShowAddModal(false);
         setNewIconName('');
         setNewIconPreview(null);
