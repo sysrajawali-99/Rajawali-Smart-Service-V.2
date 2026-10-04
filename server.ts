@@ -40,13 +40,18 @@ const isOriginAllowed = (
     return callback(null, true);
   }
 
-  const cleanOrigin = origin.trim().replace(/\/+$/, '');
-  // Allow only if origin is explicitly present in ALLOWED_ORIGINS
-  if (allowedOrigins.length > 0 && allowedOrigins.includes(cleanOrigin)) {
+  // If ALLOWED_ORIGINS is empty, permit all origins in dev/preview environments
+  if (allowedOrigins.length === 0) {
     return callback(null, true);
   }
 
-  // If ALLOWED_ORIGINS is empty or does not include this origin, reject
+  const cleanOrigin = origin.trim().replace(/\/+$/, '');
+  // Allow only if origin is explicitly present in ALLOWED_ORIGINS
+  if (allowedOrigins.includes(cleanOrigin)) {
+    return callback(null, true);
+  }
+
+  // Otherwise reject
   return callback(null, false);
 };
 
