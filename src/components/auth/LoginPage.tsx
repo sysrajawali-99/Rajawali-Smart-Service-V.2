@@ -99,7 +99,7 @@ export const LoginPage: React.FC = () => {
   const handleFillCredentials = (username: string, role: UserRole, customPass?: string) => {
     const defaultPass =
       customPass ||
-      (role === 'admin'
+      (role === 'admin' || role === 'super_admin' || role === 'admin_perusahaan'
         ? 'admin123'
         : role === 'supervisor'
         ? 'spv123'
@@ -114,12 +114,20 @@ export const LoginPage: React.FC = () => {
 
   const getRoleConfig = (role: UserRole) => {
     switch (role) {
+      case 'super_admin':
       case 'admin':
         return {
           title: 'Super Admin',
           badgeColor: 'bg-indigo-500/20 text-indigo-300 border-indigo-500/40',
           icon: ShieldCheck,
           accentColor: 'from-indigo-600 to-blue-600',
+        };
+      case 'admin_perusahaan':
+        return {
+          title: 'Admin Perusahaan',
+          badgeColor: 'bg-purple-500/20 text-purple-300 border-purple-500/40',
+          icon: ShieldCheck,
+          accentColor: 'from-purple-600 to-indigo-600',
         };
       case 'supervisor':
         return {
@@ -152,7 +160,7 @@ export const LoginPage: React.FC = () => {
     }
   };
 
-  const superAdminUser = users.find((u) => u.role === 'admin');
+  const superAdminUser = users.find((u) => u.role === 'super_admin' || u.role === 'admin');
 
   return (
     <div className="min-h-screen w-full bg-slate-950 flex flex-col justify-center items-center p-3 sm:p-6 relative overflow-x-hidden selection:bg-sky-500 selection:text-white">

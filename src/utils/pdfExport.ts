@@ -10,6 +10,7 @@ import {
   CompanyProfile,
   DEFAULT_COMPANY_PROFILE,
 } from '../types';
+import { getFullUploadUrl } from '../services/apiService';
 
 export interface KopSuratConfig {
   institutionLine1: string;
@@ -478,7 +479,7 @@ export const loadImageDataUrl = async (src?: string): Promise<string | null> => 
       resolve(null);
     };
 
-    img.src = src;
+    img.src = getFullUploadUrl(src);
   });
 };
 

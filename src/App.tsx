@@ -21,6 +21,7 @@ import { MonthlyActivityView } from './components/web/MonthlyActivityView';
 import { SpecialJobView } from './components/web/SpecialJobView';
 import { DamageReportView } from './components/web/DamageReportView';
 import { KlienModeView } from './components/web/klien/KlienModeView';
+import { CompanyManagementView } from './components/web/CompanyManagementView';
 import { LoginPage } from './components/auth/LoginPage';
 import { OverdueAlertBanner } from './components/layout/OverdueAlertBanner';
 import { InstallPrompt } from './components/InstallPrompt';
@@ -151,6 +152,9 @@ const MainLayout: React.FC = () => {
       case 'klien-keluhan':
         return <KlienModeView initialSubTab={activeTab} />;
       // Sistem & Master Data
+      case 'perusahaan':
+      case 'companies':
+        return <CompanyManagementView />;
       case 'pengaturan':
         return <PengaturanView />;
       default:

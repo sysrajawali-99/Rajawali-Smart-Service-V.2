@@ -73,6 +73,8 @@ export const PengaturanView: React.FC = () => {
     auditLogs,
   } = useCleaning();
 
+  const isSuperAdmin = userRole === 'admin' || userRole === 'super_admin';
+
   const [activeSubTab, setActiveSubTab] = useState<PengaturanSubTab>('all');
   const [deadlineAlertMins, setDeadlineAlertMins] = useState(15);
   const [autoQCThreshold, setAutoQCThreshold] = useState(85);
@@ -434,7 +436,7 @@ export const PengaturanView: React.FC = () => {
           <span>Pengguna & RBAC</span>
         </button>
 
-        {userRole === 'admin' && (
+        {isSuperAdmin && (
           <button
             type="button"
             onClick={() => setActiveSubTab('bulk_delete')}
@@ -451,7 +453,7 @@ export const PengaturanView: React.FC = () => {
       </div>
 
       {/* SECTION: Tampilan Aplikasi & PWA (Khusus Super Admin) */}
-      {(activeSubTab === 'all' || activeSubTab === 'branding') && (
+      {(activeSubTab === 'all' || activeSubTab === 'branding') && isSuperAdmin && (
         <PwaBrandingSection />
       )}
 
@@ -1142,7 +1144,7 @@ export const PengaturanView: React.FC = () => {
       )}
 
       {/* SECTION: Hapus Data Masal per Sub-Menu (Khusus Super Admin) */}
-      {(activeSubTab === 'all' || activeSubTab === 'bulk_delete') && userRole === 'admin' && (
+      {(activeSubTab === 'all' || activeSubTab === 'bulk_delete') && isSuperAdmin && (
         <SuperAdminBulkDeleteSection />
       )}
 

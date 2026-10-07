@@ -38,6 +38,7 @@ import {
   KlienChecklistItem,
   KlienChecklistInspection,
   SpecialJobItem,
+  Company,
 } from '../types';
 import { calculateShiftDuration } from '../utils/shiftUtils';
 import { normalizeFrequencyCode, getNextProgramDayStatus } from '../utils/mcpUtils';
@@ -148,6 +149,12 @@ interface CleaningContextType {
   deleteUser: (userId: string) => { success: boolean; message?: string };
   updateUserProjectAssignment: (userId: string, projectIds: string[]) => void;
   allowedProjects: ProjectLocation[];
+
+  // Multi-Company Management (Super Admin)
+  companies: Company[];
+  addCompany: (comp: Omit<Company, 'id' | 'createdAt'>) => Promise<Company>;
+  updateCompany: (id: string, updates: Partial<Company>) => Promise<void>;
+  deleteCompany: (id: string, typedConfirmName: string) => Promise<{ success: boolean; message?: string }>;
 
   // Area Checklist (24 Hours & Master Data)
   checklistLocations: ChecklistLocation[];
@@ -716,6 +723,78 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   // 3. Project Locations
   const [projects, setProjects] = useState<ProjectLocation[]>(INITIAL_PROJECTS);
 
+  // 3b. Multi-Company Management (Super Admin)
+  const [companies, setCompanies] = useState<Company[]>([
+    {
+      id: 'comp-main',
+      nama: 'PT RAJAWALI TALENTA INDONESIA',
+      slug: 'utama',
+      logo: '',
+      warna: '#0284c7',
+      status: 'aktif',
+      createdAt: '2026-10-07T06:30:04.913Z',
+    },
+  ]);
+
+  const addCompany = async (comp: Omit<Company, 'id' | 'createdAt'>): Promise<Company> => {
+    const id = `comp-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+    const newComp: Company = {
+      ...comp,
+      id,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    setCompanies((prev) => [newComp, ...prev]);
+    try {
+      await upsertRecord(COLLECTIONS.COMPANIES, newComp);
+    } catch (err) {
+      notifyServerError('menambah perusahaan', err);
+    }
+    return newComp;
+  };
+
+  const updateCompany = async (id: string, updates: Partial<Company>): Promise<void> => {
+    setCompanies((prev) =>
+      prev.map((c) => (c.id === id ? { ...c, ...updates, updatedAt: new Date().toISOString() } : c))
+    );
+    const existing = companies.find((c) => c.id === id);
+    if (existing) {
+      const merged = { ...existing, ...updates, updatedAt: new Date().toISOString() };
+      try {
+        await upsertRecord(COLLECTIONS.COMPANIES, merged);
+      } catch (err) {
+        notifyServerError('memperbarui perusahaan', err);
+      }
+    }
+  };
+
+  const deleteCompany = async (
+    id: string,
+    typedConfirmName: string
+  ): Promise<{ success: boolean; message?: string }> => {
+    const target = companies.find((c) => c.id === id);
+    if (!target) {
+      return { success: false, message: 'Perusahaan tidak ditemukan.' };
+    }
+    if (id === 'comp-main') {
+      return { success: false, message: 'Perusahaan Utama (comp-main) tidak dapat dihapus.' };
+    }
+    if (typedConfirmName.trim() !== target.nama.trim()) {
+      return {
+        success: false,
+        message: `Konfirmasi gagal. Anda harus mengetik nama perusahaan "${target.nama}" dengan persis untuk menghapus perusahaan ini.`,
+      };
+    }
+    setCompanies((prev) => prev.filter((c) => c.id !== id));
+    try {
+      await deleteRecord(COLLECTIONS.COMPANIES, id);
+      return { success: true, message: `Perusahaan "${target.nama}" berhasil dihapus secara permanen.` };
+    } catch (err: any) {
+      notifyServerError('menghapus perusahaan', err);
+      return { success: false, message: err?.message || 'Gagal menghapus perusahaan di server.' };
+    }
+  };
+
   const [activeProjectId, setActiveProjectIdState] = useState<string>(() => {
     const saved = localStorage.getItem('sco_active_project_id');
     return saved || 'proj-1';
@@ -735,10 +814,11 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     users[0];
 
   // User restriction:
-  // Super Admin ('admin') can view all projects.
+  // Super Admin ('admin' or 'super_admin') can view all projects.
   // Other users can ONLY view projects assigned to them by Super Admin!
+  const isAdminOrSuper = userRole === 'admin' || userRole === 'super_admin' || userRole === 'admin_perusahaan';
   const allowedProjects =
-    userRole === 'admin'
+    isAdminOrSuper
       ? projects
       : projects.filter((p) => currentUser?.assignedProjectIds?.includes(p.id));
 
@@ -746,11 +826,11 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const safeActiveProjectId =
     allowedProjects.some((p) => p.id === activeProjectId)
       ? activeProjectId
-      : allowedProjects[0]?.id || (userRole === 'admin' ? projects[0]?.id || 'proj-1' : '');
+      : allowedProjects[0]?.id || (isAdminOrSuper ? projects[0]?.id || 'proj-1' : '');
 
   const setActiveProjectId = (id: string) => {
     // Only allow setting if admin OR if id is in allowedProjects
-    if (userRole === 'admin' || allowedProjects.some((p) => p.id === id)) {
+    if (isAdminOrSuper || allowedProjects.some((p) => p.id === id)) {
       setActiveProjectIdState(id);
       localStorage.setItem('sco_active_project_id', id);
     }
@@ -763,7 +843,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     projects[0] ||
     INITIAL_PROJECTS[0];
 
-  const visibleProjects = userRole === 'admin' ? projects : allowedProjects;
+  const visibleProjects = isAdminOrSuper ? projects : allowedProjects;
 
   // 4. Checklist Master & 24-Hour Checklist Data
   const [checklistLocations, setChecklistLocations] = useState<ChecklistLocation[]>(INITIAL_CHECKLIST_LOCATIONS);
@@ -876,6 +956,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         remoteAuditLogs,
         remoteProfile,
         remoteKpi,
+        remoteCompanies,
       ] = await Promise.all([
         getRecords<ProjectLocation>(COLLECTIONS.PROJECTS),
         getRecords<AppUser>(COLLECTIONS.USERS),
@@ -900,7 +981,12 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         getRecords<AuditLogEntry>(COLLECTIONS.AUDIT_LOGS),
         getRecords<CompanyProfile>(COLLECTIONS.COMPANY_PROFILE),
         getRecords<DashboardKpiVisibilityConfig>(COLLECTIONS.KPI_CONFIG),
+        getRecords<Company>(COLLECTIONS.COMPANIES),
       ]);
+
+      if (remoteCompanies && remoteCompanies.length > 0) {
+        setCompanies(remoteCompanies);
+      }
 
       await Promise.all([
         loadOrSeedCollection(COLLECTIONS.PROJECTS, remoteProjects, INITIAL_PROJECTS, setProjects),
@@ -1746,7 +1832,11 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   const hasAccess = (role: UserRole, moduleId: string): boolean => {
-    if (role === 'admin') return true;
+    // Menu manajemen perusahaan HANYA untuk super_admin
+    if (moduleId === 'perusahaan' || moduleId === 'companies') {
+      return role === 'super_admin';
+    }
+    if (role === 'admin' || role === 'super_admin' || role === 'admin_perusahaan') return true;
     const perm = rbacPermissions.find((p) => p.moduleId === moduleId);
     if (!perm) return true; // Default allow if not configured
     return Boolean(perm[role]);
@@ -1914,6 +2004,26 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   const updateUser = (userId: string, updates: Partial<AppUser>) => {
+    const target = users.find((u) => u.id === userId);
+    if (
+      target &&
+      (target.role === 'super_admin' || target.role === 'admin') &&
+      updates.role &&
+      updates.role !== 'super_admin' &&
+      updates.role !== 'admin'
+    ) {
+      const remainingSuperAdmins = users.filter(
+        (u) => (u.role === 'super_admin' || u.role === 'admin') && u.id !== userId
+      );
+      if (remainingSuperAdmins.length === 0) {
+        notifyServerError(
+          'menurunkan peran Super Admin',
+          new Error('Aplikasi menolak menurunkan Super Admin terakhir. Harus ada setidaknya satu Super Administrator aktif.')
+        );
+        return;
+      }
+    }
+
     let updatedUser: AppUser | undefined;
     setUsers((prev) =>
       prev.map((u) => {
@@ -1934,12 +2044,14 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     if (!target) {
       return { success: false, message: 'Pengguna tidak ditemukan.' };
     }
-    if (target.role === 'admin') {
-      const remainingAdmins = users.filter((u) => u.role === 'admin' && u.id !== userId);
-      if (remainingAdmins.length === 0) {
+    if (target.role === 'super_admin' || target.role === 'admin') {
+      const remainingSuperAdmins = users.filter(
+        (u) => (u.role === 'super_admin' || u.role === 'admin') && u.id !== userId
+      );
+      if (remainingSuperAdmins.length === 0) {
         return {
           success: false,
-          message: 'Akun Super Admin utama tidak dapat dihapus demi keamanan sistem.',
+          message: 'Aplikasi menolak menghapus Super Admin terakhir. Harus ada setidaknya satu Super Administrator aktif.',
         };
       }
     }
@@ -2524,11 +2636,11 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   // Global areas/tasks filtered by user's assigned projects for non-admin
   const accessibleAllAreas =
-    userRole === 'admin'
+    userRole === 'admin' || userRole === 'super_admin' || userRole === 'admin_perusahaan'
       ? areas
       : areas.filter((a) => currentUser?.assignedProjectIds?.includes(a.projectId || 'proj-1'));
   const accessibleAllTasks =
-    userRole === 'admin'
+    userRole === 'admin' || userRole === 'super_admin' || userRole === 'admin_perusahaan'
       ? tasks
       : tasks.filter((t) => currentUser?.assignedProjectIds?.includes(t.projectId || 'proj-1'));
 
@@ -4077,6 +4189,12 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         addProject,
         updateProject,
         deleteProject,
+
+        // Multi-Company Management (Super Admin)
+        companies,
+        addCompany,
+        updateCompany,
+        deleteCompany,
 
         // Users & Permissions
         users,

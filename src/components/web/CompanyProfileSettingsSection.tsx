@@ -22,7 +22,9 @@ import { uploadPhoto } from '../../services/apiService';
 import { updateDocumentFavicon, updateDocumentTitle } from '../../utils/dynamicFavicon';
 
 export const CompanyProfileSettingsSection: React.FC = () => {
-  const { companyProfile, updateCompanyProfile, resetCompanyProfile, activeProject } = useCleaning();
+  const { companyProfile, updateCompanyProfile, resetCompanyProfile, activeProject, userRole } = useCleaning();
+
+  const isSuperAdmin = userRole === 'admin' || userRole === 'super_admin';
 
   const [formData, setFormData] = useState<CompanyProfile>({ ...companyProfile });
   const [saveSuccess, setSaveSuccess] = useState(false);
@@ -83,6 +85,10 @@ export const CompanyProfileSettingsSection: React.FC = () => {
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!isSuperAdmin) {
+      alert('Akses ditolak: Hanya Super Administrator yang berwenang mengubah profil dan branding global sistem.');
+      return;
+    }
     updateCompanyProfile(formData);
     try {
       localStorage.setItem('jti_company_profile', JSON.stringify(formData));
@@ -153,6 +159,15 @@ export const CompanyProfileSettingsSection: React.FC = () => {
           </button>
         </div>
       </div>
+
+      {!isSuperAdmin && (
+        <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs flex items-center gap-2.5">
+          <Lock className="w-4 h-4 text-amber-600 shrink-0" />
+          <span>
+            <strong>Mode Terkunci:</strong> Profil perusahaan global, logo resmi, dan kop surat dokumen hanya dapat diubah oleh <strong>Super Administrator</strong>. Admin Perusahaan hanya mengelola operasional perusahaannya.
+          </span>
+        </div>
+      )}
 
       {saveSuccess && (
         <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs flex items-center gap-2 animate-in fade-in">
@@ -351,7 +366,12 @@ export const CompanyProfileSettingsSection: React.FC = () => {
             </span>
             <button
               type="submit"
-              className="inline-flex items-center gap-1.5 px-5 py-2 rounded-xl bg-sky-600 hover:bg-sky-700 text-white font-semibold text-xs transition-colors shadow-xs cursor-pointer"
+              disabled={!isSuperAdmin}
+              className={`inline-flex items-center gap-1.5 px-5 py-2 rounded-xl text-white font-semibold text-xs transition-colors shadow-xs ${
+                isSuperAdmin
+                  ? 'bg-sky-600 hover:bg-sky-700 cursor-pointer'
+                  : 'bg-slate-300 cursor-not-allowed opacity-60'
+              }`}
             >
               <Save className="w-3.5 h-3.5" />
               <span>Simpan Profil Perusahaan</span>

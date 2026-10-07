@@ -36,9 +36,11 @@ export const UserManagementSection: React.FC = () => {
     deleteUser,
     updateUserProjectAssignment,
     setActiveTab,
+    companies,
+    currentUser,
   } = useCleaning();
 
-  const isSuperAdmin = userRole === 'admin';
+  const isSuperAdmin = userRole === 'admin' || userRole === 'super_admin';
 
   // Search and Role Filter states
   const [searchQuery, setSearchQuery] = useState('');
@@ -70,6 +72,7 @@ export const UserManagementSection: React.FC = () => {
     password: string;
     role: UserRole;
     phone: string;
+    company_id: string;
     assignedProjectIds: string[];
   }>({
     name: '',
@@ -78,6 +81,7 @@ export const UserManagementSection: React.FC = () => {
     password: 'petugas123',
     role: 'petugas',
     phone: '',
+    company_id: 'comp-main',
     assignedProjectIds: projects.length > 0 ? [projects[0].id] : [],
   });
 
@@ -89,6 +93,7 @@ export const UserManagementSection: React.FC = () => {
     password: string;
     role: UserRole;
     phone: string;
+    company_id: string;
     assignedProjectIds: string[];
   }>({
     name: '',
@@ -97,6 +102,7 @@ export const UserManagementSection: React.FC = () => {
     password: '',
     role: 'petugas',
     phone: '',
+    company_id: 'comp-main',
     assignedProjectIds: [],
   });
 
@@ -110,6 +116,7 @@ export const UserManagementSection: React.FC = () => {
       password: u.password || '',
       role: u.role,
       phone: u.phone || '',
+      company_id: u.company_id || u.companyId || 'comp-main',
       assignedProjectIds: u.assignedProjectIds ? [...u.assignedProjectIds] : [],
     });
   };
@@ -198,13 +205,15 @@ export const UserManagementSection: React.FC = () => {
     }
 
     const defaultPass =
-      addForm.role === 'admin'
+      addForm.role === 'super_admin' || addForm.role === 'admin' || addForm.role === 'admin_perusahaan'
         ? 'admin123'
         : addForm.role === 'supervisor'
         ? 'spv123'
         : addForm.role === 'petugas'
         ? 'petugas123'
         : 'klien123';
+
+    const targetCompanyId = isSuperAdmin ? (addForm.company_id || 'comp-main') : (currentUser?.company_id || 'comp-main');
 
     const newUser = addUser({
       name: addForm.name.trim(),
@@ -213,8 +222,10 @@ export const UserManagementSection: React.FC = () => {
       password: addForm.password.trim() || defaultPass,
       role: addForm.role,
       phone: addForm.phone.trim() || undefined,
+      company_id: targetCompanyId,
+      companyId: targetCompanyId,
       assignedProjectIds:
-        addForm.role === 'admin' ? projects.map((p) => p.id) : addForm.assignedProjectIds,
+        addForm.role === 'admin' || addForm.role === 'super_admin' ? projects.map((p) => p.id) : addForm.assignedProjectIds,
     });
 
     showToast(`Pengguna baru ${newUser.name} (${newUser.role}) berhasil ditambahkan!`);
@@ -228,6 +239,7 @@ export const UserManagementSection: React.FC = () => {
       password: 'petugas123',
       role: 'petugas',
       phone: '',
+      company_id: companies[0]?.id || 'comp-main',
       assignedProjectIds: projects.length > 0 ? [projects[0].id] : [],
     });
   };
@@ -242,6 +254,21 @@ export const UserManagementSection: React.FC = () => {
       return;
     }
 
+    // Task 4.2: Menolak menurunkan Super Admin terakhir
+    if (
+      (editingUser.role === 'super_admin' || editingUser.role === 'admin') &&
+      editForm.role !== 'super_admin' &&
+      editForm.role !== 'admin'
+    ) {
+      const remainingSuperAdmins = users.filter(
+        (u) => (u.role === 'super_admin' || u.role === 'admin') && u.id !== editingUser.id
+      );
+      if (remainingSuperAdmins.length === 0) {
+        alert('Aplikasi menolak menurunkan Super Admin terakhir. Harus ada setidaknya satu Super Administrator aktif.');
+        return;
+      }
+    }
+
     const cleanUsername = editForm.username.trim().toLowerCase();
     const isDuplicateUsername = users.some(
       (u) => u.id !== editingUser.id && (u.username || '').toLowerCase() === cleanUsername
@@ -252,10 +279,12 @@ export const UserManagementSection: React.FC = () => {
       return;
     }
 
-    if (editForm.role !== 'admin' && editForm.assignedProjectIds.length === 0) {
+    if (editForm.role !== 'admin' && editForm.role !== 'super_admin' && editForm.assignedProjectIds.length === 0) {
       alert('Harap pilih minimal 1 lokasi proyek yang diizinkan untuk pengguna ini.');
       return;
     }
+
+    const targetCompanyId = isSuperAdmin ? (editForm.company_id || 'comp-main') : (editingUser.company_id || 'comp-main');
 
     updateUser(editingUser.id, {
       name: editForm.name.trim(),
@@ -264,8 +293,10 @@ export const UserManagementSection: React.FC = () => {
       password: editForm.password.trim() || undefined,
       role: editForm.role,
       phone: editForm.phone.trim() || undefined,
+      company_id: targetCompanyId,
+      companyId: targetCompanyId,
       assignedProjectIds:
-        editForm.role === 'admin' ? projects.map((p) => p.id) : editForm.assignedProjectIds,
+        editForm.role === 'admin' || editForm.role === 'super_admin' ? projects.map((p) => p.id) : editForm.assignedProjectIds,
     });
 
     showToast(`Perubahan data akun ${editForm.name} berhasil disimpan.`);
@@ -275,6 +306,18 @@ export const UserManagementSection: React.FC = () => {
   // Confirm Delete User
   const handleConfirmDelete = () => {
     if (!deleteTargetUser || !isSuperAdmin) return;
+
+    // Task 4.2: Menolak menghapus Super Admin terakhir
+    if (deleteTargetUser.role === 'super_admin' || deleteTargetUser.role === 'admin') {
+      const remainingSuperAdmins = users.filter(
+        (u) => (u.role === 'super_admin' || u.role === 'admin') && u.id !== deleteTargetUser.id
+      );
+      if (remainingSuperAdmins.length === 0) {
+        alert('Aplikasi menolak menghapus Super Admin terakhir. Harus ada setidaknya satu Super Administrator aktif.');
+        setDeleteTargetUser(null);
+        return;
+      }
+    }
 
     const res = deleteUser(deleteTargetUser.id);
     if (res.success) {
@@ -332,6 +375,7 @@ export const UserManagementSection: React.FC = () => {
                     password: 'petugas123',
                     role: 'petugas',
                     phone: '',
+                    company_id: companies[0]?.id || 'comp-main',
                     assignedProjectIds: projects.length > 0 ? [projects[0].id] : [],
                   });
                   setShowAddModal(true);
@@ -511,7 +555,7 @@ export const UserManagementSection: React.FC = () => {
               </tr>
             ) : (
               filteredUsers.map((u) => {
-                const isAdmin = u.role === 'admin';
+                const isAdmin = u.role === 'admin' || u.role === 'super_admin' || u.role === 'admin_perusahaan';
                 const assignedCount = u.assignedProjectIds?.length || 0;
                 const isAllAssigned = assignedCount === projects.length;
 
@@ -550,12 +594,14 @@ export const UserManagementSection: React.FC = () => {
                       </div>
                     </td>
 
-                    {/* Column 2: Role Badge */}
+                    {/* Column 2: Role Badge & Perusahaan */}
                     <td className="p-3.5 align-top">
                       <span
                         className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold capitalize border ${
-                          u.role === 'admin'
+                          u.role === 'admin' || u.role === 'super_admin'
                             ? 'bg-indigo-50 border-indigo-200 text-indigo-800'
+                            : u.role === 'admin_perusahaan'
+                            ? 'bg-purple-50 border-purple-200 text-purple-800'
                             : u.role === 'supervisor'
                             ? 'bg-amber-50 border-amber-200 text-amber-800'
                             : u.role === 'petugas'
@@ -563,14 +609,25 @@ export const UserManagementSection: React.FC = () => {
                             : 'bg-sky-50 border-sky-200 text-sky-800'
                         }`}
                       >
-                        {u.role === 'admin'
+                        {u.role === 'super_admin'
                           ? 'Super Admin'
+                          : u.role === 'admin'
+                          ? 'Admin'
+                          : u.role === 'admin_perusahaan'
+                          ? 'Admin Perusahaan'
                           : u.role === 'supervisor'
                           ? 'Supervisor'
                           : u.role === 'petugas'
                           ? 'Petugas'
                           : 'Klien'}
                       </span>
+                      <div className="mt-1 flex items-center gap-1 text-[11px] text-slate-500 font-medium">
+                        <Building2 className="w-3 h-3 text-slate-400 shrink-0" />
+                        <span className="truncate max-w-[140px]">
+                          {companies.find((c) => c.id === (u.company_id || u.companyId))?.nama ||
+                            (u.company_id || u.companyId || 'comp-main')}
+                        </span>
+                      </div>
                     </td>
 
                     {/* Column 3: Allowed Projects (Interactive Checkboxes / Pills) */}
@@ -800,25 +857,77 @@ export const UserManagementSection: React.FC = () => {
                     <div className="text-[10px] text-amber-700 font-medium">Audit QC & Shift</div>
                   </button>
 
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setAddForm({
-                        ...addForm,
-                        role: 'admin',
-                        password: addForm.password || 'admin123',
-                      })
-                    }
-                    className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
-                      addForm.role === 'admin'
-                        ? 'bg-indigo-50 border-indigo-400 text-indigo-950 font-bold ring-2 ring-indigo-300'
-                        : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
-                    }`}
-                  >
-                    <div className="text-sm mb-0.5">🛡️ Super Admin</div>
-                    <div className="text-[10px] text-indigo-700 font-medium">Akses Penuh Semua Proyek</div>
-                  </button>
+                  {isSuperAdmin && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setAddForm({
+                          ...addForm,
+                          role: 'admin_perusahaan',
+                          password: addForm.password || 'admin123',
+                        })
+                      }
+                      className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
+                        addForm.role === 'admin_perusahaan'
+                          ? 'bg-purple-50 border-purple-400 text-purple-950 font-bold ring-2 ring-purple-300'
+                          : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
+                      }`}
+                    >
+                      <div className="text-sm mb-0.5">🏢 Admin Perusahaan</div>
+                      <div className="text-[10px] text-purple-700 font-medium">Pengelola 1 Perusahaan</div>
+                    </button>
+                  )}
+
+                  {isSuperAdmin && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setAddForm({
+                          ...addForm,
+                          role: 'super_admin',
+                          password: addForm.password || 'admin123',
+                        })
+                      }
+                      className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
+                        addForm.role === 'super_admin' || addForm.role === 'admin'
+                          ? 'bg-indigo-50 border-indigo-400 text-indigo-950 font-bold ring-2 ring-indigo-300'
+                          : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
+                      }`}
+                    >
+                      <div className="text-sm mb-0.5">🛡️ Super Admin</div>
+                      <div className="text-[10px] text-indigo-700 font-medium">Akses Penuh Semua Proyek</div>
+                    </button>
+                  )}
                 </div>
+              </div>
+
+              {/* Pemilihan Perusahaan yang Dikelola */}
+              <div>
+                <label className="block font-bold text-slate-800 mb-1">
+                  Perusahaan yang Dikelola / Tenant <span className="text-rose-500">*</span>
+                </label>
+                {isSuperAdmin ? (
+                  <select
+                    value={addForm.company_id}
+                    onChange={(e) => setAddForm({ ...addForm, company_id: e.target.value })}
+                    className="w-full text-xs px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-500 font-medium"
+                  >
+                    {companies.map((comp) => (
+                      <option key={comp.id} value={comp.id}>
+                        {comp.nama} ({comp.id}) {comp.status !== 'aktif' ? `[${comp.status}]` : ''}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <div className="w-full text-xs px-3 py-2 bg-slate-100 border border-slate-200 rounded-xl text-slate-700 font-medium">
+                    {companies.find((c) => c.id === (currentUser?.company_id || currentUser?.companyId))?.nama || 'Perusahaan Anda'}
+                  </div>
+                )}
+                <p className="text-[11px] text-slate-500 mt-1">
+                  {addForm.role === 'admin_perusahaan'
+                    ? 'Admin Perusahaan ini akan mengelola data dan staf pada perusahaan yang dipilih.'
+                    : 'Pengguna diasosiasikan dengan perusahaan ini.'}
+                </p>
               </div>
 
               {/* Data Identitas */}
@@ -1057,8 +1166,36 @@ export const UserManagementSection: React.FC = () => {
                   <option value="petugas">👷 Petugas Lapangan (Cleaning Staff)</option>
                   <option value="klien">🏢 Klien / Tenant (Building Management)</option>
                   <option value="supervisor">📋 Supervisor (SPV Operasional)</option>
-                  <option value="admin">🛡️ Super Admin (Akses Penuh)</option>
+                  {isSuperAdmin && (
+                    <>
+                      <option value="admin_perusahaan">🏢 Admin Perusahaan (Tenant Admin)</option>
+                      <option value="super_admin">🛡️ Super Admin (Akses Global Penuh)</option>
+                    </>
+                  )}
                 </select>
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-800 mb-1">
+                  Perusahaan yang Dikelola / Tenant <span className="text-rose-500">*</span>
+                </label>
+                {isSuperAdmin ? (
+                  <select
+                    value={editForm.company_id}
+                    onChange={(e) => setEditForm({ ...editForm, company_id: e.target.value })}
+                    className="w-full text-xs px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-500 font-medium"
+                  >
+                    {companies.map((comp) => (
+                      <option key={comp.id} value={comp.id}>
+                        {comp.nama} ({comp.id}) {comp.status !== 'aktif' ? `[${comp.status}]` : ''}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <div className="w-full text-xs px-3 py-2 bg-slate-100 border border-slate-200 rounded-xl text-slate-700 font-medium">
+                    {companies.find((c) => c.id === (editingUser?.company_id || editingUser?.companyId))?.nama || 'Perusahaan Anda'}
+                  </div>
+                )}
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

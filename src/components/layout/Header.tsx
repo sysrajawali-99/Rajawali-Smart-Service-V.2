@@ -52,8 +52,18 @@ export const Header: React.FC = () => {
   const unreadNotifs = notifications.filter((n) => !n.read);
 
   const roleLabels: Record<UserRole, { title: string; color: string; desc: string }> = {
-    admin: {
+    super_admin: {
       title: 'Super Administrator',
+      color: 'bg-indigo-100 text-indigo-800 border-indigo-200',
+      desc: 'Akses penuh ke semua lokasi proyek & seluruh perusahaan',
+    },
+    admin_perusahaan: {
+      title: 'Admin Perusahaan',
+      color: 'bg-purple-100 text-purple-800 border-purple-200',
+      desc: 'Kelola operasional & pengguna di lingkup perusahaan terkait',
+    },
+    admin: {
+      title: 'Administrator',
       color: 'bg-indigo-100 text-indigo-800 border-indigo-200',
       desc: 'Akses penuh ke semua lokasi proyek & hak akses pengguna',
     },
@@ -122,6 +132,9 @@ export const Header: React.FC = () => {
         return { category: 'Klien Mode', label: 'Activity Report' };
       case 'klien-keluhan':
         return { category: 'Klien Mode', label: 'Keluhan' };
+      case 'perusahaan':
+      case 'companies':
+        return { category: 'Super Admin', label: 'Manajemen Multi-Perusahaan' };
       case 'pengaturan':
         return { category: 'Sistem', label: 'Pengaturan & Master Data' };
       default:
@@ -192,7 +205,7 @@ export const Header: React.FC = () => {
                     <span className="text-slate-500 hidden sm:inline truncate max-w-[100px]">{activeProject.city}</span>
                   </>
                 )}
-                {userRole === 'admin' ? (
+                {userRole === 'admin' || userRole === 'super_admin' || userRole === 'admin_perusahaan' ? (
                   <ChevronDown className="w-3 h-3 text-slate-400 group-hover:text-slate-700 shrink-0" />
                 ) : (
                   <span className="hidden sm:inline-flex items-center gap-0.5 px-1 py-0.2 rounded text-[9px] bg-slate-100 text-slate-600 font-medium shrink-0">
@@ -208,10 +221,10 @@ export const Header: React.FC = () => {
                   <div className="px-3 pb-2 border-b border-slate-100 flex items-center justify-between">
                     <div>
                       <p className="text-[11px] font-bold text-slate-700 uppercase tracking-wider">
-                        {userRole === 'admin' ? 'Pilih Lokasi Proyek' : 'Lokasi Proyek Anda'}
+                        {userRole === 'admin' || userRole === 'super_admin' || userRole === 'admin_perusahaan' ? 'Pilih Lokasi Proyek' : 'Lokasi Proyek Anda'}
                       </p>
                       <p className="text-[11px] text-slate-400">
-                        {userRole === 'admin'
+                        {userRole === 'admin' || userRole === 'super_admin' || userRole === 'admin_perusahaan'
                           ? 'Super Admin memiliki akses semua lokasi'
                           : 'Ditentukan secara khusus oleh Super Admin'}
                       </p>

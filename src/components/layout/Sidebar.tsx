@@ -340,6 +340,39 @@ export const Sidebar: React.FC = () => {
             </button>
           </div>
 
+          {/* Super Admin: Manajemen Multi-Perusahaan */}
+          {userRole === 'super_admin' && (
+            <div>
+              <button
+                id="sidebar-nav-companies"
+                onClick={() => handleNavClick('perusahaan')}
+                className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                  activeTab === 'perusahaan'
+                    ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-200'
+                    : 'text-indigo-950 bg-indigo-50/70 hover:bg-indigo-100/80 border border-indigo-200/60'
+                }`}
+              >
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <Building2
+                    className={`w-4 h-4 shrink-0 ${
+                      activeTab === 'perusahaan' ? 'text-white' : 'text-indigo-600'
+                    }`}
+                  />
+                  <span className="truncate font-bold">Manajemen Perusahaan</span>
+                </div>
+                <span
+                  className={`text-[9px] font-bold px-1.5 py-0.5 rounded-md uppercase tracking-wider ${
+                    activeTab === 'perusahaan'
+                      ? 'bg-white/20 text-white'
+                      : 'bg-indigo-200/80 text-indigo-800'
+                  }`}
+                >
+                  SUPER
+                </span>
+              </button>
+            </div>
+          )}
+
           {/* 3 Collapsible Categorized Menu Groups */}
           {menuGroups.map((group) => {
             const GroupIcon = group.icon;
@@ -488,7 +521,12 @@ export const Sidebar: React.FC = () => {
                 {currentUser?.name || userRole}
               </p>
               <p className="text-[10px] text-slate-400 capitalize truncate">
-                Role: {userRole === 'admin' ? 'Super Admin' : userRole}
+                Role:{' '}
+                {userRole === 'super_admin' || userRole === 'admin'
+                  ? 'Super Admin'
+                  : userRole === 'admin_perusahaan'
+                  ? 'Admin Perusahaan'
+                  : userRole}
               </p>
             </div>
             <div

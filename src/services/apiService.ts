@@ -46,6 +46,7 @@ export const COLLECTIONS = {
   KLIEN_CHECKLIST_ITEMS: 'klien_checklist_items',
   KLIEN_CHECKLIST_INSPECTIONS: 'klien_checklist_inspections',
   COMPANY_PROFILE: 'company_profile',
+  COMPANIES: 'companies',
   KPI_CONFIG: 'kpi_config',
   AUDIT_LOGS: 'audit_logs',
 } as const;
@@ -92,13 +93,13 @@ export function getFullUploadUrl(url: string | undefined | null): string {
   if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('data:')) {
     return url;
   }
-  if (url.startsWith('/uploads/')) {
-    return `${VITE_API_URL}${url}`;
+  const token = getAuthToken();
+  const tokenParam = token ? `token=${encodeURIComponent(token)}` : '';
+  let finalPath = url.startsWith('/') ? url : `/${url}`;
+  if (tokenParam && !finalPath.includes('token=')) {
+    finalPath += finalPath.includes('?') ? `&${tokenParam}` : `?${tokenParam}`;
   }
-  if (url.startsWith('uploads/')) {
-    return `${VITE_API_URL}/${url}`;
-  }
-  return url;
+  return `${VITE_API_URL}${finalPath}`;
 }
 
 /**
@@ -111,21 +112,39 @@ export function getAuthToken(): string | null {
     const queryToken = params.get('token');
     if (queryToken) {
       localStorage.setItem('sco_auth_token', queryToken);
+      try {
+        document.cookie = `sco_auth_token=${encodeURIComponent(queryToken)}; path=/; max-age=604800; SameSite=Lax`;
+      } catch {}
       params.delete('token');
       const newQuery = params.toString() ? `?${params.toString()}` : '';
       window.history.replaceState({}, '', `${window.location.pathname}${newQuery}${window.location.hash}`);
       return queryToken;
     }
   } catch {}
-  return localStorage.getItem('sco_auth_token');
+  const token = localStorage.getItem('sco_auth_token');
+  if (token && typeof document !== 'undefined' && !document.cookie.includes('sco_auth_token=')) {
+    try {
+      document.cookie = `sco_auth_token=${encodeURIComponent(token)}; path=/; max-age=604800; SameSite=Lax`;
+    } catch {}
+  }
+  return token;
 }
 
 export function setAuthToken(token: string | null): void {
   if (typeof window === 'undefined') return;
   if (token) {
     localStorage.setItem('sco_auth_token', token);
+    try {
+      document.cookie = `sco_auth_token=${encodeURIComponent(token)}; path=/; max-age=604800; SameSite=Lax`;
+    } catch {}
+    try {
+      socket.emit('auth:join', { token });
+    } catch {}
   } else {
     localStorage.removeItem('sco_auth_token');
+    try {
+      document.cookie = 'sco_auth_token=; path=/; max-age=0; SameSite=Lax';
+    } catch {}
   }
 }
 

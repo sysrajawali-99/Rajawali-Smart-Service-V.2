@@ -1,4 +1,23 @@
-export type UserRole = 'admin' | 'supervisor' | 'petugas' | 'klien';
+export type UserRole =
+  | 'super_admin'
+  | 'admin_perusahaan'
+  | 'admin'
+  | 'supervisor'
+  | 'petugas'
+  | 'klien';
+
+export type CompanyStatus = 'aktif' | 'ditangguhkan' | 'diarsipkan';
+
+export interface Company {
+  id: string;
+  nama: string;
+  slug: string;
+  logo?: string;
+  warna?: string;
+  status: CompanyStatus;
+  createdAt: string;
+  updatedAt?: string;
+}
 
 export type ViewMode = 'split' | 'web' | 'mobile';
 
@@ -17,6 +36,8 @@ export interface AreaMaterialItem {
 
 export interface Area {
   id: string;
+  company_id?: string;
+  companyId?: string;
   projectId?: string;
   name: string;
   code: string;
@@ -39,6 +60,8 @@ export type AttendanceStatusCode = 'H' | 'I' | 'S' | 'A' | 'L' | '-';
 
 export interface Cleaner {
   id: string;
+  company_id?: string;
+  companyId?: string;
   projectId?: string;
   projectLocationId?: string;
   role?: string;
@@ -72,6 +95,8 @@ export interface ShiftPlottingAllocation {
 
 export interface Shift {
   id: string;
+  company_id?: string;
+  companyId?: string;
   name: string;
   code: string;
   startTime: string; // e.g. "07:00"
@@ -86,6 +111,8 @@ export interface Shift {
 
 export interface CleaningSchedule {
   id: string;
+  company_id?: string;
+  companyId?: string;
   projectId?: string;
   title: string;
   areaId: string;
@@ -116,6 +143,8 @@ export type ChecklistItem = TaskChecklistItem;
 
 export interface CleaningTask {
   id: string;
+  company_id?: string;
+  companyId?: string;
   projectId?: string;
   areaId: string;
   areaName: string;
@@ -170,6 +199,8 @@ export interface QCAuditParameterResult {
 
 export interface QCInspection {
   id: string;
+  company_id?: string;
+  companyId?: string;
   projectId?: string;
   taskId: string;
   areaName: string;
@@ -221,6 +252,8 @@ export interface ComplaintExtensionRequest {
 
 export interface Complaint {
   id: string;
+  company_id?: string;
+  companyId?: string;
   projectId?: string;
   ticketNumber: string;
   reporterName: string;
@@ -250,6 +283,8 @@ export interface Complaint {
 
 export interface ProjectLocation {
   id: string;
+  company_id?: string;
+  companyId?: string;
   code: string;
   name: string;
   address: string;
@@ -263,6 +298,8 @@ export interface ProjectLocation {
 
 export interface AppUser {
   id: string;
+  company_id?: string;
+  companyId?: string;
   name: string;
   email: string;
   username?: string;
@@ -271,6 +308,7 @@ export interface AppUser {
   assignedProjectIds: string[]; // Projects this user is allowed to access
   phone?: string;
   createdAt?: string;
+  mustChangePassword?: boolean;
 }
 
 export interface RoleModulePermission {
@@ -281,6 +319,8 @@ export interface RoleModulePermission {
   supervisor: boolean;
   petugas: boolean;
   klien: boolean;
+  super_admin?: boolean;
+  admin_perusahaan?: boolean;
 }
 
 export type ChecklistLocationCategory =
@@ -294,6 +334,8 @@ export type ChecklistLocationCategory =
 
 export interface ChecklistLocation {
   id: string;
+  company_id?: string;
+  companyId?: string;
   projectId: string;
   name: string;
   category: ChecklistLocationCategory;
@@ -304,6 +346,8 @@ export interface ChecklistLocation {
 
 export interface ChecklistTemplateItem {
   id: string;
+  company_id?: string;
+  companyId?: string;
   projectId?: string; // Spesifik per gedung / proyek atau global jika undefined
   category: ChecklistLocationCategory | 'all';
   name: string;
@@ -318,6 +362,8 @@ export type HourlyCheckItemStatus = 'clean' | 'issue' | 'not_checked' | 'dirty' 
 
 export interface HourlyCheckItemEntry {
   itemId: string;
+  company_id?: string;
+  companyId?: string;
   itemName: string;
   status: HourlyCheckItemStatus;
   notes?: string;
@@ -325,6 +371,8 @@ export interface HourlyCheckItemEntry {
 
 export interface HourlyChecklistSlot {
   hour: number; // 0..23 (00.00 to 24.00)
+  company_id?: string;
+  companyId?: string;
   hourLabel: string; // e.g. "00.00 - 01.00", "01.00 - 02.00", ... "23.00 - 24.00"
   status: 'clean' | 'has_issue' | 'pending';
   checkedBy?: string;
@@ -337,6 +385,8 @@ export interface HourlyChecklistSlot {
 
 export interface DailyAreaChecklist {
   id: string;
+  company_id?: string;
+  companyId?: string;
   projectId: string;
   locationId: string;
   locationName: string;
@@ -347,6 +397,8 @@ export interface DailyAreaChecklist {
 
 export interface AppNotification {
   id: string;
+  company_id?: string;
+  companyId?: string;
   title: string;
   message: string;
   timestamp: string;
@@ -368,6 +420,8 @@ export type OfflineSyncActionType =
 
 export interface OfflineSyncEntry {
   id: string;
+  company_id?: string;
+  companyId?: string;
   type: OfflineSyncActionType;
   title: string;
   description: string;
@@ -384,6 +438,8 @@ export type ProgramFrequencyCode = 'D' | 'W' | 'M';
 
 export interface MasterCleaningProgramItem {
   id: string;
+  company_id?: string;
+  companyId?: string;
   projectId: string; // ID Proyek / Site (dipisahkan sesuai lokasi kerja user / klien)
   workDescription: string; // Uraian pekerjaan detail
   workMethod: string; // Metode pekerjaan, SOP, alat & chemical
@@ -421,6 +477,8 @@ export type DamageReportStatus =
 
 export interface FacilityDamageReport {
   id: string;
+  company_id?: string;
+  companyId?: string;
   projectId?: string;
   ticketNo: string; // e.g. "DMG-2026-001"
   itemName: string; // Nama Barang / Fasilitas Rusak
@@ -512,6 +570,8 @@ export type AuditActionType =
 
 export interface AuditLogEntry {
   id: string;
+  company_id?: string;
+  companyId?: string;
   timestamp: string; // ISO format or formatted WIB
   userId: string;
   userName: string;
@@ -531,6 +591,8 @@ export interface AuditLogEntry {
 
 export interface EmployeeTurnoverRecord {
   id: string;
+  company_id?: string;
+  companyId?: string;
   projectId: string;
   cleanerId?: string;
   cleanerName: string;
@@ -549,6 +611,8 @@ export type KlienChecklistCategory = 'toilet' | 'public_area' | 'parking';
 
 export interface KlienChecklistItem {
   id: string;
+  company_id?: string;
+  companyId?: string;
   projectId: string;
   category: KlienChecklistCategory;
   name: string;
@@ -558,6 +622,8 @@ export interface KlienChecklistItem {
 
 export interface KlienChecklistInspection {
   id: string;
+  company_id?: string;
+  companyId?: string;
   projectId: string;
   category: KlienChecklistCategory;
   areaLocation: string;
@@ -580,6 +646,8 @@ export type SpecialJobStatus = 'requested' | 'in_progress' | 'completed';
 
 export interface SpecialJobItem {
   id: string;
+  company_id?: string;
+  companyId?: string;
   ticketNo: string; // e.g. "SPJ-2026-001"
   projectId: string;
   title: string; // Nama / Uraian Pekerjaan Special Job
@@ -608,6 +676,35 @@ export interface SpecialJobItem {
   verifiedBySupervisor?: boolean;
   verifiedByName?: string;
   createdAt: string;
+}
+
+export interface PushSubscriptionRecord {
+  id: string;
+  endpoint: string;
+  keys: {
+    p256dh: string;
+    auth: string;
+  };
+  userId?: string;
+  userRole?: string;
+  role?: string;
+  projectId?: string;
+  company_id?: string;
+  companyId?: string;
+  createdAt?: string;
+}
+
+export interface PhotoRecord {
+  id: string;
+  url: string;
+  filename: string;
+  size?: number;
+  mimetype?: string;
+  uploadedBy?: string;
+  company_id?: string;
+  companyId?: string;
+  projectId?: string;
+  createdAt?: string;
 }
 
 
