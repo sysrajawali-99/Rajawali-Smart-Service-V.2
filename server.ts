@@ -17,8 +17,31 @@ dotenv.config();
 const { Pool } = pg;
 
 const app = express();
-app.set('trust proxy', true);
+
+// Requirement 1: TRUST_PROXY dibaca dari environment variable (default 1 bila tidak disetel)
+const rawTrustProxy = process.env.TRUST_PROXY;
+const trustProxyVal: number | boolean =
+  rawTrustProxy === undefined || rawTrustProxy === ''
+    ? 1
+    : !isNaN(Number(rawTrustProxy))
+    ? parseInt(rawTrustProxy, 10)
+    : rawTrustProxy.toLowerCase() === 'true'
+    ? true
+    : rawTrustProxy.toLowerCase() === 'false'
+    ? false
+    : 1;
+app.set('trust proxy', trustProxyVal);
+
 const httpServer = http.createServer(app);
+
+// Helper Cookie Sesi (Requirement 2: HttpOnly, Secure di production, SameSite=Lax)
+const isProduction = process.env.NODE_ENV === 'production';
+const getSessionCookieHeader = (token: string): string =>
+  `sco_auth_token=${encodeURIComponent(
+    token
+  )}; Path=/; Max-Age=604800; HttpOnly; SameSite=Lax${isProduction ? '; Secure' : ''}`;
+const getClearCookieHeader = (): string =>
+  `sco_auth_token=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax${isProduction ? '; Secure' : ''}`;
 
 // Configuration
 const PORT = parseInt(process.env.PORT || '3000', 10);
@@ -123,23 +146,77 @@ function verifyAuthToken(token: string): any | null {
   }
 }
 
-function extractToken(req: Request): string | null {
-  // 1. Support Authorization: Bearer <token>
+function extractBearerToken(req: Request): string | null {
   const authHeader = req.headers.authorization;
   if (authHeader && authHeader.startsWith('Bearer ')) {
     return authHeader.slice(7).trim();
   }
-  // 2. Support Cookie: sco_auth_token=<token>
+  return null;
+}
+
+function extractCookieToken(req: Request): string | null {
   const cookieHeader = req.headers.cookie;
   if (cookieHeader) {
     const match = cookieHeader.match(/(?:^|;\s*)sco_auth_token=([^;]+)/);
     if (match) return decodeURIComponent(match[1]);
   }
-  // 3. Support URL Query Parameter: ?token=<token> (for images & PDF export generation)
-  if (req.query && typeof req.query.token === 'string') {
-    return req.query.token.trim();
-  }
   return null;
+}
+
+// Requirement 2 & 3:
+// Cookie sesi HANYA diterima untuk membaca file (GET /uploads).
+// Penggunaan token sesi di query URL (?token=...) telah dihapus.
+function extractToken(req: Request): string | null {
+  // 1. Prioritas utama: Header Authorization Bearer token
+  const bearer = extractBearerToken(req);
+  if (bearer) return bearer;
+
+  // 2. Cookie sesi HANYA diterima untuk membaca file (GET /uploads) (Requirement 2)
+  const isUploadsGet = (req.method === 'GET' || req.method === 'HEAD') && req.path.startsWith('/uploads');
+  if (isUploadsGet) {
+    const cookie = extractCookieToken(req);
+    if (cookie) return cookie;
+  }
+
+  return null;
+}
+
+// Requirement 3: Tautan bertanda tangan (HMAC) berumur maksimal 5 menit, terikat pada satu file dan satu company_id
+function generateSignedFileUrl(
+  companyId: string,
+  filename: string,
+  maxAgeSeconds: number = 300
+): { signedUrl: string; expires: number } {
+  const safeFilename = path.basename(filename);
+  const expires = Date.now() + Math.min(Math.max(maxAgeSeconds, 30), 300) * 1000; // Maksimal 5 menit (300 detik)
+  const payloadToSign = `file:${companyId}:${safeFilename}:${expires}`;
+  const sig = crypto.createHmac('sha256', ACTIVE_SIGNING_KEY).update(payloadToSign).digest('base64url');
+  const signedUrl = `/uploads/${encodeURIComponent(companyId)}/${encodeURIComponent(safeFilename)}?expires=${expires}&sig=${sig}`;
+  return { signedUrl, expires };
+}
+
+function verifySignedFileUrl(
+  companyId: string,
+  filename: string,
+  expiresStr?: any,
+  sigStr?: any
+): boolean {
+  if (!expiresStr || !sigStr || typeof expiresStr !== 'string' || typeof sigStr !== 'string') {
+    return false;
+  }
+  const expires = parseInt(expiresStr, 10);
+  if (isNaN(expires) || Date.now() > expires) {
+    return false; // Kedaluwarsa
+  }
+  // Tidak boleh melebihi 5 menit (+ 10 detik toleransi clock skew)
+  if (expires > Date.now() + 5 * 60 * 1000 + 10000) {
+    return false;
+  }
+  const safeFilename = path.basename(filename);
+  const payloadToSign = `file:${companyId}:${safeFilename}:${expires}`;
+  const expectedSig = crypto.createHmac('sha256', ACTIVE_SIGNING_KEY).update(payloadToSign).digest('base64url');
+  if (sigStr.length !== expectedSig.length) return false;
+  return crypto.timingSafeEqual(Buffer.from(sigStr), Buffer.from(expectedSig));
 }
 
 // Token middleware to attach decoded user if present
@@ -167,29 +244,12 @@ app.use((req: Request, res: Response, next: NextFunction) => {
   next();
 });
 
-// Requirement 1, a & b: Protected Uploads Route (Kebal path traversal dan terisolasi ketat per tenant)
+// Requirement 2 & 3: Protected Uploads Route
+// - Kebal path traversal & terisolasi per tenant
+// - Mengizinkan tautan bertanda tangan (HMAC) berumur maks 5 menit terikat pada satu file
+// - Mengizinkan cookie sesi (HANYA untuk GET /uploads) & Bearer token
+// - Menolak token sesi di query URL (?token=...)
 app.get(['/uploads/:companyId/:filename', '/uploads/:filename'], async (req: Request, res: Response) => {
-  const token = extractToken(req);
-  if (!token) {
-    return res.status(404).json({ error: 'File tidak ditemukan' });
-  }
-
-  const verified = verifyAuthToken(token);
-  if (!verified) {
-    return res.status(404).json({ error: 'File tidak ditemukan' });
-  }
-
-  // Requirement d: mustChangePassword dipaksa di server: selain ganti sandi dan logout, akses ditolak
-  if (verified.mustChangePassword) {
-    return res.status(403).json({
-      error: 'Wajib ganti kata sandi terlebih dahulu sebelum mengakses data sistem.',
-      mustChangePassword: true,
-    });
-  }
-
-  const sessionCompanyId = verified.company_id || verified.companyId || 'comp-main';
-  const isSuper = verified.role === 'super_admin';
-
   let targetCompany = '';
   let rawFilename = '';
 
@@ -202,7 +262,7 @@ app.get(['/uploads/:companyId/:filename', '/uploads/:filename'], async (req: Req
   } else {
     // Jalur single segment: /uploads/:filename
     rawFilename = paramFile || paramComp || '';
-    targetCompany = sessionCompanyId;
+    targetCompany = '';
   }
 
   // Path traversal check (Requirement b)
@@ -224,13 +284,60 @@ app.get(['/uploads/:companyId/:filename', '/uploads/:filename'], async (req: Req
     return res.status(404).json({ error: 'File tidak ditemukan' });
   }
 
-  // 404 bila bukan milik perusahaannya dan bukan Super Admin
-  if (!isSuper && targetCompany !== sessionCompanyId) {
-    return res.status(404).json({ error: 'File tidak ditemukan' });
+  const { expires, sig } = req.query;
+  let isAuthorized = false;
+  let isSuper = false;
+  let sessionCompanyId = '';
+
+  // 1. Tautan bertanda tangan (HMAC) berumur maksimal 5 menit, terikat pada satu file dan satu company_id
+  if (typeof expires === 'string' && typeof sig === 'string') {
+    const checkCompany = targetCompany || 'comp-main';
+    if (verifySignedFileUrl(checkCompany, safeFilename, expires, sig)) {
+      isAuthorized = true;
+      targetCompany = checkCompany;
+      sessionCompanyId = checkCompany;
+    } else {
+      return res.status(403).json({ error: 'Tautan tanda tangan file tidak valid atau sudah kedaluwarsa.' });
+    }
+  }
+
+  // 2. Jika bukan tautan bertanda tangan: hanya terima Authorization header atau cookie sesi (GET /uploads)
+  if (!isAuthorized) {
+    const bearerToken = extractBearerToken(req);
+    const cookieToken = extractCookieToken(req);
+    const token = bearerToken || cookieToken;
+
+    if (!token) {
+      return res.status(404).json({ error: 'File tidak ditemukan' });
+    }
+
+    const verified = verifyAuthToken(token);
+    if (!verified) {
+      return res.status(404).json({ error: 'File tidak ditemukan' });
+    }
+
+    // mustChangePassword dipaksa di server
+    if (verified.mustChangePassword) {
+      return res.status(403).json({
+        error: 'Wajib ganti kata sandi terlebih dahulu sebelum mengakses data sistem.',
+        mustChangePassword: true,
+      });
+    }
+
+    sessionCompanyId = verified.company_id || verified.companyId || 'comp-main';
+    isSuper = verified.role === 'super_admin';
+
+    if (!targetCompany) {
+      targetCompany = sessionCompanyId;
+    }
+
+    // 404 bila bukan milik perusahaannya dan bukan Super Admin
+    if (!isSuper && targetCompany !== sessionCompanyId) {
+      return res.status(404).json({ error: 'File tidak ditemukan' });
+    }
   }
 
   // Isolasi pencarian berkas: HANYA folder tenant targetCompany
-  // Tidak bisa dipakai membaca file perusahaan lain
   const candidatePaths: string[] = [];
   candidatePaths.push(path.join(uploadsDir, targetCompany, safeFilename));
 
@@ -644,7 +751,29 @@ function isSessionSuperAdmin(req: Request): boolean {
 
 // Centralized Tenant & Session Protection Middleware
 app.use('/api', async (req: Request, res: Response, next: NextFunction) => {
-  const token = extractToken(req);
+  const isMutating = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method);
+  const bearerToken = extractBearerToken(req);
+  const cookieToken = extractCookieToken(req);
+
+  // Endpoint publik tanpa autentikasi
+  const isPublicAuthPath =
+    (req.path === '/auth/login' || req.path === '/api/auth/login') && req.method === 'POST';
+
+  // Requirement 2: CSRF Protection
+  // Semua endpoint POST/PUT/PATCH/DELETE hanya menerima token lewat header Authorization
+  // dan menolak (401) bila hanya ada cookie.
+  if (isMutating && !isPublicAuthPath) {
+    if (!bearerToken) {
+      if (cookieToken) {
+        return res.status(401).json({
+          error: 'Akses ditolak (CSRF Protection): Operasi data (POST/PUT/PATCH/DELETE) hanya menerima token lewat header Authorization (Bearer token), bukan cookie.',
+        });
+      }
+    }
+  }
+
+  // Pada rute /api/*, autentikasi HANYA melalui Bearer token (cookie tidak dipakai untuk /api)
+  const token = bearerToken;
   if (token) {
     const verified = verifyAuthToken(token);
     if (verified) {
@@ -856,13 +985,8 @@ app.post('/api/auth/login', async (req: Request, res: Response) => {
   // Generate signed Bearer token with company_id and role
   const token = generateAuthToken(matchedUser);
 
-  // Set cookie for browser session & static/image access
-  res.setHeader(
-    'Set-Cookie',
-    `sco_auth_token=${encodeURIComponent(
-      token
-    )}; Path=/; Max-Age=604800; SameSite=Lax`
-  );
+  // Set cookie for browser session & static/image access (HttpOnly, SameSite=Lax, Secure di prod)
+  res.setHeader('Set-Cookie', getSessionCookieHeader(token));
 
   return res.json({
     success: true,
@@ -886,12 +1010,12 @@ app.post('/api/auth/login', async (req: Request, res: Response) => {
   });
 });
 
-// Endpoint Ganti Kata Sandi (Requirement 5)
+// Endpoint Ganti Kata Sandi (Requirement 2: Hanya menerima Bearer token)
 app.post('/api/auth/change-password', async (req: Request, res: Response) => {
-  const token = extractToken(req);
-  if (!token) return res.status(401).json({ error: 'Tidak terotentikasi' });
+  const token = extractBearerToken(req);
+  if (!token) return res.status(401).json({ error: 'Tidak terotentikasi: Token Authorization diperlukan.' });
   const payload = verifyAuthToken(token);
-  if (!payload) return res.status(401).json({ error: 'Token sesi tidak valid atau kedaluwarsa' });
+  if (!payload) return res.status(401).json({ error: 'Token sesi tidak valid atau kedaluwarsa.' });
 
   const { oldPassword, newPassword } = req.body || {};
   if (!newPassword || typeof newPassword !== 'string' || newPassword.trim().length < 8) {
@@ -930,9 +1054,9 @@ app.post('/api/auth/change-password', async (req: Request, res: Response) => {
 });
 
 app.get('/api/auth/me', async (req: Request, res: Response) => {
-  const token = extractToken(req);
+  const token = extractBearerToken(req);
   if (!token) {
-    return res.status(401).json({ authenticated: false, error: 'Token otentikasi tidak ditemukan.' });
+    return res.status(401).json({ authenticated: false, error: 'Token otentikasi tidak ditemukan di header Authorization.' });
   }
 
   const payload = verifyAuthToken(token);
@@ -962,12 +1086,7 @@ app.get('/api/auth/me', async (req: Request, res: Response) => {
     companyId: userCompanyId,
   };
 
-  res.setHeader(
-    'Set-Cookie',
-    `sco_auth_token=${encodeURIComponent(
-      token
-    )}; Path=/; Max-Age=604800; SameSite=Lax`
-  );
+  res.setHeader('Set-Cookie', getSessionCookieHeader(token));
 
   return res.json({
     authenticated: true,
@@ -981,11 +1100,167 @@ app.get('/api/auth/me', async (req: Request, res: Response) => {
 });
 
 app.post('/api/auth/logout', (_req: Request, res: Response) => {
-  res.setHeader(
-    'Set-Cookie',
-    'sco_auth_token=; Path=/; Max-Age=0; SameSite=Lax'
-  );
+  res.setHeader('Set-Cookie', getClearCookieHeader());
   return res.json({ success: true, message: 'Berhasil keluar' });
+});
+
+// Requirement 4: Pergantian perusahaan aktif untuk Admin Perusahaan / Super Admin
+// Hanya punya SATU company_id aktif per sesi. Divalidasi di server & dicatat di audit log.
+app.post('/api/auth/switch-company', async (req: Request, res: Response) => {
+  const token = extractBearerToken(req);
+  if (!token) {
+    return res.status(401).json({ error: 'Tidak terotentikasi: Token Authorization (Bearer) diperlukan.' });
+  }
+
+  const sessionUser = verifyAuthToken(token);
+  if (!sessionUser) {
+    return res.status(401).json({ error: 'Token sesi tidak valid atau kedaluwarsa.' });
+  }
+
+  if (sessionUser.mustChangePassword) {
+    return res.status(403).json({ error: 'Wajib ganti kata sandi terlebih dahulu.' });
+  }
+
+  const { companyId: targetCompanyId } = req.body || {};
+  if (!targetCompanyId || typeof targetCompanyId !== 'string') {
+    return res.status(400).json({ error: 'Parameter companyId wajib disertakan.' });
+  }
+
+  const targetCompany = await getCompanyById(targetCompanyId.trim());
+  if (!targetCompany) {
+    return res.status(404).json({ error: 'Perusahaan tujuan tidak ditemukan.' });
+  }
+
+  if (targetCompany.status === 'ditangguhkan') {
+    return res.status(403).json({ error: 'Perusahaan tujuan sedang ditangguhkan.' });
+  }
+  if (targetCompany.status === 'diarsipkan') {
+    return res.status(403).json({ error: 'Perusahaan tujuan telah diarsipkan.' });
+  }
+
+  // Validasi hak akses:
+  // - Super Admin: Bebas berpindah ke perusahaan aktif manapun
+  // - Admin Perusahaan: Harus terdaftar di company_id atau assignedCompanyIds pengguna
+  const isSuper = sessionUser.role === 'super_admin';
+  const fullUser = await getDbRecord('users', sessionUser.userId);
+
+  if (!isSuper) {
+    if (sessionUser.role !== 'admin_perusahaan' && sessionUser.role !== 'admin') {
+      return res.status(403).json({ error: 'Hanya administrator yang diizinkan berpindah perusahaan aktif.' });
+    }
+
+    const userPrimaryComp = fullUser?.company_id || fullUser?.companyId;
+    const userAssignedComps = Array.isArray(fullUser?.assignedCompanyIds) ? fullUser.assignedCompanyIds : [];
+    const allowedCompanyIds = [userPrimaryComp, ...userAssignedComps].filter(Boolean);
+
+    if (!allowedCompanyIds.includes(targetCompany.id)) {
+      return res.status(403).json({
+        error: 'Akses ditolak: Anda tidak memiliki wewenang untuk mengelola perusahaan ini.',
+      });
+    }
+  }
+
+  // Catat pergantian perusahaan aktif di audit log (Requirement 4)
+  const previousCompanyId = sessionUser.company_id || 'comp-main';
+  await addAuditLog({
+    action: 'COMPANY_SWITCHED',
+    module: 'AUTENTIKASI',
+    description: `${sessionUser.name} (${sessionUser.role}) berpindah perusahaan aktif dari ${previousCompanyId} ke "${targetCompany.nama}" (${targetCompany.id})`,
+    userId: sessionUser.userId,
+    userName: sessionUser.name,
+    company_id: targetCompany.id,
+    details: {
+      fromCompanyId: previousCompanyId,
+      toCompanyId: targetCompany.id,
+      companyName: targetCompany.nama,
+    },
+  });
+
+  // Terbitkan token baru dengan SATU company_id aktif per sesi (Requirement 4)
+  const updatedPayload = {
+    id: sessionUser.userId,
+    name: sessionUser.name,
+    role: sessionUser.role,
+    username: sessionUser.username,
+    company_id: targetCompany.id,
+    companyId: targetCompany.id,
+    mustChangePassword: false,
+  };
+  const newToken = generateAuthToken(updatedPayload);
+
+  // Set cookie sesi baru (HttpOnly, SameSite=Lax, Secure di prod)
+  res.setHeader('Set-Cookie', getSessionCookieHeader(newToken));
+
+  return res.json({
+    success: true,
+    message: `Berhasil beralih ke perusahaan "${targetCompany.nama}"`,
+    token: newToken,
+    tokenType: 'Bearer',
+    company: targetCompany,
+    user: {
+      ...(fullUser || sessionUser),
+      company_id: targetCompany.id,
+      companyId: targetCompany.id,
+    },
+  });
+});
+
+// Requirement 3: Endpoint membuat tautan bertanda tangan (HMAC) berumur maks 5 menit
+// Terikat pada satu file dan satu company_id, membutuhkan login
+app.get(['/api/uploads/signed-url', '/api/uploads/sign'], async (req: Request, res: Response) => {
+  const token = extractBearerToken(req);
+  if (!token) {
+    return res.status(401).json({ error: 'Tidak terotentikasi: Login diperlukan untuk membuat tautan bertanda tangan.' });
+  }
+
+  const user = verifyAuthToken(token);
+  if (!user) {
+    return res.status(401).json({ error: 'Token sesi tidak valid atau kedaluwarsa.' });
+  }
+
+  const rawUrl = (req.query.url || req.query.path || '') as string;
+  const paramComp = (req.query.companyId || '') as string;
+  const paramFile = (req.query.filename || '') as string;
+
+  let targetCompany = '';
+  let rawFilename = '';
+
+  if (rawUrl) {
+    const cleanPath = rawUrl.replace(/^\/uploads\/?/, '');
+    const parts = cleanPath.split('?')[0].split('/');
+    if (parts.length >= 2) {
+      targetCompany = parts[0];
+      rawFilename = parts[1];
+    } else if (parts.length === 1) {
+      targetCompany = user.company_id || 'comp-main';
+      rawFilename = parts[0];
+    }
+  } else if (paramFile) {
+    targetCompany = paramComp || user.company_id || 'comp-main';
+    rawFilename = paramFile;
+  }
+
+  if (!rawFilename) {
+    return res.status(400).json({ error: 'Parameter file atau URL tidak valid' });
+  }
+
+  const safeFilename = path.basename(rawFilename);
+  const sessionCompanyId = user.company_id || 'comp-main';
+  const isSuper = user.role === 'super_admin';
+
+  // Validasi hak akses tenant (non-superadmin hanya untuk perusahaannya)
+  if (!isSuper && targetCompany !== sessionCompanyId) {
+    return res.status(403).json({ error: 'Akses ditolak: Anda tidak memiliki akses ke file perusahaan lain.' });
+  }
+
+  const { signedUrl, expires } = generateSignedFileUrl(targetCompany, safeFilename, 300);
+  return res.json({
+    success: true,
+    signedUrl,
+    expires,
+    companyId: targetCompany,
+    filename: safeFilename,
+  });
 });
 
 // 1. Health check & status

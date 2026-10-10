@@ -90,16 +90,54 @@ export function getApiUrl(path: string): string {
 
 export function getFullUploadUrl(url: string | undefined | null): string {
   if (!url) return '';
-  if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('data:')) {
+  if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('data:') || url.startsWith('blob:')) {
     return url;
   }
-  const token = getAuthToken();
-  const tokenParam = token ? `token=${encodeURIComponent(token)}` : '';
-  let finalPath = url.startsWith('/') ? url : `/${url}`;
-  if (tokenParam && !finalPath.includes('token=')) {
-    finalPath += finalPath.includes('?') ? `&${tokenParam}` : `?${tokenParam}`;
+  const cleanPath = url.startsWith('/') ? url : `/${url}`;
+  return `${VITE_API_URL}${cleanPath}`;
+}
+
+// In-memory cache for HMAC signed URLs (max 5 mins validity, refresh 20s before expiry)
+const signedUrlCache = new Map<string, { url: string; expiresAt: number }>();
+
+/**
+ * Generate/retrieve a short-lived HMAC signed URL for secure file access (Requirement 3).
+ * Tied to a single file & single company_id with max 5-minute lifetime.
+ */
+export async function getSignedUploadUrl(rawUrl: string | undefined | null): Promise<string> {
+  if (!rawUrl) return '';
+  if (rawUrl.startsWith('data:image/') || rawUrl.startsWith('blob:')) {
+    return rawUrl;
   }
-  return `${VITE_API_URL}${finalPath}`;
+
+  // Use cached signed URL if valid for at least 20 more seconds
+  const cached = signedUrlCache.get(rawUrl);
+  if (cached && Date.now() < cached.expiresAt - 20000) {
+    return cached.url;
+  }
+
+  try {
+    const res = await fetch(getApiUrl(`/api/uploads/signed-url?url=${encodeURIComponent(rawUrl)}`), {
+      headers: getAuthHeaders(),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.signedUrl) {
+        const fullUrl = data.signedUrl.startsWith('http')
+          ? data.signedUrl
+          : `${VITE_API_URL}${data.signedUrl}`;
+        signedUrlCache.set(rawUrl, {
+          url: fullUrl,
+          expiresAt: data.expires || Date.now() + 300000,
+        });
+        return fullUrl;
+      }
+    }
+  } catch (err) {
+    console.warn('[getSignedUploadUrl] Warning generating signed URL:', err);
+  }
+
+  return getFullUploadUrl(rawUrl);
 }
 
 /**
@@ -112,22 +150,13 @@ export function getAuthToken(): string | null {
     const queryToken = params.get('token');
     if (queryToken) {
       localStorage.setItem('sco_auth_token', queryToken);
-      try {
-        document.cookie = `sco_auth_token=${encodeURIComponent(queryToken)}; path=/; max-age=604800; SameSite=Lax`;
-      } catch {}
       params.delete('token');
       const newQuery = params.toString() ? `?${params.toString()}` : '';
       window.history.replaceState({}, '', `${window.location.pathname}${newQuery}${window.location.hash}`);
       return queryToken;
     }
   } catch {}
-  const token = localStorage.getItem('sco_auth_token');
-  if (token && typeof document !== 'undefined' && !document.cookie.includes('sco_auth_token=')) {
-    try {
-      document.cookie = `sco_auth_token=${encodeURIComponent(token)}; path=/; max-age=604800; SameSite=Lax`;
-    } catch {}
-  }
-  return token;
+  return localStorage.getItem('sco_auth_token');
 }
 
 export function setAuthToken(token: string | null): void {
@@ -135,16 +164,11 @@ export function setAuthToken(token: string | null): void {
   if (token) {
     localStorage.setItem('sco_auth_token', token);
     try {
-      document.cookie = `sco_auth_token=${encodeURIComponent(token)}; path=/; max-age=604800; SameSite=Lax`;
-    } catch {}
-    try {
       socket.emit('auth:join', { token });
     } catch {}
   } else {
     localStorage.removeItem('sco_auth_token');
-    try {
-      document.cookie = 'sco_auth_token=; path=/; max-age=0; SameSite=Lax';
-    } catch {}
+    signedUrlCache.clear();
   }
 }
 
@@ -226,6 +250,35 @@ export async function apiLogout(): Promise<void> {
     });
   } catch {}
   setAuthToken(null);
+}
+
+/**
+ * Endpoint khusus untuk pergantian perusahaan aktif (Requirement 4).
+ * Memvalidasi hak akses di server, menerbitkan token baru dengan satu active company_id,
+ * dan dicatat di audit log.
+ */
+export async function apiSwitchCompany(companyId: string): Promise<{
+  success: boolean;
+  token?: string;
+  company?: any;
+  user?: any;
+  error?: string;
+}> {
+  try {
+    const res = await fetch(getApiUrl('/api/auth/switch-company'), {
+      method: 'POST',
+      headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ companyId }),
+    });
+    const data = await res.json();
+    if (res.ok && data.success && data.token) {
+      setAuthToken(data.token);
+      return data;
+    }
+    return { success: false, error: data.error || 'Gagal berpindah perusahaan' };
+  } catch (err: any) {
+    return { success: false, error: err.message || 'Gagal menghubungi server' };
+  }
 }
 
 /**

@@ -85,6 +85,7 @@ import {
   apiLogin,
   apiLogout,
   apiVerifySession,
+  apiSwitchCompany,
   getAuthToken,
   setAuthToken,
 } from '../services/apiService';
@@ -150,11 +151,12 @@ interface CleaningContextType {
   updateUserProjectAssignment: (userId: string, projectIds: string[]) => void;
   allowedProjects: ProjectLocation[];
 
-  // Multi-Company Management (Super Admin)
+  // Multi-Company Management (Super Admin & Admin Perusahaan)
   companies: Company[];
   addCompany: (comp: Omit<Company, 'id' | 'createdAt'>) => Promise<Company>;
   updateCompany: (id: string, updates: Partial<Company>) => Promise<void>;
   deleteCompany: (id: string, typedConfirmName: string) => Promise<{ success: boolean; message?: string }>;
+  switchActiveCompany: (companyId: string) => Promise<{ success: boolean; message?: string }>;
 
   // Area Checklist (24 Hours & Master Data)
   checklistLocations: ChecklistLocation[];
@@ -1870,6 +1872,27 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     };
     setNotifications((prev) => [reloadNotif, ...prev]);
     setIsReloading(false);
+  };
+
+  // Switch Active Company (Requirement 4)
+  const switchActiveCompany = async (companyId: string): Promise<{ success: boolean; message?: string }> => {
+    try {
+      const res = await apiSwitchCompany(companyId);
+      if (res.success && res.user) {
+        setUsers((prev) =>
+          prev.map((u) =>
+            u.id === activeUserId
+              ? { ...u, company_id: companyId, companyId }
+              : u
+          )
+        );
+        await reloadSystemData();
+        return { success: true };
+      }
+      return { success: false, message: res.error || 'Gagal berpindah perusahaan aktif.' };
+    } catch (err: any) {
+      return { success: false, message: err?.message || 'Gagal menghubungi server.' };
+    }
   };
 
   // Delete helpers for Schedule and Complaint
@@ -4190,11 +4213,12 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         updateProject,
         deleteProject,
 
-        // Multi-Company Management (Super Admin)
+        // Multi-Company Management (Super Admin & Admin Perusahaan)
         companies,
         addCompany,
         updateCompany,
         deleteCompany,
+        switchActiveCompany,
 
         // Users & Permissions
         users,

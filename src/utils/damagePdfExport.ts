@@ -2,7 +2,7 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { FacilityDamageReport, ProjectLocation } from '../types';
 import { getProjectKop, DEFAULT_HOSPITAL_KOP, KopSuratConfig, drawKopSurat } from './pdfExport';
-import { getFullUploadUrl } from '../services/apiService';
+import { getFullUploadUrl, getSignedUploadUrl } from '../services/apiService';
 
 // Helper to convert an image url to base64 data URL
 export const loadImageAsDataUrl = async (url: string, timeoutMs: number = 3000): Promise<string | null> => {
@@ -38,7 +38,14 @@ export const loadImageAsDataUrl = async (url: string, timeoutMs: number = 3000):
       clearTimeout(timer);
       resolve(null);
     };
-    img.src = getFullUploadUrl(url);
+
+    getSignedUploadUrl(url)
+      .then((signedSrc) => {
+        img.src = signedSrc;
+      })
+      .catch(() => {
+        img.src = getFullUploadUrl(url);
+      });
   });
 };
 

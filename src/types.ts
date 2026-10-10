@@ -300,6 +300,7 @@ export interface AppUser {
   id: string;
   company_id?: string;
   companyId?: string;
+  assignedCompanyIds?: string[]; // Daftar ID perusahaan yang berhak dikelola (multi-perusahaan)
   name: string;
   email: string;
   username?: string;
