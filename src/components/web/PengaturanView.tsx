@@ -57,7 +57,7 @@ export type PengaturanSubTab =
   | 'jabatan'
   | 'bulk_delete';
 
-export const PengaturanView: React.FC = () => {
+export const PengaturanView: React.FC<{ initialSubTab?: PengaturanSubTab }> = ({ initialSubTab }) => {
   const {
     userRole,
     activeProject,
@@ -74,11 +74,12 @@ export const PengaturanView: React.FC = () => {
     updateRbacPermission,
     resetRbacPermissions,
     auditLogs,
+    jabatan,
   } = useCleaning();
 
   const isSuperAdmin = userRole === 'admin' || userRole === 'super_admin';
 
-  const [activeSubTab, setActiveSubTab] = useState<PengaturanSubTab>('all');
+  const [activeSubTab, setActiveSubTab] = useState<PengaturanSubTab>(initialSubTab || 'all');
   const [deadlineAlertMins, setDeadlineAlertMins] = useState(15);
   const [autoQCThreshold, setAutoQCThreshold] = useState(85);
   const [isSaved, setIsSaved] = useState(false);
@@ -437,6 +438,22 @@ export const PengaturanView: React.FC = () => {
         >
           <Users className="w-3.5 h-3.5 text-indigo-600" />
           <span>Pengguna & RBAC</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveSubTab('jabatan')}
+          className={`flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg whitespace-nowrap transition-all cursor-pointer ${
+            activeSubTab === 'jabatan'
+              ? 'bg-white text-indigo-800 shadow-xs ring-1 ring-indigo-200'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+          }`}
+        >
+          <Briefcase className="w-3.5 h-3.5 text-indigo-600" />
+          <span>Manajemen Jabatan & Izin</span>
+          <span className="text-[10px] px-1.5 py-0.2 rounded-full font-bold bg-slate-200 text-slate-600">
+            {jabatan.length}
+          </span>
         </button>
 
         {isSuperAdmin && (
@@ -860,11 +877,17 @@ export const PengaturanView: React.FC = () => {
         </div>
       )}
 
-      {/* Section 2: User Management & Project Access Control (Super Admin) */}
+      {/* Section 2: User Management & Project Access Control */}
       {(activeSubTab === 'all' || activeSubTab === 'users') && (
-      <>
-      <UserManagementSection />
+        <UserManagementSection />
+      )}
 
+      {/* SECTION: Manajemen Jabatan & Matriks Izin (Langkah 5B) */}
+      {(activeSubTab === 'all' || activeSubTab === 'jabatan') && (
+        <JabatanManagementSection />
+      )}
+
+      {(activeSubTab === 'all' || activeSubTab === 'notifications') && (
       <form onSubmit={handleSave} className="space-y-6">
         {/* Section 3: SLA & Push Notification Rules */}
         <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-xs space-y-4">
@@ -1143,7 +1166,6 @@ export const PengaturanView: React.FC = () => {
           </button>
         </div>
       </form>
-      </>
       )}
 
       {/* SECTION: Hapus Data Masal per Sub-Menu (Khusus Super Admin) */}

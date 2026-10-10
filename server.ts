@@ -294,6 +294,13 @@ app.get(['/uploads/:companyId/:filename', '/uploads/:filename'], async (req: Req
     return res.status(404).json({ error: 'File tidak ditemukan' });
   }
 
+  // Requirement a: Jalur lama token sesi di query URL (?token=...) DITOLAK
+  if (req.query.token) {
+    return res.status(403).json({
+      error: 'Token sesi di query URL (?token=...) ditolak. Gunakan header Authorization atau tautan bertanda tangan.',
+    });
+  }
+
   const { expires, sig } = req.query;
   let isAuthorized = false;
   let isSuper = false;
@@ -324,6 +331,18 @@ app.get(['/uploads/:companyId/:filename', '/uploads/:filename'], async (req: Req
     const verified = verifyAuthToken(token);
     if (!verified) {
       return res.status(404).json({ error: 'File tidak ditemukan' });
+    }
+
+    // Requirement c: User nonaktif ditolak di /uploads
+    const uId = verified.userId || verified.id;
+    const userRecord =
+      (await getDbRecord('users', uId)) ||
+      (await getUsersList()).find((u: any) => u.id === uId);
+    if (userRecord && userRecord.status === 'nonaktif') {
+      return res.status(403).json({
+        error: 'Akses ditolak: Akun Anda telah dinonaktifkan oleh Administrator.',
+        accountDisabled: true,
+      });
     }
 
     // mustChangePassword dipaksa di server
@@ -1516,13 +1535,14 @@ app.post('/api/users/:id/reset-password', async (req: Request, res: Response) =>
   const randomCode = Math.floor(100000 + Math.random() * 900000);
   const temporaryPassword = `Reset#${randomCode}`;
 
+  // Sandi sementara HANYA disimpan dalam bentuk hash, TIDAK pernah disimpan dalam bentuk plaintext
   existingUser.password = bcrypt.hashSync(temporaryPassword, 10);
   existingUser.mustChangePassword = true;
-  existingUser.temporaryPassword = temporaryPassword;
+  delete existingUser.temporaryPassword;
   await upsertDbRecord('users', targetId, existingUser);
   scheduleSaveMemoryStore();
 
-  // Audit Log (Requirement 6)
+  // Audit Log (Requirement 6): Sandi sementara TIDAK dicatat di audit log
   await addAuditLog({
     action: 'USER_PASSWORD_RESET',
     module: 'KEAMANAN',
@@ -1537,20 +1557,21 @@ app.post('/api/users/:id/reset-password', async (req: Request, res: Response) =>
     },
   });
 
+  const { password: _pwd, temporaryPassword: _tpwd, ...safeUserBroadcast } = existingUser;
   emitTenantRecordChange('record:change', {
     action: 'upsert',
     collection: 'users',
     id: targetId,
-    data: existingUser,
+    data: safeUserBroadcast,
     company_id: userCompany,
     timestamp: new Date().toISOString(),
   });
 
   return res.json({
     success: true,
-    temporaryPassword,
-    message: `Kata sandi akun ${existingUser.name} berhasil direset. Sandi sementara: ${temporaryPassword}`,
-    user: existingUser,
+    temporaryPassword, // Ditampilkan sekali ke admin yang mereset
+    message: `Kata sandi akun ${existingUser.name} berhasil direset.`,
+    user: safeUserBroadcast,
   });
 });
 
@@ -1829,6 +1850,16 @@ app.post('/api/records/:collection', async (req: Request, res: Response) => {
     if (!isSuper) {
       data.company_id = sessionCompanyId;
       data.companyId = sessionCompanyId;
+      // Requirement 3b (Langkah 5B): Admin Perusahaan tidak bisa memberi izin melebihi haknya
+      if (data.permissions && typeof data.permissions === 'object') {
+        for (const [permKey, val] of Object.entries(data.permissions)) {
+          if (val === true && !permissions[permKey]) {
+            return res.status(403).json({
+              error: `Akses ditolak: Admin Perusahaan tidak dapat memberikan izin "${permKey}" yang melebihi hak aksesnya sendiri.`,
+            });
+          }
+        }
+      }
     }
     if (!data.permissions || typeof data.permissions !== 'object') {
       data.permissions = {
@@ -1954,6 +1985,23 @@ app.put('/api/records/:collection/:id', async (req: Request, res: Response) => {
     const existingCompany = existing.company_id || existing.companyId || 'comp-main';
     if (existingCompany !== sessionCompanyId) {
       return res.status(404).json({ error: 'Data tidak ditemukan' });
+    }
+  }
+
+  // Requirement 3b (Langkah 5B): Admin Perusahaan tidak bisa memberi izin jabatan melebihi haknya
+  if (collection === 'jabatan') {
+    if (!isSuper) {
+      data.company_id = sessionCompanyId;
+      data.companyId = sessionCompanyId;
+      if (data.permissions && typeof data.permissions === 'object') {
+        for (const [permKey, val] of Object.entries(data.permissions)) {
+          if (val === true && !putPerms[permKey]) {
+            return res.status(403).json({
+              error: `Akses ditolak: Admin Perusahaan tidak dapat memberikan izin "${permKey}" yang melebihi hak aksesnya sendiri.`,
+            });
+          }
+        }
+      }
     }
   }
 

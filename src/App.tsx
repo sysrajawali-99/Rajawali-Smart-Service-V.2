@@ -155,6 +155,8 @@ const MainLayout: React.FC = () => {
       case 'perusahaan':
       case 'companies':
         return <CompanyManagementView />;
+      case 'jabatan':
+        return <PengaturanView initialSubTab="jabatan" />;
       case 'pengaturan':
         return <PengaturanView />;
       default:
