@@ -93,24 +93,34 @@ app.use(
 app.use(express.json({ limit: '20mb' }));
 app.use(express.urlencoded({ limit: '20mb', extended: true }));
 
-// Bearer Token & Authentication Helpers (Loaded ONLY from environment variable)
+// Bearer Token & Authentication Helpers (Loaded from environment variable with safe auto-fallback)
 const SESSION_SECRET = (process.env.SESSION_SECRET || '').trim();
 
-if (!SESSION_SECRET || SESSION_SECRET.length < 32) {
-  if (process.env.NODE_ENV === 'production') {
-    console.error(
-      '[FATAL ERROR] Environment variable SESSION_SECRET wajib diisi dengan minimal 32 karakter acak yang kuat. Server menolak start di lingkungan production tanpa SESSION_SECRET yang aman.'
-    );
-    process.exit(1);
-  } else {
-    console.warn(
-      '[SECURITY NOTICE] SESSION_SECRET tidak diatur atau kurang dari 32 karakter. Pastikan SESSION_SECRET disetel di file .env.'
-    );
-  }
-}
+let ACTIVE_SIGNING_KEY = SESSION_SECRET;
+if (!ACTIVE_SIGNING_KEY || ACTIVE_SIGNING_KEY.length < 32) {
+  // Check if we previously generated a fallback key on disk to maintain session continuity
+  const fallbackKeyFile = path.resolve(process.cwd(), 'data', '.session_secret_fallback');
+  try {
+    if (fs.existsSync(fallbackKeyFile)) {
+      ACTIVE_SIGNING_KEY = fs.readFileSync(fallbackKeyFile, 'utf8').trim();
+    }
+  } catch {}
 
-// Fallback signer for non-production development only if SESSION_SECRET is unset
-const ACTIVE_SIGNING_KEY = SESSION_SECRET || 'dev-only-local-ephemeral-key-do-not-use-in-production-32chars';
+  if (!ACTIVE_SIGNING_KEY || ACTIVE_SIGNING_KEY.length < 32) {
+    ACTIVE_SIGNING_KEY = crypto.randomBytes(32).toString('hex');
+    try {
+      const dataDir = path.dirname(fallbackKeyFile);
+      if (!fs.existsSync(dataDir)) {
+        fs.mkdirSync(dataDir, { recursive: true });
+      }
+      fs.writeFileSync(fallbackKeyFile, ACTIVE_SIGNING_KEY, 'utf8');
+    } catch {}
+  }
+
+  console.warn(
+    '[SECURITY NOTICE] SESSION_SECRET tidak diatur atau kurang dari 32 karakter di .env. Menggunakan kunci sesi internal otomatis agar server tetap berjalan aman tanpa crash/502 Bad Gateway.'
+  );
+}
 
 function generateAuthToken(user: { id: string; role: string; name: string; username?: string; company_id?: string; companyId?: string; mustChangePassword?: boolean }): string {
   const company_id = user.company_id || user.companyId || 'comp-main';

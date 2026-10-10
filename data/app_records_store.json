@@ -9714,5 +9714,87 @@
       "uploadedBy": "usr-spv-1",
       "createdAt": "2026-10-07T07:05:13.341Z"
     }
+  },
+  "jabatan": {
+    "jab-mgr-comp-main": {
+      "id": "jab-mgr-comp-main",
+      "company_id": "comp-main",
+      "companyId": "comp-main",
+      "nama": "Manajer Proyek",
+      "keterangan": "Akses penuh operasional proyek, laporan, penjadwalan, dan pengelolaan tim",
+      "isDefault": true,
+      "defaultRoleCode": "admin",
+      "permissions": {
+        "lihat_proyek": true,
+        "isi_ceklist": true,
+        "kelola_ceklist": true,
+        "lihat_laporan": true,
+        "unduh_laporan": true,
+        "kelola_user": true,
+        "kelola_jadwal": true,
+        "terima_notifikasi": true
+      },
+      "createdAt": "2026-03-01T00:00:00Z"
+    },
+    "jab-spv-comp-main": {
+      "id": "jab-spv-comp-main",
+      "company_id": "comp-main",
+      "companyId": "comp-main",
+      "nama": "Supervisor",
+      "keterangan": "Pengawasan mutu lapangan, verifikasi QC, atur shift, dan tangani komplain",
+      "isDefault": true,
+      "defaultRoleCode": "supervisor",
+      "permissions": {
+        "lihat_proyek": true,
+        "isi_ceklist": true,
+        "kelola_ceklist": true,
+        "lihat_laporan": true,
+        "unduh_laporan": true,
+        "kelola_user": false,
+        "kelola_jadwal": true,
+        "terima_notifikasi": true
+      },
+      "createdAt": "2026-03-01T00:00:00Z"
+    },
+    "jab-petugas-comp-main": {
+      "id": "jab-petugas-comp-main",
+      "company_id": "comp-main",
+      "companyId": "comp-main",
+      "nama": "Petugas Kebersihan",
+      "keterangan": "Pelaksana lapangan pengisian ceklis berkala 24 jam dan pengerjaan tugas",
+      "isDefault": true,
+      "defaultRoleCode": "petugas",
+      "permissions": {
+        "lihat_proyek": true,
+        "isi_ceklist": true,
+        "kelola_ceklist": false,
+        "lihat_laporan": false,
+        "unduh_laporan": false,
+        "kelola_user": false,
+        "kelola_jadwal": false,
+        "terima_notifikasi": false
+      },
+      "createdAt": "2026-03-01T00:00:00Z"
+    },
+    "jab-klien-comp-main": {
+      "id": "jab-klien-comp-main",
+      "company_id": "comp-main",
+      "companyId": "comp-main",
+      "nama": "Klien",
+      "keterangan": "Perwakilan pemilik gedung, pemantau kepatuhan ceklis & unduh laporan berkala",
+      "isDefault": true,
+      "defaultRoleCode": "klien",
+      "permissions": {
+        "lihat_proyek": true,
+        "isi_ceklist": false,
+        "kelola_ceklist": false,
+        "lihat_laporan": true,
+        "unduh_laporan": true,
+        "kelola_user": false,
+        "kelola_jadwal": false,
+        "terima_notifikasi": false
+      },
+      "createdAt": "2026-03-01T00:00:00Z"
+    }
   }
 }
