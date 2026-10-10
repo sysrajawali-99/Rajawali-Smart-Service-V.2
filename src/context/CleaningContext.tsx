@@ -2097,6 +2097,8 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           message: 'Aplikasi menolak menghapus Super Admin terakhir. Harus ada setidaknya satu Super Administrator aktif.',
         };
       }
+    }
+
     if (userRole !== 'super_admin' && userRole !== 'admin') {
       return {
         success: false,
