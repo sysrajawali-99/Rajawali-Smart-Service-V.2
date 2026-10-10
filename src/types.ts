@@ -296,20 +296,94 @@ export interface ProjectLocation {
   createdAt: string;
 }
 
+export type UserStatus = 'aktif' | 'nonaktif';
+
+export type JabatanPermissionKey =
+  | 'lihat_proyek'
+  | 'isi_ceklist'
+  | 'kelola_ceklist'
+  | 'lihat_laporan'
+  | 'unduh_laporan'
+  | 'kelola_user'
+  | 'kelola_jadwal'
+  | 'terima_notifikasi';
+
+export interface Jabatan {
+  id: string;
+  company_id: string;
+  companyId?: string;
+  nama: string;
+  keterangan?: string;
+  isDefault?: boolean;
+  defaultRoleCode?: 'admin' | 'supervisor' | 'petugas' | 'klien';
+  permissions: Record<JabatanPermissionKey, boolean>;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export const JABATAN_PERMISSIONS_METADATA: Record<
+  JabatanPermissionKey,
+  { label: string; description: string; category: string }
+> = {
+  lihat_proyek: {
+    label: 'Lihat Proyek',
+    description: 'Akses melihat daftar dan detail proyek lokasi gedung',
+    category: 'Proyek & Lokasi',
+  },
+  isi_ceklist: {
+    label: 'Isi Ceklist',
+    description: 'Akses mengisi dan centang pengerjaan ceklis berkala 24 jam',
+    category: 'Ceklis & Tugas',
+  },
+  kelola_ceklist: {
+    label: 'Kelola Ceklist',
+    description: 'Menambah, mengubah master SOP, lokasi, dan template ceklis',
+    category: 'Ceklis & Tugas',
+  },
+  lihat_laporan: {
+    label: 'Lihat Laporan',
+    description: 'Melihat ringkasan laporan inspeksi, kerusakan barang, dan QC',
+    category: 'Laporan & Audit',
+  },
+  unduh_laporan: {
+    label: 'Unduh Laporan',
+    description: 'Ekspor dan mengunduh berkas laporan format PDF atau data',
+    category: 'Laporan & Audit',
+  },
+  kelola_user: {
+    label: 'Kelola Pengguna',
+    description: 'Menambah, mengubah, menonaktifkan pengguna, dan reset sandi',
+    category: 'Administrasi',
+  },
+  kelola_jadwal: {
+    label: 'Kelola Jadwal',
+    description: 'Mengatur penugasan shift dan jadwal kerja petugas kebersihan',
+    category: 'Operasional',
+  },
+  terima_notifikasi: {
+    label: 'Terima Notifikasi',
+    description: 'Menerima alert push tugas terlambat dan terlewat batas SLA',
+    category: 'Notifikasi',
+  },
+};
+
 export interface AppUser {
   id: string;
   company_id?: string;
   companyId?: string;
-  assignedCompanyIds?: string[]; // Daftar ID perusahaan yang berhak dikelola (multi-perusahaan)
+  assignedCompanyIds?: string[]; // Daftar ID perusahaan yang berhak dikelola (multi-perusahaan untuk super_admin)
   name: string;
   email: string;
   username?: string;
   password?: string;
   role: UserRole;
+  jabatanId?: string;
+  status?: UserStatus; // 'aktif' | 'nonaktif' (default 'aktif')
   assignedProjectIds: string[]; // Projects this user is allowed to access
   phone?: string;
   createdAt?: string;
   mustChangePassword?: boolean;
+  temporaryPassword?: string;
 }
 
 export interface RoleModulePermission {

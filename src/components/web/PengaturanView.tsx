@@ -32,10 +32,12 @@ import {
   ArrowRight,
   History,
   Smartphone,
+  Briefcase,
 } from 'lucide-react';
 import { useCleaning } from '../../context/CleaningContext';
 import { ChecklistLocationCategory, DashboardKpiVisibilityConfig, ChecklistTemplateItem } from '../../types';
 import { UserManagementSection } from './UserManagementSection';
+import { JabatanManagementSection } from './JabatanManagementSection';
 import { CompanyProfileSettingsSection } from './CompanyProfileSettingsSection';
 import { SuperAdminBulkDeleteSection } from './SuperAdminBulkDeleteSection';
 import { AuditTrailModal } from './AuditTrailModal';
@@ -52,6 +54,7 @@ export type PengaturanSubTab =
   | 'kpi'
   | 'profile'
   | 'users'
+  | 'jabatan'
   | 'bulk_delete';
 
 export const PengaturanView: React.FC = () => {

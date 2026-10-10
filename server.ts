@@ -10,7 +10,7 @@ import webpush from 'web-push';
 import dotenv from 'dotenv';
 import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
-import { INITIAL_USERS } from './src/data/initialData';
+import { INITIAL_USERS, createDefaultJabatanList, INITIAL_JABATAN } from './src/data/initialData';
 
 dotenv.config();
 
@@ -749,6 +749,155 @@ function isSessionSuperAdmin(req: Request): boolean {
   return user?.role === 'super_admin';
 }
 
+// Requirement 1 & 2 (Langkah 5B): Helper untuk mengambil izin efektif pengguna di server
+async function getUserEffectivePermissions(req: Request): Promise<{
+  permissions: Record<string, boolean>;
+  isSuper: boolean;
+  isAdmin: boolean;
+  role: string;
+  assignedProjectIds: string[];
+}> {
+  const user = (req as any).user;
+  if (!user) {
+    return {
+      permissions: {
+        lihat_proyek: false,
+        isi_ceklist: false,
+        kelola_ceklist: false,
+        lihat_laporan: false,
+        unduh_laporan: false,
+        kelola_user: false,
+        kelola_jadwal: false,
+        terima_notifikasi: false,
+      },
+      isSuper: false,
+      isAdmin: false,
+      role: '',
+      assignedProjectIds: [],
+    };
+  }
+
+  const role = user.role;
+  const isSuper = role === 'super_admin';
+  const isAdminComp = role === 'admin_perusahaan' || role === 'admin';
+
+  if (isSuper || isAdminComp) {
+    return {
+      permissions: {
+        lihat_proyek: true,
+        isi_ceklist: true,
+        kelola_ceklist: true,
+        lihat_laporan: true,
+        unduh_laporan: true,
+        kelola_user: true,
+        kelola_jadwal: true,
+        terima_notifikasi: true,
+      },
+      isSuper,
+      isAdmin: true,
+      role,
+      assignedProjectIds: user.assignedProjectIds || [],
+    };
+  }
+
+  const userRecord =
+    (await getDbRecord('users', user.id || user.userId)) ||
+    (await getUsersList()).find((u: any) => u.id === (user.id || user.userId));
+  const assignedProjects = userRecord?.assignedProjectIds || user.assignedProjectIds || [];
+  const jabatanId = userRecord?.jabatanId || user.jabatanId;
+
+  if (jabatanId) {
+    const jabRecord = await getDbRecord('jabatan', jabatanId);
+    if (jabRecord && jabRecord.permissions) {
+      return {
+        permissions: { ...jabRecord.permissions },
+        isSuper: false,
+        isAdmin: !!jabRecord.permissions.kelola_user,
+        role,
+        assignedProjectIds: assignedProjects,
+      };
+    }
+  }
+
+  // Pemetaan default untuk peran lama
+  const defaultMapping: Record<string, Record<string, boolean>> = {
+    admin: {
+      lihat_proyek: true,
+      isi_ceklist: true,
+      kelola_ceklist: true,
+      lihat_laporan: true,
+      unduh_laporan: true,
+      kelola_user: true,
+      kelola_jadwal: true,
+      terima_notifikasi: true,
+    },
+    supervisor: {
+      lihat_proyek: true,
+      isi_ceklist: true,
+      kelola_ceklist: true,
+      lihat_laporan: true,
+      unduh_laporan: true,
+      kelola_user: false,
+      kelola_jadwal: true,
+      terima_notifikasi: true,
+    },
+    petugas: {
+      lihat_proyek: true,
+      isi_ceklist: true,
+      kelola_ceklist: false,
+      lihat_laporan: false,
+      unduh_laporan: false,
+      kelola_user: false,
+      kelola_jadwal: false,
+      terima_notifikasi: false,
+    },
+    klien: {
+      lihat_proyek: true,
+      isi_ceklist: false,
+      kelola_ceklist: false,
+      lihat_laporan: true,
+      unduh_laporan: true,
+      kelola_user: false,
+      kelola_jadwal: false,
+      terima_notifikasi: false,
+    },
+  };
+
+  const perms = defaultMapping[role] || {
+    lihat_proyek: true,
+    isi_ceklist: false,
+    kelola_ceklist: false,
+    lihat_laporan: false,
+    unduh_laporan: false,
+    kelola_user: false,
+    kelola_jadwal: false,
+    terima_notifikasi: false,
+  };
+
+  return {
+    permissions: perms,
+    isSuper: false,
+    isAdmin: false,
+    role,
+    assignedProjectIds: assignedProjects,
+  };
+}
+
+// Requirement 1: Mengambil atau melakukan inisialisasi daftar jabatan bawaan per perusahaan
+async function getCompanyJabatanList(companyId: string): Promise<any[]> {
+  const cId = companyId || 'comp-main';
+  const allJab = await getAllDbRecords('jabatan');
+  const compJab = allJab.filter((j: any) => (j.company_id || j.companyId || 'comp-main') === cId);
+  if (compJab.length > 0) {
+    return compJab;
+  }
+  const defaultList = createDefaultJabatanList(cId);
+  for (const item of defaultList) {
+    await upsertDbRecord('jabatan', item.id, item);
+  }
+  return defaultList;
+}
+
 // Centralized Tenant & Session Protection Middleware
 app.use('/api', async (req: Request, res: Response, next: NextFunction) => {
   const isMutating = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method);
@@ -778,10 +927,25 @@ app.use('/api', async (req: Request, res: Response, next: NextFunction) => {
     const verified = verifyAuthToken(token);
     if (verified) {
       const companyId = verified.company_id || verified.companyId || 'comp-main';
+
+      // Requirement 4 (Langkah 5B): User nonaktif langsung ditolak di server pada setiap permintaan, termasuk token yang masih berlaku
+      const userRecord =
+        (await getDbRecord('users', verified.userId || verified.id)) ||
+        (await getUsersList()).find((u: any) => u.id === (verified.userId || verified.id));
+      if (userRecord && userRecord.status === 'nonaktif') {
+        return res.status(403).json({
+          error: 'Akses ditolak: Akun Anda telah dinonaktifkan oleh Administrator. Silakan hubungi admin perusahaan Anda.',
+          accountDisabled: true,
+        });
+      }
+
       (req as any).user = {
         ...verified,
         company_id: companyId,
         companyId,
+        status: userRecord?.status || 'aktif',
+        jabatanId: userRecord?.jabatanId || verified.jabatanId,
+        assignedProjectIds: userRecord?.assignedProjectIds || verified.assignedProjectIds || [],
       };
 
       // Requirement d: mustChangePassword dipaksa di server: selain ganti sandi dan logout, semua endpoint ditolak sampai sandi diganti
@@ -948,6 +1112,15 @@ app.post('/api/auth/login', async (req: Request, res: Response) => {
   resetLoginFailure(ipKey);
   resetLoginFailure(acctKey);
 
+  // Requirement 4 (Langkah 5B): User nonaktif langsung ditolak saat login
+  if (matchedUser.status === 'nonaktif') {
+    return res.status(403).json({
+      success: false,
+      error: 'Login ditolak: Akun Anda telah dinonaktifkan oleh Administrator. Hubungi admin perusahaan Anda.',
+      accountDisabled: true,
+    });
+  }
+
   // Requirement 4: Perusahaan berstatus ditangguhkan / diarsipkan: login ditolak
   const userCompanyId = matchedUser.company_id || matchedUser.companyId || 'comp-main';
   if (matchedUser.role !== 'super_admin') {
@@ -1086,12 +1259,22 @@ app.get('/api/auth/me', async (req: Request, res: Response) => {
     companyId: userCompanyId,
   };
 
+  // Requirement 4 (Langkah 5B): User nonaktif langsung ditolak
+  if (user && user.status === 'nonaktif') {
+    return res.status(403).json({
+      authenticated: false,
+      error: 'Akun Anda telah dinonaktifkan oleh Administrator. Hubungi admin perusahaan Anda.',
+      accountDisabled: true,
+    });
+  }
+
   res.setHeader('Set-Cookie', getSessionCookieHeader(token));
 
   return res.json({
     authenticated: true,
     user: {
       ...user,
+      status: user.status || 'aktif',
       company_id: user.company_id || userCompanyId,
       companyId: user.companyId || userCompanyId,
     },
@@ -1205,6 +1388,162 @@ app.post('/api/auth/switch-company', async (req: Request, res: Response) => {
   });
 });
 
+// Requirement 4 (Langkah 5B): Endpoint NONAKTIFKAN / AKTIFKAN akun pengguna
+app.post('/api/users/:id/toggle-status', async (req: Request, res: Response) => {
+  const targetId = req.params.id;
+  const sessionUser = (req as any).user;
+  const isSuper = isSessionSuperAdmin(req);
+  const sessionCompanyId = resolveSessionCompanyId(req);
+
+  const { permissions } = await getUserEffectivePermissions(req);
+  if (!isSuper && !permissions.kelola_user && sessionUser?.role !== 'admin_perusahaan') {
+    return res.status(403).json({ error: 'Akses ditolak: Anda tidak memiliki izin untuk mengelola status pengguna (kelola_user).' });
+  }
+
+  const existingUser =
+    (await getDbRecord('users', targetId)) ||
+    (await getUsersList()).find((u: any) => u.id === targetId);
+
+  if (!existingUser) {
+    return res.status(404).json({ error: 'Pengguna tidak ditemukan' });
+  }
+
+  const userCompany = existingUser.company_id || existingUser.companyId || 'comp-main';
+  if (!isSuper && userCompany !== sessionCompanyId) {
+    return res.status(404).json({ error: 'Pengguna tidak ditemukan' });
+  }
+
+  // Tidak boleh menonaktifkan Super Admin terakhir
+  if (existingUser.role === 'super_admin' && existingUser.status !== 'nonaktif') {
+    const allUsers = await getUsersList();
+    const otherActiveSuperAdmins = allUsers.filter(
+      (u: any) => u.role === 'super_admin' && u.id !== targetId && u.status !== 'nonaktif'
+    );
+    if (otherActiveSuperAdmins.length === 0) {
+      return res.status(400).json({
+        error: 'Aplikasi menolak menonaktifkan Super Admin terakhir. Harus ada setidaknya satu Super Administrator aktif.',
+      });
+    }
+  }
+
+  // Admin Perusahaan tidak dapat menonaktifkan Super Admin
+  if (!isSuper && existingUser.role === 'super_admin') {
+    return res.status(403).json({ error: 'Akses ditolak: Anda tidak dapat menonaktifkan akun Super Administrator.' });
+  }
+
+  // Tidak boleh menonaktifkan akun sendiri yang sedang dipakai
+  if (existingUser.id === (sessionUser?.id || sessionUser?.userId)) {
+    return res.status(400).json({ error: 'Anda tidak dapat menonaktifkan akun yang sedang digunakan dalam sesi ini.' });
+  }
+
+  const newStatus = existingUser.status === 'nonaktif' ? 'aktif' : 'nonaktif';
+  existingUser.status = newStatus;
+  await upsertDbRecord('users', targetId, existingUser);
+  scheduleSaveMemoryStore();
+
+  // Audit Log (Requirement 6)
+  await addAuditLog({
+    action: newStatus === 'nonaktif' ? 'USER_DEACTIVATED' : 'USER_ACTIVATED',
+    module: 'MANAJEMEN_PENGGUNA',
+    description: `Akun pengguna ${existingUser.name} (${existingUser.email || existingUser.username}) ${newStatus === 'nonaktif' ? 'dinonaktifkan' : 'diaktifkan kembali'} oleh ${sessionUser?.name || 'Administrator'}`,
+    userId: sessionUser?.id || sessionUser?.userId,
+    userName: sessionUser?.name,
+    company_id: userCompany,
+    details: {
+      targetUserId: targetId,
+      targetUserName: existingUser.name,
+      status: newStatus,
+    },
+  });
+
+  emitTenantRecordChange('record:change', {
+    action: 'upsert',
+    collection: 'users',
+    id: targetId,
+    data: existingUser,
+    company_id: userCompany,
+    timestamp: new Date().toISOString(),
+  });
+
+  return res.json({
+    success: true,
+    status: newStatus,
+    message: `Akun ${existingUser.name} berhasil ${newStatus === 'nonaktif' ? 'dinonaktifkan' : 'diaktifkan kembali'}.`,
+    user: existingUser,
+  });
+});
+
+// Requirement 4 (Langkah 5B): Endpoint RESET PASSWORD pengguna (sandi sementara + mustChangePassword)
+app.post('/api/users/:id/reset-password', async (req: Request, res: Response) => {
+  const targetId = req.params.id;
+  const sessionUser = (req as any).user;
+  const isSuper = isSessionSuperAdmin(req);
+  const sessionCompanyId = resolveSessionCompanyId(req);
+
+  const { permissions } = await getUserEffectivePermissions(req);
+  if (!isSuper && !permissions.kelola_user && sessionUser?.role !== 'admin_perusahaan') {
+    return res.status(403).json({ error: 'Akses ditolak: Anda tidak memiliki izin untuk mereset kata sandi pengguna (kelola_user).' });
+  }
+
+  const existingUser =
+    (await getDbRecord('users', targetId)) ||
+    (await getUsersList()).find((u: any) => u.id === targetId);
+
+  if (!existingUser) {
+    return res.status(404).json({ error: 'Pengguna tidak ditemukan' });
+  }
+
+  const userCompany = existingUser.company_id || existingUser.companyId || 'comp-main';
+  if (!isSuper && userCompany !== sessionCompanyId) {
+    return res.status(404).json({ error: 'Pengguna tidak ditemukan' });
+  }
+
+  if (!isSuper && existingUser.role === 'super_admin') {
+    return res.status(403).json({ error: 'Akses ditolak: Anda tidak dapat mereset sandi Super Administrator.' });
+  }
+
+  // Buat kata sandi sementara sekali pakai
+  const randomCode = Math.floor(100000 + Math.random() * 900000);
+  const temporaryPassword = `Reset#${randomCode}`;
+
+  existingUser.password = bcrypt.hashSync(temporaryPassword, 10);
+  existingUser.mustChangePassword = true;
+  existingUser.temporaryPassword = temporaryPassword;
+  await upsertDbRecord('users', targetId, existingUser);
+  scheduleSaveMemoryStore();
+
+  // Audit Log (Requirement 6)
+  await addAuditLog({
+    action: 'USER_PASSWORD_RESET',
+    module: 'KEAMANAN',
+    description: `Kata sandi akun ${existingUser.name} (${existingUser.email || existingUser.username}) direset oleh ${sessionUser?.name || 'Administrator'} (wajib ganti sandi saat login)`,
+    userId: sessionUser?.id || sessionUser?.userId,
+    userName: sessionUser?.name,
+    company_id: userCompany,
+    details: {
+      targetUserId: targetId,
+      targetUserName: existingUser.name,
+      mustChangePassword: true,
+    },
+  });
+
+  emitTenantRecordChange('record:change', {
+    action: 'upsert',
+    collection: 'users',
+    id: targetId,
+    data: existingUser,
+    company_id: userCompany,
+    timestamp: new Date().toISOString(),
+  });
+
+  return res.json({
+    success: true,
+    temporaryPassword,
+    message: `Kata sandi akun ${existingUser.name} berhasil direset. Sandi sementara: ${temporaryPassword}`,
+    user: existingUser,
+  });
+});
+
 // Requirement 3: Endpoint membuat tautan bertanda tangan (HMAC) berumur maks 5 menit
 // Terikat pada satu file dan satu company_id, membutuhkan login
 app.get(['/api/uploads/signed-url', '/api/uploads/sign'], async (req: Request, res: Response) => {
@@ -1295,8 +1634,15 @@ app.get('/api/records/:collection', async (req: Request, res: Response) => {
   const { collection } = req.params;
   const sessionCompanyId = resolveSessionCompanyId(req);
   const isSuper = isSessionSuperAdmin(req);
+  const { permissions, role, assignedProjectIds } = await getUserEffectivePermissions(req);
 
   try {
+    // Penanganan khusus koleksi 'jabatan': otomatis inisialisasi bila belum ada
+    if (collection === 'jabatan') {
+      const items = await getCompanyJabatanList(sessionCompanyId);
+      return res.json(isSuper ? await getAllDbRecords('jabatan') : items);
+    }
+
     let items = await getAllDbRecords(collection);
 
     // Centralized Tenant Isolation Filtering (Requirement 2 & 5)
@@ -1313,6 +1659,45 @@ app.get('/api/records/:collection', async (req: Request, res: Response) => {
           const itemComp = item.company_id || item.companyId;
           if (!itemComp) return sessionCompanyId === 'comp-main';
           return itemComp === sessionCompanyId;
+        });
+      }
+
+      // Requirement 2 & 5 (Langkah 5B): Pengecekan Izin & Isolasi Klien di server
+      if (collection === 'projects') {
+        if (!permissions.lihat_proyek) {
+          return res.json([]);
+        }
+        if (role === 'klien') {
+          items = items.filter((p: any) => (assignedProjectIds || []).includes(p.id));
+        }
+      }
+
+      if (['inspections', 'damage_reports', 'klien_checklist_inspections', 'reports'].includes(collection)) {
+        if (!permissions.lihat_laporan) {
+          return res.json([]);
+        }
+        if (role === 'klien') {
+          items = items.filter((item: any) => {
+            const pId = item.projectId || item.project_id;
+            return pId ? (assignedProjectIds || []).includes(pId) : false;
+          });
+        }
+      }
+
+      if (['tasks', 'daily_checklists', 'complaints'].includes(collection)) {
+        if (role === 'klien') {
+          items = items.filter((item: any) => {
+            const pId = item.projectId || item.project_id;
+            return pId ? (assignedProjectIds || []).includes(pId) : false;
+          });
+        }
+      }
+
+      if (collection === 'users') {
+        // Sembunyikan hash password dari output
+        items = items.map((u: any) => {
+          const { password: _, ...safeUser } = u;
+          return safeUser;
         });
       }
     }
@@ -1363,6 +1748,7 @@ app.post('/api/records/:collection', async (req: Request, res: Response) => {
   const data = req.body;
   const sessionCompanyId = resolveSessionCompanyId(req);
   const isSuper = isSessionSuperAdmin(req);
+  const { permissions, isSuper: callerIsSuper } = await getUserEffectivePermissions(req);
 
   if (!data || typeof data !== 'object') {
     return res.status(400).json({ error: 'Body harus berupa objek JSON' });
@@ -1385,7 +1771,31 @@ app.post('/api/records/:collection', async (req: Request, res: Response) => {
     }
   }
 
-  // Task 4.2 & 4.3: Pembuatan pengguna & pencegahan kenaikan hak melebihi haknya
+  // Requirement 2 (Langkah 5B): Pengecekan Izin Operasional di SERVER
+  if (!callerIsSuper) {
+    if (['tasks', 'daily_checklists'].includes(collection)) {
+      if (!permissions.isi_ceklist && !permissions.kelola_ceklist) {
+        return res.status(403).json({ error: 'Akses ditolak: Anda tidak memiliki izin untuk mengisi atau mengelola ceklis.' });
+      }
+    }
+    if (['checklist_templates', 'checklist_locations'].includes(collection)) {
+      if (!permissions.kelola_ceklist) {
+        return res.status(403).json({ error: 'Akses ditolak: Anda tidak memiliki izin untuk mengelola master SOP ceklis.' });
+      }
+    }
+    if (['schedules', 'shifts'].includes(collection)) {
+      if (!permissions.kelola_jadwal) {
+        return res.status(403).json({ error: 'Akses ditolak: Anda tidak memiliki izin untuk mengelola jadwal kerja.' });
+      }
+    }
+    if (['users', 'jabatan'].includes(collection)) {
+      if (!permissions.kelola_user) {
+        return res.status(403).json({ error: 'Akses ditolak: Anda tidak memiliki izin untuk mengelola pengguna atau jabatan.' });
+      }
+    }
+  }
+
+  // Task 4.2 & 4.3 & Langkah 5B: Pembuatan pengguna & pencegahan kenaikan hak melebihi haknya
   if (collection === 'users') {
     if (!isSuper) {
       if (data.role === 'super_admin') {
@@ -1394,10 +1804,33 @@ app.post('/api/records/:collection', async (req: Request, res: Response) => {
       if (data.role === 'admin_perusahaan') {
         return res.status(403).json({ error: 'Akses ditolak: Hanya Super Administrator yang dapat membuat akun Admin Perusahaan.' });
       }
+      // Requirement 5: Satu user hanya punya satu perusahaan induk
+      delete data.assignedCompanyIds;
     }
+    data.status = data.status || 'aktif';
     // Hash password jika diberikan dalam bentuk plaintext
     if (data.password && typeof data.password === 'string' && !data.password.startsWith('$2a$') && !data.password.startsWith('$2b$')) {
       data.password = bcrypt.hashSync(data.password, 10);
+    }
+  }
+
+  // Requirement 1 & 3: Jabatan terikat company_id dan tidak bisa melebihi haknya
+  if (collection === 'jabatan') {
+    if (!isSuper) {
+      data.company_id = sessionCompanyId;
+      data.companyId = sessionCompanyId;
+    }
+    if (!data.permissions || typeof data.permissions !== 'object') {
+      data.permissions = {
+        lihat_proyek: true,
+        isi_ceklist: true,
+        kelola_ceklist: false,
+        lihat_laporan: true,
+        unduh_laporan: false,
+        kelola_user: false,
+        kelola_jadwal: false,
+        terima_notifikasi: false,
+      };
     }
   }
 
@@ -1417,6 +1850,29 @@ app.post('/api/records/:collection', async (req: Request, res: Response) => {
   try {
     await upsertDbRecord(collection, id, data);
     scheduleSaveMemoryStore();
+
+    // Audit Log untuk users & jabatan (Requirement 6)
+    if (collection === 'users') {
+      await addAuditLog({
+        action: 'USER_CREATED',
+        module: 'MANAJEMEN_PENGGUNA',
+        description: `Pengguna baru dibuat: ${data.name} (${data.role || 'user'})`,
+        userId: (req as any).user?.id || (req as any).user?.userId,
+        userName: (req as any).user?.name,
+        company_id: data.company_id,
+        details: { targetUserId: id, name: data.name, role: data.role, jabatanId: data.jabatanId },
+      });
+    } else if (collection === 'jabatan') {
+      await addAuditLog({
+        action: 'JABATAN_CREATED',
+        module: 'MANAJEMEN_JABATAN',
+        description: `Jabatan baru dibuat: "${data.nama}"`,
+        userId: (req as any).user?.id || (req as any).user?.userId,
+        userName: (req as any).user?.name,
+        company_id: data.company_id,
+        details: { jabatanId: id, nama: data.nama, permissions: data.permissions },
+      });
+    }
 
     const payload = {
       action: 'upsert' as const,
@@ -1443,6 +1899,7 @@ app.put('/api/records/:collection/:id', async (req: Request, res: Response) => {
   const data = req.body;
   const sessionCompanyId = resolveSessionCompanyId(req);
   const isSuper = isSessionSuperAdmin(req);
+  const { permissions: putPerms, isSuper: putIsSuper } = await getUserEffectivePermissions(req);
 
   if (!data || typeof data !== 'object') {
     return res.status(400).json({ error: 'Body harus berupa objek JSON' });
@@ -1457,6 +1914,30 @@ app.put('/api/records/:collection/:id', async (req: Request, res: Response) => {
     return res.status(403).json({ error: 'Akses ditolak: Hanya Super Administrator yang diizinkan mengubah profil & branding global sistem.' });
   }
 
+  // Requirement 2 (Langkah 5B): Pengecekan Izin Operasional di SERVER
+  if (!putIsSuper) {
+    if (['tasks', 'daily_checklists'].includes(collection)) {
+      if (!putPerms.isi_ceklist && !putPerms.kelola_ceklist) {
+        return res.status(403).json({ error: 'Akses ditolak: Anda tidak memiliki izin untuk mengisi atau mengelola ceklis.' });
+      }
+    }
+    if (['checklist_templates', 'checklist_locations'].includes(collection)) {
+      if (!putPerms.kelola_ceklist) {
+        return res.status(403).json({ error: 'Akses ditolak: Anda tidak memiliki izin untuk mengelola master SOP ceklis.' });
+      }
+    }
+    if (['schedules', 'shifts'].includes(collection)) {
+      if (!putPerms.kelola_jadwal) {
+        return res.status(403).json({ error: 'Akses ditolak: Anda tidak memiliki izin untuk mengelola jadwal.' });
+      }
+    }
+    if (['users', 'jabatan'].includes(collection)) {
+      if (!putPerms.kelola_user) {
+        return res.status(403).json({ error: 'Akses ditolak: Anda tidak memiliki izin untuk mengelola pengguna atau jabatan.' });
+      }
+    }
+  }
+
   // Cek apakah data eksisting milik perusahaan lain (Requirement 3: 404 bukan 403)
   const existing = await getDbRecord(collection, id);
   if (existing && !isSuper) {
@@ -1466,7 +1947,7 @@ app.put('/api/records/:collection/:id', async (req: Request, res: Response) => {
     }
   }
 
-  // Task 4.2 & 4.3: Menolak menurunkan Super Admin terakhir dan validasi eskalasi hak
+  // Task 4.2 & 4.3 & Langkah 5B: Menolak menurunkan Super Admin terakhir dan validasi eskalasi hak
   if (collection === 'users') {
     if (existing && existing.role === 'super_admin' && data.role && data.role !== 'super_admin') {
       const allUsers = await getUsersList();
@@ -1485,6 +1966,8 @@ app.put('/api/records/:collection/:id', async (req: Request, res: Response) => {
       if (data.role === 'admin_perusahaan' && (req as any).user?.role !== 'admin_perusahaan') {
         return res.status(403).json({ error: 'Akses ditolak: Anda tidak dapat menaikkan hak akses melebihi hak Anda.' });
       }
+      // Requirement 5: Satu user hanya punya satu perusahaan induk
+      delete data.assignedCompanyIds;
     }
 
     // Hash password jika diubah dengan plaintext
@@ -1513,6 +1996,29 @@ app.put('/api/records/:collection/:id', async (req: Request, res: Response) => {
     await upsertDbRecord(collection, id, data);
     scheduleSaveMemoryStore();
 
+    // Audit Log untuk users & jabatan (Requirement 6)
+    if (collection === 'users') {
+      await addAuditLog({
+        action: 'USER_UPDATED',
+        module: 'MANAJEMEN_PENGGUNA',
+        description: `Pengguna diperbarui: ${data.name || existing?.name} (${data.role || existing?.role})`,
+        userId: (req as any).user?.id || (req as any).user?.userId,
+        userName: (req as any).user?.name,
+        company_id: data.company_id,
+        details: { targetUserId: id, role: data.role, jabatanId: data.jabatanId, status: data.status },
+      });
+    } else if (collection === 'jabatan') {
+      await addAuditLog({
+        action: 'JABATAN_UPDATED',
+        module: 'MANAJEMEN_JABATAN',
+        description: `Jabatan diperbarui: "${data.nama || existing?.nama}"`,
+        userId: (req as any).user?.id || (req as any).user?.userId,
+        userName: (req as any).user?.name,
+        company_id: data.company_id,
+        details: { jabatanId: id, nama: data.nama, permissions: data.permissions },
+      });
+    }
+
     // Broadcast to connected clients via Socket.IO
     const payload = {
       action: 'upsert' as const,
@@ -1538,6 +2044,7 @@ app.delete('/api/records/:collection/:id', async (req: Request, res: Response) =
   const { collection, id } = req.params;
   const sessionCompanyId = resolveSessionCompanyId(req);
   const isSuper = isSessionSuperAdmin(req);
+  const { permissions: delPerms, isSuper: delIsSuper } = await getUserEffectivePermissions(req);
 
   // Requirement 5: Audit log tidak bisa diedit/dihapus dari aplikasi
   if (collection === 'audit_logs') {
@@ -1563,14 +2070,30 @@ app.delete('/api/records/:collection/:id', async (req: Request, res: Response) =
     return res.status(404).json({ error: 'Data tidak ditemukan' });
   }
 
-  // Task 4.2: Aplikasi menolak menghapus Super Admin terakhir
-  if (collection === 'users' && existing.role === 'super_admin') {
-    const allUsers = await getUsersList();
-    const remainingSuperAdmins = allUsers.filter((u: any) => u.role === 'super_admin' && u.id !== id);
-    if (remainingSuperAdmins.length === 0) {
-      return res.status(400).json({
-        error: 'Aplikasi menolak menghapus Super Admin terakhir. Harus ada setidaknya satu Super Administrator aktif.',
+  // Requirement 4 (Langkah 5B): Hapus permanen user HANYA untuk super_admin
+  if (collection === 'users') {
+    if (!isSuper) {
+      return res.status(403).json({
+        error: 'Akses ditolak: Hanya Super Administrator yang dapat menghapus permanen pengguna. Admin Perusahaan disarankan menonaktifkan akun melalui tombol Nonaktifkan.',
       });
+    }
+
+    // Task 4.2: Aplikasi menolak menghapus Super Admin terakhir
+    if (existing.role === 'super_admin') {
+      const allUsers = await getUsersList();
+      const remainingSuperAdmins = allUsers.filter((u: any) => u.role === 'super_admin' && u.id !== id);
+      if (remainingSuperAdmins.length === 0) {
+        return res.status(400).json({
+          error: 'Aplikasi menolak menghapus Super Admin terakhir. Harus ada setidaknya satu Super Administrator aktif.',
+        });
+      }
+    }
+  }
+
+  // Izin hapus jabatan
+  if (collection === 'jabatan') {
+    if (!delIsSuper && !delPerms.kelola_user) {
+      return res.status(403).json({ error: 'Akses ditolak: Anda tidak memiliki izin untuk menghapus jabatan (kelola_user).' });
     }
   }
 
@@ -1585,6 +2108,27 @@ app.delete('/api/records/:collection/:id', async (req: Request, res: Response) =
   try {
     await deleteDbRecord(collection, id);
     scheduleSaveMemoryStore();
+
+    // Audit Log untuk hapus users & jabatan (Requirement 6)
+    if (collection === 'users') {
+      await addAuditLog({
+        action: 'USER_DELETED',
+        module: 'MANAJEMEN_PENGGUNA',
+        description: `Pengguna ${existing.name} (${existing.role}) dihapus permanen oleh ${isSuper ? 'Super Administrator' : 'Administrator'}`,
+        userId: (req as any).user?.id || (req as any).user?.userId,
+        userName: (req as any).user?.name,
+        company_id: existing.company_id || sessionCompanyId,
+      });
+    } else if (collection === 'jabatan') {
+      await addAuditLog({
+        action: 'JABATAN_DELETED',
+        module: 'MANAJEMEN_JABATAN',
+        description: `Jabatan "${existing.nama}" dihapus oleh ${(req as any).user?.name || 'Administrator'}`,
+        userId: (req as any).user?.id || (req as any).user?.userId,
+        userName: (req as any).user?.name,
+        company_id: existing.company_id || sessionCompanyId,
+      });
+    }
 
     // Broadcast delete event to connected clients with tenant isolation
     const payload = {

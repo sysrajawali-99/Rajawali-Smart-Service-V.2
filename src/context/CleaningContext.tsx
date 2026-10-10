@@ -39,6 +39,9 @@ import {
   KlienChecklistInspection,
   SpecialJobItem,
   Company,
+  Jabatan,
+  JabatanPermissionKey,
+  UserStatus,
 } from '../types';
 import { calculateShiftDuration } from '../utils/shiftUtils';
 import { normalizeFrequencyCode, getNextProgramDayStatus } from '../utils/mcpUtils';
@@ -53,6 +56,8 @@ import {
   INITIAL_NOTIFICATIONS,
   INITIAL_PROJECTS,
   INITIAL_USERS,
+  INITIAL_JABATAN,
+  createDefaultJabatanList,
   DEFAULT_RBAC_PERMISSIONS,
   INITIAL_CHECKLIST_TEMPLATES,
   INITIAL_CHECKLIST_LOCATIONS,
@@ -86,6 +91,8 @@ import {
   apiLogout,
   apiVerifySession,
   apiSwitchCompany,
+  apiToggleUserStatus,
+  apiResetUserPassword,
   getAuthToken,
   setAuthToken,
 } from '../services/apiService';
@@ -148,8 +155,17 @@ interface CleaningContextType {
   addUser: (user: Omit<AppUser, 'id'>) => AppUser;
   updateUser: (userId: string, updates: Partial<AppUser>) => void;
   deleteUser: (userId: string) => { success: boolean; message?: string };
+  toggleUserStatus: (userId: string) => Promise<{ success: boolean; status?: 'aktif' | 'nonaktif'; message?: string }>;
+  resetUserPassword: (userId: string) => Promise<{ success: boolean; temporaryPassword?: string; message?: string }>;
   updateUserProjectAssignment: (userId: string, projectIds: string[]) => void;
   allowedProjects: ProjectLocation[];
+
+  // Jabatan & Matriks Izin (Langkah 5B)
+  jabatan: Jabatan[];
+  addJabatan: (jab: Omit<Jabatan, 'id' | 'createdAt'>) => Promise<Jabatan>;
+  updateJabatan: (id: string, updates: Partial<Jabatan>) => Promise<void>;
+  deleteJabatan: (id: string) => Promise<{ success: boolean; message?: string }>;
+  getUserPermissions: (user?: AppUser) => Record<JabatanPermissionKey, boolean>;
 
   // Multi-Company Management (Super Admin & Admin Perusahaan)
   companies: Company[];
@@ -804,6 +820,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   // 3. Users & Project Assignments
   const [users, setUsers] = useState<AppUser[]>(INITIAL_USERS);
+  const [jabatan, setJabatan] = useState<Jabatan[]>(INITIAL_JABATAN);
 
   const [activeUserId, setActiveUserId] = useState<string>(() => {
     return localStorage.getItem('sco_active_user_id') || 'usr-admin';
@@ -959,6 +976,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         remoteProfile,
         remoteKpi,
         remoteCompanies,
+        remoteJabatan,
       ] = await Promise.all([
         getRecords<ProjectLocation>(COLLECTIONS.PROJECTS),
         getRecords<AppUser>(COLLECTIONS.USERS),
@@ -984,6 +1002,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         getRecords<CompanyProfile>(COLLECTIONS.COMPANY_PROFILE),
         getRecords<DashboardKpiVisibilityConfig>(COLLECTIONS.KPI_CONFIG),
         getRecords<Company>(COLLECTIONS.COMPANIES),
+        getRecords<Jabatan>(COLLECTIONS.JABATAN),
       ]);
 
       if (remoteCompanies && remoteCompanies.length > 0) {
@@ -993,6 +1012,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       await Promise.all([
         loadOrSeedCollection(COLLECTIONS.PROJECTS, remoteProjects, INITIAL_PROJECTS, setProjects),
         loadOrSeedCollection(COLLECTIONS.USERS, remoteUsers, INITIAL_USERS, setUsers),
+        loadOrSeedCollection(COLLECTIONS.JABATAN, remoteJabatan, INITIAL_JABATAN, setJabatan),
         loadOrSeedCollection(COLLECTIONS.RBAC_PERMISSIONS, remoteRbac, DEFAULT_RBAC_PERMISSIONS, setRbacPermissions),
         loadOrSeedCollection(COLLECTIONS.AREAS, remoteAreas, INITIAL_AREAS, setAreas),
         loadOrSeedCollection(COLLECTIONS.CLEANERS, remoteCleaners, INITIAL_CLEANERS, setCleaners),
@@ -2077,6 +2097,11 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           message: 'Aplikasi menolak menghapus Super Admin terakhir. Harus ada setidaknya satu Super Administrator aktif.',
         };
       }
+    if (userRole !== 'super_admin' && userRole !== 'admin') {
+      return {
+        success: false,
+        message: 'Hanya Super Administrator yang dapat menghapus permanen pengguna. Admin Perusahaan disarankan menonaktifkan akun melalui tombol Nonaktifkan.',
+      };
     }
 
     setUsers((prev) => prev.filter((u) => u.id !== userId));
@@ -2092,6 +2117,184 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
 
     return { success: true, message: `Akun ${target.name} (${target.role}) berhasil dihapus.` };
+  };
+
+  const toggleUserStatus = async (
+    userId: string
+  ): Promise<{ success: boolean; status?: 'aktif' | 'nonaktif'; message?: string }> => {
+    try {
+      const res = await apiToggleUserStatus(userId);
+      if (res.success && res.status) {
+        setUsers((prev) =>
+          prev.map((u) => (u.id === userId ? { ...u, status: res.status } : u))
+        );
+        return {
+          success: true,
+          status: res.status,
+          message: `Status pengguna berhasil diubah menjadi "${res.status}".`,
+        };
+      }
+      return { success: false, message: res.error || 'Gagal mengubah status pengguna di server.' };
+    } catch (err: any) {
+      return { success: false, message: err?.message || 'Gagal mengubah status pengguna di server.' };
+    }
+  };
+
+  const resetUserPassword = async (
+    userId: string
+  ): Promise<{ success: boolean; temporaryPassword?: string; message?: string }> => {
+    try {
+      const res = await apiResetUserPassword(userId);
+      if (res.success && res.temporaryPassword) {
+        setUsers((prev) =>
+          prev.map((u) =>
+            u.id === userId
+              ? { ...u, mustChangePassword: true, temporaryPassword: res.temporaryPassword }
+              : u
+          )
+        );
+        return {
+          success: true,
+          temporaryPassword: res.temporaryPassword,
+          message: `Kata sandi berhasil direset. Sandi sementara: ${res.temporaryPassword}`,
+        };
+      }
+      return { success: false, message: res.error || 'Gagal mereset kata sandi di server.' };
+    } catch (err: any) {
+      return { success: false, message: err?.message || 'Gagal mereset kata sandi di server.' };
+    }
+  };
+
+  const addJabatan = async (jabData: Omit<Jabatan, 'id' | 'createdAt'>): Promise<Jabatan> => {
+    const id = `jab-${Date.now()}`;
+    const newJab: Jabatan = {
+      ...jabData,
+      id,
+      createdAt: new Date().toISOString(),
+    };
+    setJabatan((prev) => [...prev, newJab]);
+    try {
+      await upsertRecord(COLLECTIONS.JABATAN, newJab);
+    } catch (err) {
+      notifyServerError('menambah jabatan', err);
+    }
+    return newJab;
+  };
+
+  const updateJabatan = async (id: string, updates: Partial<Jabatan>): Promise<void> => {
+    setJabatan((prev) =>
+      prev.map((j) => (j.id === id ? { ...j, ...updates, updatedAt: new Date().toISOString() } : j))
+    );
+    const existing = jabatan.find((j) => j.id === id);
+    if (existing) {
+      const merged = { ...existing, ...updates, updatedAt: new Date().toISOString() };
+      try {
+        await upsertRecord(COLLECTIONS.JABATAN, merged);
+      } catch (err) {
+        notifyServerError('memperbarui jabatan', err);
+      }
+    }
+  };
+
+  const deleteJabatan = async (id: string): Promise<{ success: boolean; message?: string }> => {
+    const target = jabatan.find((j) => j.id === id);
+    if (!target) {
+      return { success: false, message: 'Jabatan tidak ditemukan.' };
+    }
+    const inUse = users.some((u) => u.jabatanId === id);
+    if (inUse) {
+      return {
+        success: false,
+        message: `Jabatan "${target.nama}" masih ditugaskan pada satu atau lebih akun pengguna. Ubah jabatan pengguna terkait terlebih dahulu.`,
+      };
+    }
+    setJabatan((prev) => prev.filter((j) => j.id !== id));
+    try {
+      await deleteRecord(COLLECTIONS.JABATAN, id);
+    } catch (err) {
+      notifyServerError('menghapus jabatan', err);
+    }
+    return { success: true, message: `Jabatan "${target.nama}" berhasil dihapus.` };
+  };
+
+  const getUserPermissions = (user?: AppUser): Record<JabatanPermissionKey, boolean> => {
+    const target = user || currentUser;
+    if (!target) {
+      return {
+        lihat_proyek: true,
+        isi_ceklist: false,
+        kelola_ceklist: false,
+        lihat_laporan: false,
+        unduh_laporan: false,
+        kelola_user: false,
+        kelola_jadwal: false,
+        terima_notifikasi: false,
+      };
+    }
+    if (target.role === 'super_admin' || target.role === 'admin_perusahaan' || target.role === 'admin') {
+      return {
+        lihat_proyek: true,
+        isi_ceklist: true,
+        kelola_ceklist: true,
+        lihat_laporan: true,
+        unduh_laporan: true,
+        kelola_user: true,
+        kelola_jadwal: true,
+        terima_notifikasi: true,
+      };
+    }
+    if (target.jabatanId) {
+      const found = jabatan.find((j) => j.id === target.jabatanId);
+      if (found && found.permissions) {
+        return found.permissions;
+      }
+    }
+    if (target.role === 'supervisor') {
+      return {
+        lihat_proyek: true,
+        isi_ceklist: true,
+        kelola_ceklist: true,
+        lihat_laporan: true,
+        unduh_laporan: true,
+        kelola_user: false,
+        kelola_jadwal: true,
+        terima_notifikasi: true,
+      };
+    }
+    if (target.role === 'petugas') {
+      return {
+        lihat_proyek: true,
+        isi_ceklist: true,
+        kelola_ceklist: false,
+        lihat_laporan: false,
+        unduh_laporan: false,
+        kelola_user: false,
+        kelola_jadwal: false,
+        terima_notifikasi: false,
+      };
+    }
+    if (target.role === 'klien') {
+      return {
+        lihat_proyek: true,
+        isi_ceklist: false,
+        kelola_ceklist: false,
+        lihat_laporan: true,
+        unduh_laporan: true,
+        kelola_user: false,
+        kelola_jadwal: false,
+        terima_notifikasi: false,
+      };
+    }
+    return {
+      lihat_proyek: true,
+      isi_ceklist: false,
+      kelola_ceklist: false,
+      lihat_laporan: false,
+      unduh_laporan: false,
+      kelola_user: false,
+      kelola_jadwal: false,
+      terima_notifikasi: false,
+    };
   };
 
   // Checklist Master & Daily Methods
@@ -4228,8 +4431,17 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         addUser,
         updateUser,
         deleteUser,
+        toggleUserStatus,
+        resetUserPassword,
         updateUserProjectAssignment,
         allowedProjects,
+
+        // Jabatan & Matriks Izin (Langkah 5B)
+        jabatan,
+        addJabatan,
+        updateJabatan,
+        deleteJabatan,
+        getUserPermissions,
 
         // Connection & Offline Sync Management
         isOnline,

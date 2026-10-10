@@ -49,6 +49,7 @@ export const COLLECTIONS = {
   COMPANIES: 'companies',
   KPI_CONFIG: 'kpi_config',
   AUDIT_LOGS: 'audit_logs',
+  JABATAN: 'jabatan',
 } as const;
 
 export type CollectionName = typeof COLLECTIONS[keyof typeof COLLECTIONS] | string;
@@ -278,6 +279,50 @@ export async function apiSwitchCompany(companyId: string): Promise<{
     return { success: false, error: data.error || 'Gagal berpindah perusahaan' };
   } catch (err: any) {
     return { success: false, error: err.message || 'Gagal menghubungi server' };
+  }
+}
+
+/**
+  * Nonaktifkan / aktifkan akun pengguna di server (Requirement 4)
+  */
+export async function apiToggleUserStatus(userId: string): Promise<{
+  success: boolean;
+  status?: 'aktif' | 'nonaktif';
+  user?: AppUser;
+  error?: string;
+}> {
+  try {
+    const res = await fetch(getApiUrl(`/api/users/${encodeURIComponent(userId)}/toggle-status`), {
+      method: 'POST',
+      headers: getAuthHeaders(),
+    });
+    const data = await res.json();
+    return data;
+  } catch (err: any) {
+    return { success: false, error: err.message || 'Gagal mengubah status pengguna di server' };
+  }
+}
+
+/**
+  * Reset kata sandi pengguna (Requirement 4)
+  * Membuat sandi sementara sekali pakai lalu mustChangePassword=true di server
+  */
+export async function apiResetUserPassword(userId: string): Promise<{
+  success: boolean;
+  temporaryPassword?: string;
+  user?: AppUser;
+  message?: string;
+  error?: string;
+}> {
+  try {
+    const res = await fetch(getApiUrl(`/api/users/${encodeURIComponent(userId)}/reset-password`), {
+      method: 'POST',
+      headers: getAuthHeaders(),
+    });
+    const data = await res.json();
+    return data;
+  } catch (err: any) {
+    return { success: false, error: err.message || 'Gagal mereset sandi pengguna di server' };
   }
 }
 
