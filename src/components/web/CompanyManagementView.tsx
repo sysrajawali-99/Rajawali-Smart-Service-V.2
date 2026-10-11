@@ -450,14 +450,14 @@ export const CompanyManagementView: React.FC = () => {
                             style={{ backgroundColor: c.warna || '#0284c7' }}
                           >
                             {c.logo ? (
-                              <img src={c.logo} alt={c.nama} className="w-full h-full object-cover" />
+                              <img src={c.logo} alt={c.nama || 'Logo'} className="w-full h-full object-cover" />
                             ) : (
-                              <span>{c.nama.slice(0, 2).toUpperCase()}</span>
+                              <span>{(c.nama || c.slug || 'CP').slice(0, 2).toUpperCase()}</span>
                             )}
                           </div>
                           <div>
                             <div className="flex items-center gap-2">
-                              <span className="font-bold text-slate-900">{c.nama}</span>
+                              <span className="font-bold text-slate-900">{c.nama || 'Tanpa Nama'}</span>
                               {isMainCompany && (
                                 <span className="px-2 py-0.5 text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200 rounded-md">
                                   UTAMA

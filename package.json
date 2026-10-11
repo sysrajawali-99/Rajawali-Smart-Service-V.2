@@ -9,7 +9,7 @@
     "start": "node server.ts",
     "migrate:multitenant": "tsx scripts/migrate-to-multitenant.ts",
     "repair:company-id": "tsx scripts/repair-legacy-company-id.ts",
-    "test": "tsx tests/checklist.test.ts",
+    "test": "tsx tests/checklist.test.ts && tsx tests/settings_company_user.test.ts",
     "preview": "vite preview",
     "clean": "rm -rf dist server.cjs",
     "lint": "tsc --noEmit"

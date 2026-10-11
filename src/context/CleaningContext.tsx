@@ -394,7 +394,7 @@ interface CleaningContextType {
 
   // Authentication & Session
   isAuthenticated: boolean;
-  login: (identifier: string, pass: string) => { success: boolean; message?: string };
+  login: (identifier: string, pass: string, companyId?: string) => { success: boolean; message?: string };
   instantLogin: (userId: string) => { success: boolean; message?: string };
   logout: () => void;
 
@@ -1760,10 +1760,19 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           }
         })
         .catch(() => {});
+    } else {
+      const activeId = localStorage.getItem('sco_active_user_id') || 'usr-admin';
+      apiLogin({ userId: activeId })
+        .then((res) => {
+          if (res?.token) {
+            setAuthToken(res.token);
+          }
+        })
+        .catch(() => {});
     }
   }, []);
 
-  const login = (identifier: string, pass: string): { success: boolean; message?: string } => {
+  const login = (identifier: string, pass: string, companyId?: string): { success: boolean; message?: string } => {
     const cleanId = identifier.trim().toLowerCase();
     const cleanPass = pass.trim();
 
@@ -1778,12 +1787,24 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     );
 
     if (!matchedUser) {
-      return { success: false, message: 'Akun tidak ditemukan. Periksa kembali Username atau Email Anda.' };
+      return { success: false, message: 'Email atau kata sandi salah' };
+    }
+
+    // Pilihan perusahaan hanya menerima login untuk user milik perusahaan itu (pesan gagal tetap umum)
+    if (companyId && matchedUser.role !== 'super_admin' && matchedUser.role !== 'admin') {
+      const uComp = matchedUser.company_id || matchedUser.companyId || 'comp-main';
+      if (uComp !== companyId) {
+        return { success: false, message: 'Email atau kata sandi salah' };
+      }
+    }
+
+    if (matchedUser.status === 'nonaktif') {
+      return { success: false, message: 'Akun Anda dinonaktifkan oleh Administrator.' };
     }
 
     const expectedPassword =
       matchedUser.password ||
-      (matchedUser.role === 'admin'
+      (matchedUser.role === 'admin' || matchedUser.role === 'super_admin'
         ? 'admin123'
         : matchedUser.role === 'supervisor'
         ? 'spv123'
@@ -1792,7 +1813,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         : 'klien123');
 
     if (expectedPassword !== cleanPass) {
-      return { success: false, message: 'Password salah. Silakan periksa kembali kata sandi Anda.' };
+      return { success: false, message: 'Email atau kata sandi salah' };
     }
 
     setIsAuthenticated(true);
@@ -1800,7 +1821,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setUserRole(matchedUser.role);
 
     const userAllowedProjs =
-      matchedUser.role === 'admin'
+      matchedUser.role === 'admin' || matchedUser.role === 'super_admin'
         ? projects
         : projects.filter((p) => matchedUser.assignedProjectIds?.includes(p.id));
     const nextProjId = userAllowedProjs[0]?.id || projects[0]?.id || 'proj-1';
@@ -1812,9 +1833,15 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     localStorage.setItem('sco_role', matchedUser.role);
 
     // Call backend API login asynchronously to retrieve and persist Bearer token
-    apiLogin({ identifier: cleanId, password: cleanPass }).catch((err) => {
-      console.warn('[Login Token] Backend token issuance notice:', err);
-    });
+    apiLogin({ identifier: cleanId, password: cleanPass, companyId })
+      .then((res) => {
+        if (res?.token) {
+          setAuthToken(res.token);
+        }
+      })
+      .catch((err) => {
+        console.warn('[Login Token] Backend token issuance notice:', err);
+      });
 
     if (matchedUser.role === 'klien') {
       setActiveTab('klien-manpower');
@@ -1848,9 +1875,15 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     localStorage.setItem('sco_role', matchedUser.role);
 
     // Call backend API login asynchronously to retrieve and persist Bearer token
-    apiLogin({ userId }).catch((err) => {
-      console.warn('[Instant Login Token] Backend token issuance notice:', err);
-    });
+    apiLogin({ userId })
+      .then((res) => {
+        if (res?.token) {
+          setAuthToken(res.token);
+        }
+      })
+      .catch((err) => {
+        console.warn('[Instant Login Token] Backend token issuance notice:', err);
+      });
 
     if (matchedUser.role === 'klien') {
       setActiveTab('klien-manpower');

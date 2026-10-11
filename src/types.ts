@@ -8,6 +8,26 @@ export type UserRole =
 
 export type CompanyStatus = 'aktif' | 'ditangguhkan' | 'diarsipkan';
 
+export type FixedUserLevel =
+  | 'Owner'
+  | 'Manager'
+  | 'Supervisor'
+  | 'Team Leader'
+  | 'Petugas'
+  | 'Klien';
+
+export interface CompanyFeatures {
+  ceklist: boolean;
+  area: boolean;
+  activity: boolean;
+  inspeksi: boolean;
+  report: boolean;
+  petugas: boolean;
+  shift: boolean;
+  kerusakan: boolean;
+  complaint: boolean;
+}
+
 export interface Company {
   id: string;
   nama: string;
@@ -17,6 +37,7 @@ export interface Company {
   status: CompanyStatus;
   createdAt: string;
   updatedAt?: string;
+  features?: Partial<CompanyFeatures>;
 }
 
 export type ViewMode = 'split' | 'web' | 'mobile';
@@ -377,6 +398,7 @@ export interface AppUser {
   username?: string;
   password?: string;
   role: UserRole;
+  level?: FixedUserLevel;
   jabatanId?: string;
   status?: UserStatus; // 'aktif' | 'nonaktif' (default 'aktif')
   assignedProjectIds: string[]; // Projects this user is allowed to access

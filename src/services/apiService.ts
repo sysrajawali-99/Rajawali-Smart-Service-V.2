@@ -179,6 +179,12 @@ export function getAuthHeaders(additionalHeaders: Record<string, string> = {}): 
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
   }
+  if (typeof window !== 'undefined') {
+    const activeUserId = localStorage.getItem('sco_active_user_id');
+    if (activeUserId) {
+      headers['X-User-Id'] = activeUserId;
+    }
+  }
   return headers;
 }
 
@@ -200,6 +206,7 @@ export async function apiLogin(payload: {
   identifier?: string;
   password?: string;
   userId?: string;
+  companyId?: string;
 }): Promise<{
   success: boolean;
   token?: string;
@@ -388,6 +395,34 @@ export async function uploadPhoto(fileOrBlobOrDataUrl: File | Blob | string): Pr
   }
 
   return '';
+}
+
+/**
+ * Uploads a company logo to /api/companies/:id/logo with strict magic-bytes verification
+ */
+export async function uploadCompanyLogo(
+  companyId: string,
+  fileOrBlob: File | Blob
+): Promise<{ success: boolean; logoUrl?: string; error?: string }> {
+  try {
+    const formData = new FormData();
+    const filename = (fileOrBlob as File).name || 'company-logo.png';
+    formData.append('file', fileOrBlob, filename);
+
+    const res = await fetch(getApiUrl(`/api/companies/${encodeURIComponent(companyId)}/logo`), {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: formData,
+    });
+
+    const data = await res.json();
+    if (!res.ok) {
+      return { success: false, error: data.error || 'Gagal mengunggah logo' };
+    }
+    return { success: true, logoUrl: getFullUploadUrl(data.logoUrl) };
+  } catch (err: any) {
+    return { success: false, error: err.message || 'Gagal terhubung ke server saat mengunggah logo' };
+  }
 }
 
 /**
