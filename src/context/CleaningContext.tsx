@@ -83,6 +83,7 @@ import {
   getRecords,
   upsertRecord,
   deleteRecord,
+  restoreRecord,
   onRecordChange,
   onServerReconnect,
   fetchServerStatus,
@@ -220,6 +221,13 @@ interface CleaningContextType {
   addManualItemToDailyChecklist: (dailyChecklistId: string, itemName: string) => void;
   getOrCreateDailyChecklist: (projectId: string, locationId: string, date: string) => DailyAreaChecklist;
   ensureDailyChecklist: (projectId: string, locationId: string, date: string) => void;
+  updateSlotMeta: (
+    dailyChecklistId: string,
+    hour: number,
+    meta: { notes?: string; photoUrl?: string; photoUrls?: string[]; checkedBy?: string; supervisorVerified?: boolean }
+  ) => void;
+  softDeleteDailyChecklist: (id: string) => Promise<boolean>;
+  restoreDailyChecklist: (id: string) => Promise<boolean>;
 
   // Master Cleaning Program (dipisahkan sesuai lokasi kerja user / klien)
   masterPrograms: MasterCleaningProgramItem[];
@@ -1033,29 +1041,41 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         loadOrSeedCollection(COLLECTIONS.AUDIT_LOGS, remoteAuditLogs, INITIAL_AUDIT_LOGS, setAuditLogs),
       ]);
 
-      // Daily Checklists:
-      if (remoteDailyChecklists.length > 0) {
+      // Daily Checklists: (Proteksi Kuat: Jangan pernah menimpa dengan hasil kosong / merusak data terisi)
+      if (remoteDailyChecklists && remoteDailyChecklists.length > 0) {
         const serverMap = new Map(remoteDailyChecklists.map((c) => [c.id, c]));
         setDailyChecklists((prevLocal) => {
           const merged: DailyAreaChecklist[] = [];
-          if (!initialSyncDone.current) {
-            merged.push(...remoteDailyChecklists);
-            for (const loc of prevLocal) {
-              if (!serverMap.has(loc.id)) merged.push(loc);
-            }
-          } else {
-            for (const rem of remoteDailyChecklists) {
-              if (dirtyChecklistIdsRef.current.has(rem.id)) {
-                const dirty = prevLocal.find((d) => d.id === rem.id);
-                if (dirty) {
-                  merged.push(dirty);
-                  continue;
-                }
-              }
+          for (const rem of remoteDailyChecklists) {
+            const localItem = prevLocal.find((d) => d.id === rem.id);
+            if (!localItem) {
               merged.push(rem);
+              continue;
             }
-            for (const loc of prevLocal) {
-              if (!serverMap.has(loc.id)) merged.push(loc);
+            if (dirtyChecklistIdsRef.current.has(rem.id)) {
+              merged.push(localItem);
+              continue;
+            }
+            // Safely merge slots: local filled items must NOT be destroyed by incoming empty slots
+            const mergedSlots = (localItem.hourlySlots || []).map((locSlot) => {
+              const remSlot = (rem.hourlySlots || []).find((s: any) => s.hour === locSlot.hour);
+              if (!remSlot) return locSlot;
+              const remItems = Array.isArray(remSlot.items) && remSlot.items.length > 0 ? remSlot.items : locSlot.items;
+              return {
+                ...locSlot,
+                ...remSlot,
+                items: remItems,
+              };
+            });
+            merged.push({
+              ...rem,
+              hourlySlots: mergedSlots.length > 0 ? mergedSlots : rem.hourlySlots,
+            });
+          }
+          // Pertahankan semua ceklist lokal yang belum sempat tersimpan di server
+          for (const loc of prevLocal) {
+            if (!serverMap.has(loc.id)) {
+              merged.push(loc);
             }
           }
           for (const item of merged) {
@@ -1065,14 +1085,16 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           }
           return merged;
         });
-      } else if (INITIAL_DAILY_CHECKLISTS && INITIAL_DAILY_CHECKLISTS.length > 0) {
-        console.debug(`[Seed] Koleksi 'daily_checklists' kosong di server. Menyemai data awal...`);
+      } else if (!initialSyncDone.current && dailyChecklistsRef.current.length === 0 && INITIAL_DAILY_CHECKLISTS?.length > 0) {
+        // Hanya semai jika inisialisasi awal dan state lokal benar-benar belum memiliki data
+        console.debug(`[Seed] Koleksi 'daily_checklists' kosong di server saat pertama kali dibuka. Menyemai data awal...`);
         setDailyChecklists(INITIAL_DAILY_CHECKLISTS);
         for (const item of INITIAL_DAILY_CHECKLISTS) {
           checklistSnapshotRef.current.set(item.id, JSON.stringify(item));
           upsertRecord(COLLECTIONS.DAILY_CHECKLISTS, item).catch(() => {});
         }
       }
+      // Jika remoteDailyChecklists kosong di tengah jalan / polling, JANGAN PERNAH MENIMPA STATE LOKAL DENGAN KOSONG!
       initialSyncDone.current = true;
 
       // Company profile & KPI config:
@@ -1363,11 +1385,35 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             });
             break;
           case COLLECTIONS.DAILY_CHECKLISTS:
+            if (!data || !data.id) break;
             checklistSnapshotRef.current.set(id, JSON.stringify(data));
             dirtyChecklistIdsRef.current.delete(id);
             setDailyChecklists((prev) => {
               const idx = prev.findIndex((dc) => dc.id === id);
-              if (idx >= 0) { const next = [...prev]; next[idx] = { ...next[idx], ...data }; return next; }
+              if (idx >= 0) {
+                const currentLocal = prev[idx];
+                // Safely merge slots: local filled items must NOT be destroyed by incoming empty items
+                const mergedSlots = (currentLocal.hourlySlots || []).map((localSlot) => {
+                  const incomingSlot = (data.hourlySlots || []).find((s: any) => s.hour === localSlot.hour);
+                  if (!incomingSlot) return localSlot;
+                  const incomingItems = Array.isArray(incomingSlot.items) && incomingSlot.items.length > 0
+                    ? incomingSlot.items
+                    : localSlot.items;
+                  return {
+                    ...localSlot,
+                    ...incomingSlot,
+                    items: incomingItems,
+                  };
+                });
+                const mergedChecklist = {
+                  ...currentLocal,
+                  ...data,
+                  hourlySlots: mergedSlots.length > 0 ? mergedSlots : data.hourlySlots || currentLocal.hourlySlots,
+                };
+                const next = [...prev];
+                next[idx] = mergedChecklist;
+                return next;
+              }
               return [...prev, data];
             });
             break;
@@ -2389,11 +2435,14 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     const nowStr = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB';
     let affectedItemName = itemKeyOrId;
     let locationName = '';
+    let locationId = '';
+    let capturedUpdatedItems: HourlyCheckItemEntry[] = [];
 
     setDailyChecklists((prev) =>
       prev.map((d) => {
         if (d.id !== dailyChecklistId) return d;
         locationName = d.locationName;
+        locationId = d.locationId;
         const location = checklistLocations.find((l) => l.id === d.locationId);
         const category = d.category || location?.category || 'toilet';
 
@@ -2435,6 +2484,8 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             updatedItems = [...currentItems, newItem];
           }
 
+          capturedUpdatedItems = updatedItems;
+
           const hasIssue = updatedItems.some(
             (i) => i.status === 'issue' || i.status === 'dirty' || i.status === 'broken'
           );
@@ -2458,14 +2509,17 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       })
     );
 
-    // Save to Dexie outbox for resilient offline storage & background sync
+    dirtyChecklistIdsRef.current.add(dailyChecklistId);
+
+    // Save to Dexie outbox for resilient offline storage & background sync (KIRIM ITEM ASLI)
     saveChecklistToOutbox({
       type: 'hourly_slot_update',
       projectId: safeActiveProjectId,
       checklistId: dailyChecklistId,
+      locationId,
       locationName,
       slotHour: hour,
-      answers: [],
+      answers: capturedUpdatedItems,
       captured_at: new Date().toISOString(),
     }).catch(() => {});
 
@@ -2503,11 +2557,14 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   ) => {
     const nowStr = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB';
     let locationName = '';
+    let locationId = '';
+    let capturedUpdatedItems: HourlyCheckItemEntry[] = [];
 
     setDailyChecklists((prev) =>
       prev.map((d) => {
         if (d.id !== dailyChecklistId) return d;
         locationName = d.locationName;
+        locationId = d.locationId;
         const location = checklistLocations.find((l) => l.id === d.locationId);
         const category = d.category || location?.category || 'toilet';
 
@@ -2515,6 +2572,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           if (slot.hour !== hour) return slot;
           const currentItems = ensureCompleteSlotItems(slot.items, category, checklistTemplates);
           const updatedItems = currentItems.map((item) => ({ ...item, status }));
+          capturedUpdatedItems = updatedItems;
           const slotStatus: 'clean' | 'has_issue' | 'pending' =
             status === 'clean'
               ? 'clean'
@@ -2533,14 +2591,17 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       })
     );
 
-    // Save batch update to Dexie outbox
+    dirtyChecklistIdsRef.current.add(dailyChecklistId);
+
+    // Save batch update to Dexie outbox (KIRIM ITEM ASLI)
     saveChecklistToOutbox({
       type: 'hourly_slot_batch',
       projectId: safeActiveProjectId,
       checklistId: dailyChecklistId,
+      locationId,
       locationName,
       slotHour: hour,
-      answers: [],
+      answers: capturedUpdatedItems,
       captured_at: new Date().toISOString(),
     }).catch(() => {});
 
@@ -2565,11 +2626,19 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     checkedBy: string,
     supervisorVerified?: boolean
   ) => {
+    dirtyChecklistIdsRef.current.add(dailyChecklistId);
+    let locationId = '';
+    let locationName = '';
+    let slotItems: HourlyCheckItemEntry[] = [];
+
     setDailyChecklists((prev) =>
       prev.map((d) => {
         if (d.id !== dailyChecklistId) return d;
+        locationId = d.locationId;
+        locationName = d.locationName;
         const updatedSlots = d.hourlySlots.map((slot) => {
           if (slot.hour !== hour) return slot;
+          slotItems = slot.items;
           return {
             ...slot,
             checkedBy,
@@ -2579,6 +2648,115 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         return { ...d, hourlySlots: updatedSlots };
       })
     );
+
+    saveChecklistToOutbox({
+      type: 'hourly_slot_update',
+      projectId: safeActiveProjectId,
+      checklistId: dailyChecklistId,
+      locationId,
+      locationName,
+      slotHour: hour,
+      answers: slotItems,
+      captured_at: new Date().toISOString(),
+    }).catch(() => {});
+
+    if (typeof navigator !== 'undefined' && navigator.onLine) {
+      syncService.triggerSync().catch(() => {});
+    }
+  };
+
+  const updateSlotMeta = (
+    dailyChecklistId: string,
+    hour: number,
+    meta: { notes?: string; photoUrl?: string; photoUrls?: string[]; checkedBy?: string; supervisorVerified?: boolean }
+  ) => {
+    dirtyChecklistIdsRef.current.add(dailyChecklistId);
+    let locationId = '';
+    let locationName = '';
+    let slotItems: HourlyCheckItemEntry[] = [];
+
+    setDailyChecklists((prev) =>
+      prev.map((d) => {
+        if (d.id !== dailyChecklistId) return d;
+        locationId = d.locationId;
+        locationName = d.locationName;
+        const updatedSlots = d.hourlySlots.map((slot) => {
+          if (slot.hour !== hour) return slot;
+          slotItems = slot.items;
+          return {
+            ...slot,
+            ...(meta.notes !== undefined ? { notes: meta.notes } : {}),
+            ...(meta.photoUrl !== undefined ? { photoUrl: meta.photoUrl } : {}),
+            ...(meta.photoUrls !== undefined ? { photoUrls: meta.photoUrls } : {}),
+            ...(meta.checkedBy !== undefined ? { checkedBy: meta.checkedBy } : {}),
+            ...(meta.supervisorVerified !== undefined ? { supervisorVerified: meta.supervisorVerified } : {}),
+          };
+        });
+        return { ...d, hourlySlots: updatedSlots };
+      })
+    );
+
+    saveChecklistToOutbox({
+      type: 'hourly_slot_update',
+      projectId: safeActiveProjectId,
+      checklistId: dailyChecklistId,
+      locationId,
+      locationName,
+      slotHour: hour,
+      answers: slotItems,
+      notes: meta.notes,
+      captured_at: new Date().toISOString(),
+    }).catch(() => {});
+
+    if (typeof navigator !== 'undefined' && navigator.onLine) {
+      syncService.triggerSync().catch(() => {});
+    }
+  };
+
+  const softDeleteDailyChecklist = async (id: string): Promise<boolean> => {
+    try {
+      const target = dailyChecklists.find((d) => d.id === id);
+      setDailyChecklists((prev) => prev.filter((d) => d.id !== id));
+      checklistSnapshotRef.current.delete(id);
+      dirtyChecklistIdsRef.current.delete(id);
+      await deleteRecord(COLLECTIONS.DAILY_CHECKLISTS, id);
+      addAuditLog({
+        action: 'delete',
+        module: 'ceklist_area',
+        entityId: id,
+        entityName: target?.locationName || id,
+        details: `Menghapus lunak (soft delete) Ceklist Area "${target?.locationName || id}" (${target?.date})`,
+      });
+      return true;
+    } catch (err: any) {
+      notifyServerError('menghapus ceklis area', err);
+      return false;
+    }
+  };
+
+  const restoreDailyChecklist = async (id: string): Promise<boolean> => {
+    try {
+      const restored = await restoreRecord<DailyAreaChecklist>(COLLECTIONS.DAILY_CHECKLISTS, id);
+      if (restored && restored.id) {
+        setDailyChecklists((prev) => {
+          const exists = prev.some((d) => d.id === restored.id);
+          return exists ? prev.map((d) => (d.id === restored.id ? restored : d)) : [...prev, restored];
+        });
+        checklistSnapshotRef.current.set(restored.id, JSON.stringify(restored));
+        addAuditLog({
+          action: 'restore',
+          module: 'ceklist_area',
+          entityId: id,
+          entityName: restored.locationName || id,
+          details: `Memulihkan Ceklist Area "${restored.locationName || id}" (${restored.date})`,
+        });
+        return true;
+      }
+      return false;
+    } catch (err: any) {
+      notifyServerError('memulihkan ceklis area', err);
+      return false;
+    }
   };
 
   const fillDailyChecklistClean = (
@@ -2709,7 +2887,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     (cl) => (cl.projectId || 'proj-1') === safeActiveProjectId
   );
   const filteredDailyChecklists = dailyChecklists.filter(
-    (d) => (d.projectId || 'proj-1') === safeActiveProjectId
+    (d) => (d.projectId || 'proj-1') === safeActiveProjectId && !d.isDeleted
   );
   const filteredMasterPrograms = masterPrograms.filter(
     (m) => (m.projectId || 'proj-1') === safeActiveProjectId
@@ -4473,6 +4651,9 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         addManualItemToDailyChecklist,
         getOrCreateDailyChecklist,
         ensureDailyChecklist,
+        updateSlotMeta,
+        softDeleteDailyChecklist,
+        restoreDailyChecklist,
 
         // Filtered operational data for active project location
         areas: filteredAreas,

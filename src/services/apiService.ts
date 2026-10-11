@@ -492,6 +492,23 @@ export async function deleteRecord(collection: string, id: string): Promise<bool
 }
 
 /**
+ * Restore a soft-deleted record in the collection.
+ */
+export async function restoreRecord<T = any>(collection: string, id: string): Promise<T> {
+  const res = await fetch(getApiUrl(`/api/records/${collection}/${encodeURIComponent(id)}/restore`), {
+    method: 'POST',
+    headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+  });
+  if (!res.ok) {
+    const errorText = await res.text().catch(() => res.statusText);
+    console.error(`[API] Failed to restore ${collection}/${id}:`, errorText);
+    throw new Error(`Gagal memulihkan data dari server (${collection}/${id}): ${errorText}`);
+  }
+  const data = await res.json();
+  return (data.data || data) as T;
+}
+
+/**
  * Subscribes to real-time changes across collections from Socket.IO
  */
 export function onRecordChange(handler: (event: RecordChangeEvent) => void): () => void {

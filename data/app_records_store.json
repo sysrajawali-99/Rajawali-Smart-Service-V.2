@@ -91,13 +91,14 @@
       "name": "Asep Supriyadi (Petugas Mandiri)",
       "email": "asep.cln@cleaningops.com",
       "username": "petugas1",
-      "password": "$2b$10$AZo4BG3vJIs7NNl.feJqiOZk5gLPzuPISjnmhQgEvVLkaPP.VCXiW",
+      "password": "$2b$10$Fn6Ro81D63Pm.qtkk8dnYOA.vz5Jlo8NtAGTTrIDHQJV.X.txs4AG",
       "role": "petugas",
       "assignedProjectIds": [
         "proj-1"
       ],
       "company_id": "comp-main",
-      "companyId": "comp-main"
+      "companyId": "comp-main",
+      "status": "aktif"
     },
     "usr-cln-2": {
       "id": "usr-cln-2",
@@ -4732,6 +4733,93 @@
       "userId": "usr-admin",
       "userName": "Super Administrator",
       "company_id": "comp-main",
+      "companyId": "comp-main"
+    },
+    "log-1791613029392-a740s": {
+      "id": "log-1791613029392-a740s",
+      "timestamp": "2026-10-10T06:17:09.392Z",
+      "action": "PUSH_SUBSCRIBE",
+      "module": "NOTIFIKASI",
+      "description": "Perangkat diaktifkan untuk notifikasi Web Push (Asep Supriyadi (Petugas Mandiri))",
+      "userId": "usr-cln-1",
+      "userName": "Asep Supriyadi (Petugas Mandiri)",
+      "projectId": "proj-1",
+      "company_id": "comp-main",
+      "companyId": "comp-main"
+    },
+    "log-1791613029421-bnwls": {
+      "id": "log-1791613029421-bnwls",
+      "timestamp": "2026-10-10T06:17:09.421Z",
+      "action": "TEST_NOTIFICATION_SENT",
+      "module": "NOTIFIKASI",
+      "description": "Notifikasi uji coba dikirim ke 0 perangkat",
+      "userId": "usr-cln-1",
+      "userName": "Asep Supriyadi (Petugas Mandiri)",
+      "company_id": "comp-main",
+      "companyId": "comp-main"
+    },
+    "log-1791613078882-huxp2": {
+      "id": "log-1791613078882-huxp2",
+      "timestamp": "2026-10-10T06:17:58.882Z",
+      "action": "USER_DEACTIVATED",
+      "module": "MANAJEMEN_PENGGUNA",
+      "description": "Akun pengguna Asep Supriyadi (Petugas Mandiri) (asep.cln@cleaningops.com) dinonaktifkan oleh Super Administrator",
+      "userId": "usr-admin",
+      "userName": "Super Administrator",
+      "company_id": "comp-main",
+      "details": {
+        "targetUserId": "usr-cln-1",
+        "targetUserName": "Asep Supriyadi (Petugas Mandiri)",
+        "status": "nonaktif"
+      },
+      "companyId": "comp-main"
+    },
+    "log-1791613078915-92dzz": {
+      "id": "log-1791613078915-92dzz",
+      "timestamp": "2026-10-10T06:17:58.915Z",
+      "action": "USER_ACTIVATED",
+      "module": "MANAJEMEN_PENGGUNA",
+      "description": "Akun pengguna Asep Supriyadi (Petugas Mandiri) (asep.cln@cleaningops.com) diaktifkan kembali oleh Super Administrator",
+      "userId": "usr-admin",
+      "userName": "Super Administrator",
+      "company_id": "comp-main",
+      "details": {
+        "targetUserId": "usr-cln-1",
+        "targetUserName": "Asep Supriyadi (Petugas Mandiri)",
+        "status": "aktif"
+      },
+      "companyId": "comp-main"
+    },
+    "log-1791613087858-re6s9": {
+      "id": "log-1791613087858-re6s9",
+      "timestamp": "2026-10-10T06:18:07.858Z",
+      "action": "USER_PASSWORD_RESET",
+      "module": "KEAMANAN",
+      "description": "Kata sandi akun Asep Supriyadi (Petugas Mandiri) (asep.cln@cleaningops.com) direset oleh Super Administrator (wajib ganti sandi saat login)",
+      "userId": "usr-admin",
+      "userName": "Super Administrator",
+      "company_id": "comp-main",
+      "details": {
+        "targetUserId": "usr-cln-1",
+        "targetUserName": "Asep Supriyadi (Petugas Mandiri)",
+        "mustChangePassword": true
+      },
+      "companyId": "comp-main"
+    },
+    "log-1791613098221-5rjyo": {
+      "id": "log-1791613098221-5rjyo",
+      "timestamp": "2026-10-10T06:18:18.221Z",
+      "action": "USER_PASSWORD_RESET",
+      "module": "KEAMANAN",
+      "description": "Kata sandi akun Asep Supriyadi (Petugas Mandiri) (asep.cln@cleaningops.com) direset oleh Super Administrator (wajib ganti sandi saat login)",
+      "userId": "usr-admin",
+      "userName": "Super Administrator",
+      "company_id": "comp-main",
+      "details": {
+        "targetUserId": "usr-cln-1",
+        "targetUserName": "Asep Supriyadi (Petugas Mandiri)",
+        "mustChangePassword": true
+      },
       "companyId": "comp-main"
     }
   },
@@ -9796,5 +9884,6 @@
       },
       "createdAt": "2026-03-01T00:00:00Z"
     }
-  }
+  },
+  "push_subscriptions": {}
 }

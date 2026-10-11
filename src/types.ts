@@ -454,6 +454,8 @@ export interface HourlyChecklistSlot {
   checkedAt?: string;
   items: HourlyCheckItemEntry[];
   notes?: string;
+  photoUrl?: string;
+  photoUrls?: string[];
   supervisorVerified?: boolean;
   supervisorName?: string;
 }
@@ -468,6 +470,10 @@ export interface DailyAreaChecklist {
   category: ChecklistLocationCategory;
   date: string; // "YYYY-MM-DD" e.g. "2026-09-13"
   hourlySlots: HourlyChecklistSlot[]; // 24 slots (hour 0..23)
+  isDeleted?: boolean;
+  deletedAt?: string;
+  deletedBy?: string;
+  deletedById?: string;
 }
 
 export interface AppNotification {
@@ -637,6 +643,7 @@ export type AuditActionType =
   | 'create'
   | 'update'
   | 'delete'
+  | 'restore'
   | 'verify_approve'
   | 'verify_reject'
   | 'bulk_delete'

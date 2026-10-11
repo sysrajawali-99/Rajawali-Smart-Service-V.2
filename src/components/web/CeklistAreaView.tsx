@@ -28,13 +28,19 @@ import {
   Briefcase,
   Smartphone,
   Table,
+  Trash2,
+  History,
+  Camera,
+  RotateCcw,
 } from 'lucide-react';
 import { useCleaning } from '../../context/CleaningContext';
+import { uploadPhoto, getRecords } from '../../services/apiService';
 import {
   ChecklistLocationCategory,
   HourlyCheckItemStatus,
   ChecklistLocation,
   Shift,
+  DailyAreaChecklist,
 } from '../../types';
 import {
   renderParameterIcon,
@@ -89,6 +95,9 @@ export const CeklistAreaView: React.FC = () => {
     addManualItemToDailyChecklist,
     getOrCreateDailyChecklist,
     ensureDailyChecklist,
+    updateSlotMeta,
+    softDeleteDailyChecklist,
+    restoreDailyChecklist,
     userRole,
     currentUser,
     setActiveTab,
@@ -109,6 +118,33 @@ export const CeklistAreaView: React.FC = () => {
   const [viewMode, setViewMode] = useState<'official_table' | 'slot_details'>('official_table');
   const [expandedHour, setExpandedHour] = useState<number | null>(new Date().getHours());
   const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [isDeletingChecklist, setIsDeletingChecklist] = useState(false);
+  const [showHistoryModal, setShowHistoryModal] = useState(false);
+  const [historyTab, setHistoryTab] = useState<'active' | 'trash'>('active');
+  const [deletedChecklistsList, setDeletedChecklistsList] = useState<DailyAreaChecklist[]>([]);
+  const [isLoadingDeletedList, setIsLoadingDeletedList] = useState(false);
+  const [resetConfirmHour, setResetConfirmHour] = useState<number | null>(null);
+  const [isUploadingPhotoHour, setIsUploadingPhotoHour] = useState<number | null>(null);
+
+  const loadDeletedChecklists = async () => {
+    setIsLoadingDeletedList(true);
+    try {
+      const records = await getRecords<DailyAreaChecklist>('daily_checklists?includeDeleted=true');
+      const deletedOnly = (records || []).filter((r) => r.isDeleted);
+      setDeletedChecklistsList(deletedOnly);
+    } catch {
+      setDeletedChecklistsList([]);
+    } finally {
+      setIsLoadingDeletedList(false);
+    }
+  };
+
+  useEffect(() => {
+    if (showHistoryModal) {
+      loadDeletedChecklists();
+    }
+  }, [showHistoryModal]);
 
   // Kop Surat selection (Custom Kop vs Active Project)
   const [kopType, setKopType] = useState<'hospital' | 'project'>('hospital');
@@ -484,6 +520,16 @@ export const CeklistAreaView: React.FC = () => {
 
         {/* Top Action Buttons */}
         <div className="flex flex-wrap items-center gap-2">
+          {/* Riwayat Ceklist */}
+          <button
+            onClick={() => setShowHistoryModal(true)}
+            className="flex items-center gap-1.5 px-3.5 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border border-indigo-200 rounded-xl text-xs font-semibold transition-colors shadow-xs"
+            title="Lihat riwayat lembar ceklist dan kelola pemulihan data terhapus"
+          >
+            <History className="w-3.5 h-3.5 text-indigo-600" />
+            <span>Riwayat Ceklist</span>
+          </button>
+
           {/* Quick Clean Fill */}
           <button
             onClick={handleQuickFillClean}
@@ -514,6 +560,18 @@ export const CeklistAreaView: React.FC = () => {
             <FileDown className="w-4 h-4" />
             <span>{isDownloadingPdf ? 'Menyiapkan PDF...' : 'Download PDF Ceklist'}</span>
           </button>
+
+          {/* Hapus Ceklist (Hapus Lunak dengan Konfirmasi) */}
+          {currentDailyChecklist && (
+            <button
+              onClick={() => setShowDeleteModal(true)}
+              className="flex items-center gap-1.5 px-3.5 py-2 bg-rose-50 hover:bg-rose-100 text-rose-800 border border-rose-200 rounded-xl text-xs font-semibold transition-colors shadow-xs"
+              title="Hapus formulir ceklist ini secara lunak (dapat dipulihkan kapan saja)"
+            >
+              <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+              <span>Hapus Ceklist</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -1366,6 +1424,82 @@ export const CeklistAreaView: React.FC = () => {
                         ))}
                       </div>
 
+                      {/* Catatan & Foto Dokumentasi Slot Jam Ini */}
+                      <div className="p-3 bg-white rounded-xl border border-slate-200 space-y-2 text-xs">
+                        <div className="flex flex-col sm:flex-row gap-2 items-start sm:items-center justify-between">
+                          <label className="text-slate-600 font-bold shrink-0 flex items-center gap-1.5">
+                            <FileText className="w-3.5 h-3.5 text-slate-500" />
+                            Catatan Jam Ini:
+                          </label>
+                          <input
+                            type="text"
+                            value={slot.notes || ''}
+                            placeholder="Tulis temuan atau catatan kebersihan jam ini..."
+                            onChange={(e) => {
+                              if (currentDailyChecklist) {
+                                updateSlotMeta(currentDailyChecklist.id, slot.hour, { notes: e.target.value });
+                              }
+                            }}
+                            className="w-full sm:w-2/3 px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs focus:ring-1 focus:ring-sky-500"
+                          />
+                        </div>
+
+                        {/* Lampiran Foto */}
+                        <div className="flex flex-wrap items-center gap-3 pt-1 border-t border-slate-100">
+                          <label className="text-slate-600 font-bold shrink-0 flex items-center gap-1.5">
+                            <Camera className="w-3.5 h-3.5 text-slate-500" />
+                            Foto Dokumentasi:
+                          </label>
+                          <div className="flex items-center gap-2">
+                            {slot.photoUrl ? (
+                              <div className="flex items-center gap-2">
+                                <img
+                                  src={slot.photoUrl}
+                                  alt="Foto Slot"
+                                  className="w-9 h-9 object-cover rounded-lg border border-slate-200 shadow-xs"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (currentDailyChecklist) {
+                                      updateSlotMeta(currentDailyChecklist.id, slot.hour, { photoUrl: '' });
+                                    }
+                                  }}
+                                  className="text-[11px] text-rose-600 hover:underline font-semibold"
+                                >
+                                  Hapus Foto
+                                </button>
+                              </div>
+                            ) : null}
+                            <label className="cursor-pointer px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-[11px] font-semibold border border-slate-200 flex items-center gap-1 transition-colors">
+                              <span>{isUploadingPhotoHour === slot.hour ? 'Mengunggah...' : slot.photoUrl ? 'Ganti Foto' : '+ Unggah Foto'}</span>
+                              <input
+                                type="file"
+                                accept="image/*"
+                                className="hidden"
+                                disabled={isUploadingPhotoHour === slot.hour}
+                                onChange={async (e) => {
+                                  const file = e.target.files?.[0];
+                                  if (file && currentDailyChecklist) {
+                                    setIsUploadingPhotoHour(slot.hour);
+                                    try {
+                                      const url = await uploadPhoto(file);
+                                      if (url) {
+                                        updateSlotMeta(currentDailyChecklist.id, slot.hour, { photoUrl: url });
+                                      }
+                                    } catch (err) {
+                                      console.warn('Gagal unggah foto slot:', err);
+                                    } finally {
+                                      setIsUploadingPhotoHour(null);
+                                    }
+                                  }
+                                }}
+                              />
+                            </label>
+                          </div>
+                        </div>
+                      </div>
+
                       {/* Quick Inspector & Paraf within card */}
                       <div className="p-3 bg-white rounded-xl border border-slate-200 grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
                         <div className="flex items-center gap-2">
@@ -1414,24 +1548,45 @@ export const CeklistAreaView: React.FC = () => {
                         </div>
                       </div>
 
-                      {/* Reset Jam Ini */}
+                      {/* Reset Jam Ini dengan Konfirmasi Disengaja */}
                       <div className="flex items-center justify-between pt-1 text-xs">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (currentDailyChecklist) {
-                              batchUpdateHourStatus(
-                                currentDailyChecklist.id,
-                                slot.hour,
-                                'not_checked',
-                                ''
-                              );
-                            }
-                          }}
-                          className="px-3 py-1.5 border border-slate-300 hover:bg-white text-slate-600 rounded-xl font-medium"
-                        >
-                          Reset Semua Parameter Jam Ini
-                        </button>
+                        {resetConfirmHour === slot.hour ? (
+                          <div className="flex items-center gap-2 bg-rose-50 border border-rose-200 p-2 rounded-xl text-xs">
+                            <span className="font-semibold text-rose-800">Yakin reset jam ini?</span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (currentDailyChecklist) {
+                                  batchUpdateHourStatus(
+                                    currentDailyChecklist.id,
+                                    slot.hour,
+                                    'not_checked',
+                                    ''
+                                  );
+                                }
+                                setResetConfirmHour(null);
+                              }}
+                              className="px-2.5 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded-lg font-bold"
+                            >
+                              Ya, Reset
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setResetConfirmHour(null)}
+                              className="px-2.5 py-1 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-lg font-semibold"
+                            >
+                              Batal
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => setResetConfirmHour(slot.hour)}
+                            className="px-3 py-1.5 border border-slate-300 hover:bg-rose-50 hover:text-rose-700 text-slate-600 rounded-xl font-medium transition-colors"
+                          >
+                            Reset Semua Parameter Jam Ini
+                          </button>
+                        )}
 
                         <span className="text-slate-400 text-[11px]">
                           Terakhir diperiksa: {slot.checkedAt || 'Belum diisi'}
@@ -1763,6 +1918,198 @@ export const CeklistAreaView: React.FC = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: KONFIRMASI HAPUS CEKLIST (HAPUS LUNAK / SOFT DELETE) */}
+      {showDeleteModal && currentDailyChecklist && (
+        <div
+          id="delete-checklist-modal-backdrop"
+          onClick={() => setShowDeleteModal(false)}
+          className="fixed inset-0 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 z-50 animate-in fade-in duration-150"
+        >
+          <div
+            id="delete-checklist-modal-card"
+            onClick={(e) => e.stopPropagation()}
+            className="bg-white rounded-2xl max-w-md w-full p-5 sm:p-6 shadow-2xl border border-rose-100 space-y-4"
+          >
+            <div className="flex items-center gap-3 text-rose-600">
+              <div className="w-10 h-10 rounded-full bg-rose-100 flex items-center justify-center shrink-0">
+                <Trash2 className="w-5 h-5 text-rose-600" />
+              </div>
+              <div>
+                <h3 className="font-bold text-slate-900 text-base">Hapus Lembar Ceklist Ini?</h3>
+                <p className="text-xs text-slate-500">Hapus Lunak (Soft Delete) & Terproteksi</p>
+              </div>
+            </div>
+
+            <div className="p-3.5 bg-rose-50/60 rounded-xl border border-rose-100 text-xs text-rose-950 space-y-1.5">
+              <p><strong>Area:</strong> {currentDailyChecklist.locationName || currentLocation?.name}</p>
+              <p><strong>Tanggal:</strong> {currentDailyChecklist.date}</p>
+              <p className="text-[11px] text-slate-600 pt-1 border-t border-rose-200/60">
+                Formulir ceklist ini akan ditandai terhapus lunak (soft delete) dan disembunyikan dari layar. Data tidak hilang dan dapat dipulihkan kapan saja oleh Admin lewat tombol <strong>Riwayat Ceklist</strong>.
+              </p>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setShowDeleteModal(false)}
+                disabled={isDeletingChecklist}
+                className="px-4 py-2 border border-slate-200 rounded-xl text-slate-700 bg-slate-100 hover:bg-slate-200 text-xs font-semibold cursor-pointer"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                disabled={isDeletingChecklist}
+                onClick={async () => {
+                  setIsDeletingChecklist(true);
+                  try {
+                    await softDeleteDailyChecklist(currentDailyChecklist.id);
+                    setShowDeleteModal(false);
+                  } finally {
+                    setIsDeletingChecklist(false);
+                  }
+                }}
+                className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold shadow-xs cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>{isDeletingChecklist ? 'Menghapus...' : 'Ya, Hapus Ceklist'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: RIWAYAT CEKLIST & PEMULIHAN DATA TERHAPUS */}
+      {showHistoryModal && (
+        <div
+          id="history-checklist-modal-backdrop"
+          onClick={() => setShowHistoryModal(false)}
+          className="fixed inset-0 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 z-50 animate-in fade-in duration-150"
+        >
+          <div
+            id="history-checklist-modal-card"
+            onClick={(e) => e.stopPropagation()}
+            className="bg-white rounded-2xl max-w-2xl w-full p-5 sm:p-6 shadow-2xl border border-slate-200 space-y-4 max-h-[90vh] flex flex-col"
+          >
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2 text-indigo-700">
+                <History className="w-5 h-5" />
+                <h3 className="font-bold text-slate-900 text-base">Riwayat & Pemulihan Ceklist Area</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowHistoryModal(false)}
+                className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* TAB SELECTOR */}
+            <div className="flex gap-2 border-b border-slate-200 pb-2">
+              <button
+                type="button"
+                onClick={() => setHistoryTab('active')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  historyTab === 'active'
+                    ? 'bg-indigo-600 text-white shadow-xs'
+                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                }`}
+              >
+                Lembar Ceklist Aktif ({dailyChecklists.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setHistoryTab('trash')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  historyTab === 'trash'
+                    ? 'bg-rose-600 text-white shadow-xs'
+                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                }`}
+              >
+                Data Terhapus / Sampah ({deletedChecklistsList.length})
+              </button>
+            </div>
+
+            {/* CONTENT LIST */}
+            <div className="overflow-y-auto space-y-2 flex-1 pr-1">
+              {historyTab === 'active' ? (
+                dailyChecklists.length === 0 ? (
+                  <p className="text-center py-8 text-xs text-slate-400">Belum ada lembar ceklist aktif.</p>
+                ) : (
+                  dailyChecklists.map((chk) => (
+                    <div
+                      key={chk.id}
+                      className="p-3 rounded-xl border border-slate-200 hover:border-indigo-300 hover:bg-indigo-50/30 flex items-center justify-between gap-3 text-xs"
+                    >
+                      <div>
+                        <p className="font-bold text-slate-900">{chk.locationName || 'Area Lokasi'}</p>
+                        <p className="text-[11px] text-slate-500">Tanggal: {chk.date} • Kategori: {chk.category || '-'}</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (chk.locationId) setSelectedLocationId(chk.locationId);
+                          if (chk.date) setSelectedDate(chk.date);
+                          setShowHistoryModal(false);
+                        }}
+                        className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold rounded-lg border border-indigo-200 cursor-pointer"
+                      >
+                        Buka Ceklist
+                      </button>
+                    </div>
+                  ))
+                )
+              ) : isLoadingDeletedList ? (
+                <p className="text-center py-8 text-xs text-slate-400">Memuat data ceklist terhapus...</p>
+              ) : deletedChecklistsList.length === 0 ? (
+                <div className="text-center py-8 space-y-1">
+                  <CheckCircle2 className="w-8 h-8 text-emerald-500 mx-auto" />
+                  <p className="text-xs text-slate-600 font-semibold">Tidak ada ceklist yang dihapus.</p>
+                  <p className="text-[11px] text-slate-400">Semua formulir ceklist berada dalam keadaan aman dan aktif.</p>
+                </div>
+              ) : (
+                deletedChecklistsList.map((del) => (
+                  <div
+                    key={del.id}
+                    className="p-3 rounded-xl border border-rose-200 bg-rose-50/40 flex items-center justify-between gap-3 text-xs"
+                  >
+                    <div>
+                      <p className="font-bold text-slate-900">{del.locationName || del.id}</p>
+                      <p className="text-[11px] text-slate-500">
+                        Tanggal Ceklist: {del.date} • Dihapus: {del.deletedAt ? new Date(del.deletedAt).toLocaleString('id-ID') : '-'}
+                      </p>
+                      {del.deletedBy && <p className="text-[10px] text-rose-700 font-medium">Oleh: {del.deletedBy}</p>}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        await restoreDailyChecklist(del.id);
+                        await loadDeletedChecklists();
+                      }}
+                      className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg shadow-xs flex items-center gap-1 cursor-pointer"
+                    >
+                      <RotateCcw className="w-3.5 h-3.5" />
+                      <span>Pulihkan</span>
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+
+            <div className="pt-2 border-t border-slate-100 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setShowHistoryModal(false)}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold cursor-pointer"
+              >
+                Tutup
+              </button>
+            </div>
           </div>
         </div>
       )}
