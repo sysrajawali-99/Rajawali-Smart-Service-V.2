@@ -49,7 +49,7 @@
       "name": "Super Administrator",
       "email": "superadmin@cleaningops.com",
       "username": "superadmin",
-      "password": "$2b$10$m9m8qXF7mLL7OcPOh5XtNOsFr8Nq1thCH5sB61U1RCt2ivfJYEKZ6",
+      "password": "$2b$10$3iIZ8OUVmEM9Vf8dYWC/TO3g5bPAIAiJFsNaCpR2wvHZZPypyRy82",
       "role": "super_admin",
       "assignedProjectIds": [
         "proj-1",
@@ -4821,6 +4821,48 @@
         "mustChangePassword": true
       },
       "companyId": "comp-main"
+    },
+    "log-1791733151497-ehd12": {
+      "id": "log-1791733151497-ehd12",
+      "timestamp": "2026-10-11T15:39:11.497Z",
+      "action": "UPDATE_COMPANY_STATUS",
+      "module": "PERUSAHAAN",
+      "description": "Status perusahaan \"PT Test Baru\" diubah menjadi \"aktif\" oleh Super Administrator",
+      "userId": "usr-admin",
+      "userName": "Super Administrator",
+      "company_id": "comp-test",
+      "details": {
+        "newStatus": "aktif"
+      },
+      "companyId": "comp-test"
+    },
+    "log-1791733157245-j8fxy": {
+      "id": "log-1791733157245-j8fxy",
+      "timestamp": "2026-10-11T15:39:17.245Z",
+      "action": "UPDATE_COMPANY_STATUS",
+      "module": "PERUSAHAAN",
+      "description": "Status perusahaan \"PT Test Baru\" diubah menjadi \"ditangguhkan\" oleh Super Administrator",
+      "userId": "usr-admin",
+      "userName": "Super Administrator",
+      "company_id": "comp-test",
+      "details": {
+        "newStatus": "ditangguhkan"
+      },
+      "companyId": "comp-test"
+    },
+    "log-1791733160348-3jlqp": {
+      "id": "log-1791733160348-3jlqp",
+      "timestamp": "2026-10-11T15:39:20.348Z",
+      "action": "UPDATE_COMPANY_STATUS",
+      "module": "PERUSAHAAN",
+      "description": "Status perusahaan \"PT Test Baru\" diubah menjadi \"aktif\" oleh Super Administrator",
+      "userId": "usr-admin",
+      "userName": "Super Administrator",
+      "company_id": "comp-test",
+      "details": {
+        "newStatus": "aktif"
+      },
+      "companyId": "comp-test"
     }
   },
   "daily_checklists": {

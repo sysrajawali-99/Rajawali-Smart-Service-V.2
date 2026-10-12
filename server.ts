@@ -2096,8 +2096,11 @@ app.post('/api/records/:collection', async (req: Request, res: Response) => {
   const id = data.id || `${collection.slice(0, 4)}-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
   data.id = id;
 
-  // Requirement 3: Tetapkan company_id dari sesi dan abaikan company_id dari klien (kecuali Super Admin)
-  if (isSuper && data.company_id) {
+  // Requirement 3: Tetapkan company_id dari sesi dan abaikan company_id dari klien (kecuali Super Admin atau koleksi companies)
+  if (collection === 'companies') {
+    data.company_id = id;
+    data.companyId = id;
+  } else if (isSuper && data.company_id) {
     data.companyId = data.company_id;
   } else if (isSuper && data.companyId) {
     data.company_id = data.companyId;
@@ -2269,18 +2272,26 @@ app.put('/api/records/:collection/:id', async (req: Request, res: Response) => {
   }
 
   // Non-superadmin pada companies: hanya boleh mengelola perusahaannya sendiri dan tidak dapat mengubah status
-  if (collection === 'companies' && !isSuper) {
-    if (id !== sessionCompanyId) {
-      return res.status(404).json({ error: 'Perusahaan tidak ditemukan' });
+  if (collection === 'companies') {
+    if (!id || id === 'undefined' || id === 'null') {
+      return res.status(400).json({ error: 'ID perusahaan tidak valid' });
     }
-    if (existing) {
-      data.status = existing.status;
+    if (!isSuper) {
+      if (id !== sessionCompanyId) {
+        return res.status(404).json({ error: 'Perusahaan tidak ditemukan' });
+      }
+      if (existing) {
+        data.status = existing.status;
+      }
     }
   }
 
-  // Requirement 1: company_id dari sesi, BUKAN dari klien (kecuali Super Admin)
+  // Requirement 1: company_id dari sesi, BUKAN dari klien (kecuali Super Admin atau koleksi companies)
   data.id = id;
-  if (isSuper && (data.company_id || data.companyId)) {
+  if (collection === 'companies') {
+    data.company_id = id;
+    data.companyId = id;
+  } else if (isSuper && (data.company_id || data.companyId)) {
     const cId = data.company_id || data.companyId;
     data.company_id = cId;
     data.companyId = cId;
@@ -2679,7 +2690,7 @@ app.post('/api/upload', (req: Request, res: Response) => {
   });
 });
 
-// 5b. POST /api/companies/:id/logo -> Unggah LOGO per perusahaan dengan validasi tipe isi file (magic bytes PNG/JPG/WEBP), batasi ukuran max 3MB, nama file acak, dan isolasi folder per perusahaan
+// 5b. POST /api/companies/:id/logo -> Unggah LOGO per perusahaan dengan validasi tipe gambar, penyesuaian ukuran otomatis, dan isolasi per tenant
 app.post('/api/companies/:id/logo', (req: Request, res: Response) => {
   const { id } = req.params;
   const isSuper = isSessionSuperAdmin(req);
@@ -2698,12 +2709,12 @@ app.post('/api/companies/:id/logo', (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Tidak ada file logo yang diunggah' });
     }
 
-    // Batasi ukuran file (maksimal 3MB)
-    if (req.file.size > 3 * 1024 * 1024) {
-      return res.status(400).json({ error: 'Ukuran file logo maksimal 3MB' });
+    // Batas file besar hingga 25MB (karena sistem otomatis melakukan resize/kompresi)
+    if (req.file.size > 25 * 1024 * 1024) {
+      return res.status(400).json({ error: 'Ukuran file gambar maksimal 25MB' });
     }
 
-    // Cek tipe dari isi buffer (magic bytes): PNG, JPG, WEBP
+    // Cek tipe dari isi buffer (magic bytes): PNG, JPG, WEBP, GIF, SVG
     const buf = req.file.buffer;
     let ext = '';
     let mime = '';
@@ -2716,9 +2727,15 @@ app.post('/api/companies/:id/logo', (req: Request, res: Response) => {
     } else if (buf.length >= 12 && buf.toString('ascii', 0, 4) === 'RIFF' && buf.toString('ascii', 8, 12) === 'WEBP') {
       ext = '.webp';
       mime = 'image/webp';
+    } else if (buf.length >= 6 && buf.toString('ascii', 0, 3) === 'GIF') {
+      ext = '.gif';
+      mime = 'image/gif';
+    } else if (buf.toString('utf8', 0, 100).toLowerCase().includes('<svg')) {
+      ext = '.svg';
+      mime = 'image/svg+xml';
     } else {
       return res.status(400).json({
-        error: 'Tipe file tidak valid. Hanya gambar format PNG, JPG, atau WEBP asli yang diperbolehkan.',
+        error: 'Tipe file tidak valid. Harap gunakan format gambar PNG, JPG, WEBP, atau SVG.',
       });
     }
 
@@ -2741,13 +2758,39 @@ app.post('/api/companies/:id/logo', (req: Request, res: Response) => {
     const logoUrl = `/uploads/${id}/${randomFilename}`;
 
     // Update data perusahaan di memori & database
-    const company = await getDbRecord('companies', id);
-    if (company) {
-      company.logo = logoUrl;
-      company.updatedAt = new Date().toISOString();
-      await upsertDbRecord('companies', id, company);
-      scheduleSaveMemoryStore();
+    let company = await getDbRecord('companies', id);
+    if (!company) {
+      // Inisialisasi jika belum tersimpan
+      company = {
+        id,
+        nama: id,
+        slug: id,
+        status: 'aktif',
+        createdAt: new Date().toISOString(),
+        company_id: id,
+        companyId: id,
+      };
     }
+    company.logo = logoUrl;
+    company.updatedAt = new Date().toISOString();
+    await upsertDbRecord('companies', id, company);
+    scheduleSaveMemoryStore();
+
+    // Jika ini perusahaan utama atau perusahaan sesi aktif, sinkronkan juga ke profil perusahaan
+    if (id === 'comp-main' || id === sessionCompanyId) {
+      let prof = (await getDbRecord('company_profile', 'main')) || {};
+      prof.logoUrl = logoUrl;
+      prof.updatedAt = new Date().toISOString();
+      await upsertDbRecord('company_profile', 'main', prof);
+      io.emit('company_profile:update', prof);
+    }
+
+    emitTenantRecordChange('record:upsert', {
+      collection: 'companies',
+      id,
+      data: company,
+      company_id: id,
+    });
 
     await addAuditLog({
       action: 'UPDATE_COMPANY',
@@ -2761,10 +2804,70 @@ app.post('/api/companies/:id/logo', (req: Request, res: Response) => {
     return res.json({
       success: true,
       logoUrl,
+      company,
       message: 'Logo perusahaan berhasil diunggah dan disimpan',
     });
   });
 });
+
+// 5c. POST /api/companies/:id/status -> Aktivasi / penangguhan / pengarsipan status perusahaan khusus Super Admin
+app.post('/api/companies/:id/status', async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const { status } = req.body || {};
+  const isSuper = isSessionSuperAdmin(req);
+
+  if (!isSuper) {
+    return res.status(403).json({ error: 'Hanya Super Administrator yang berhak mengubah status perusahaan.' });
+  }
+
+  if (!['aktif', 'ditangguhkan', 'diarsipkan'].includes(status)) {
+    return res.status(400).json({ error: 'Status perusahaan harus berupa "aktif", "ditangguhkan", atau "diarsipkan".' });
+  }
+
+  if (id === 'comp-main' && status !== 'aktif') {
+    return res.status(400).json({ error: 'Perusahaan Utama (comp-main) tidak dapat dinonaktifkan atau diarsipkan.' });
+  }
+
+  let company = await getDbRecord('companies', id);
+  if (!company) {
+    // Cari dari daftar memoryStore atau inisialisasi
+    const memComp = memoryStore.get('companies')?.get(id);
+    if (memComp) {
+      company = { ...memComp };
+    } else {
+      return res.status(404).json({ error: 'Perusahaan tidak ditemukan' });
+    }
+  }
+
+  company.status = status;
+  company.updatedAt = new Date().toISOString();
+  await upsertDbRecord('companies', id, company);
+  scheduleSaveMemoryStore();
+
+  emitTenantRecordChange('record:upsert', {
+    collection: 'companies',
+    id,
+    data: company,
+    company_id: id,
+  });
+
+  await addAuditLog({
+    action: 'UPDATE_COMPANY_STATUS',
+    module: 'PERUSAHAAN',
+    description: `Status perusahaan "${company.nama || id}" diubah menjadi "${status}" oleh ${(req as any).user?.name || 'Super Admin'}`,
+    userId: (req as any).user?.id || (req as any).user?.userId,
+    userName: (req as any).user?.name,
+    company_id: id,
+    details: { newStatus: status },
+  });
+
+  return res.json({
+    success: true,
+    company,
+    message: `Status perusahaan berhasil diubah menjadi "${status}".`,
+  });
+});
+
 
 // 6. POST /api/pwa/update-icons -> Batch write all 11 generated PWA icons to public/icons/ (Restricted strictly to Super Admin)
 app.post('/api/pwa/update-icons', async (req: Request, res: Response) => {

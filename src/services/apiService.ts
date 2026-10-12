@@ -397,17 +397,32 @@ export async function uploadPhoto(fileOrBlobOrDataUrl: File | Blob | string): Pr
   return '';
 }
 
+import { resizeImageForLogo } from '../utils/imageResizer';
+
 /**
- * Uploads a company logo to /api/companies/:id/logo with strict magic-bytes verification
+ * Uploads a company logo to /api/companies/:id/logo with automatic resizing
+ * Accepts ANY file size (even large phone photos / 20MB+) and resizes automatically to a crisp, small logo file.
  */
 export async function uploadCompanyLogo(
   companyId: string,
   fileOrBlob: File | Blob
 ): Promise<{ success: boolean; logoUrl?: string; error?: string }> {
   try {
+    // Otomatis ubah ukuran (resize & compress) jika berupa gambar agar selalu kecil dan pas
+    let processedFile: File;
+    try {
+      const resized = await resizeImageForLogo(fileOrBlob, {
+        maxDimension: 512,
+        quality: 0.9,
+      });
+      processedFile = resized.file;
+    } catch {
+      processedFile = fileOrBlob as File;
+    }
+
     const formData = new FormData();
-    const filename = (fileOrBlob as File).name || 'company-logo.png';
-    formData.append('file', fileOrBlob, filename);
+    const filename = processedFile.name || 'company-logo.png';
+    formData.append('file', processedFile, filename);
 
     const res = await fetch(getApiUrl(`/api/companies/${encodeURIComponent(companyId)}/logo`), {
       method: 'POST',
@@ -422,6 +437,29 @@ export async function uploadCompanyLogo(
     return { success: true, logoUrl: getFullUploadUrl(data.logoUrl) };
   } catch (err: any) {
     return { success: false, error: err.message || 'Gagal terhubung ke server saat mengunggah logo' };
+  }
+}
+
+/**
+ * Explicit helper to update company status (aktif / ditangguhkan / diarsipkan)
+ */
+export async function apiUpdateCompanyStatus(
+  companyId: string,
+  status: 'aktif' | 'ditangguhkan' | 'diarsipkan'
+): Promise<{ success: boolean; company?: any; error?: string }> {
+  try {
+    const res = await fetch(getApiUrl(`/api/companies/${encodeURIComponent(companyId)}/status`), {
+      method: 'POST',
+      headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ status }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      return { success: false, error: data.error || 'Gagal mengubah status perusahaan' };
+    }
+    return data;
+  } catch (err: any) {
+    return { success: false, error: err.message || 'Gagal mengubah status perusahaan di server' };
   }
 }
 

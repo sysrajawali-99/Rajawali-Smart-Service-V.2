@@ -41,6 +41,7 @@ import {
   BarChart3,
 } from 'lucide-react';
 import { useCleaning } from '../../context/CleaningContext';
+import { resizeImageForLogo } from '../../utils/imageResizer';
 import {
   Company,
   CompanyStatus,
@@ -258,7 +259,7 @@ export const PengaturanView: React.FC<{ initialSubTab?: PengaturanSubTab }> = ({
   // Tangguhkan / Aktifkan Perusahaan (Khusus Super Admin)
   const handleToggleCompanyStatus = async (company: Company) => {
     if (!isSuperAdmin) {
-      showToast('Hanya Super Administrator yang berhak menangguhkan perusahaan.', 'error');
+      showToast('Hanya Super Administrator yang berhak mengubah status perusahaan.', 'error');
       return;
     }
     if (company.id === 'comp-main') {
@@ -267,12 +268,6 @@ export const PengaturanView: React.FC<{ initialSubTab?: PengaturanSubTab }> = ({
     }
 
     const nextStatus: CompanyStatus = company.status === 'aktif' ? 'ditangguhkan' : 'aktif';
-    const confirmMsg =
-      nextStatus === 'ditangguhkan'
-        ? `Tangguhkan perusahaan "${company.nama}"?\n\nPengguna milik perusahaan ini tidak akan dapat login sampai diaktifkan kembali.`
-        : `Aktifkan kembali perusahaan "${company.nama}"?`;
-
-    if (!window.confirm(confirmMsg)) return;
 
     try {
       await updateCompany(company.id, { status: nextStatus });
@@ -294,36 +289,33 @@ export const PengaturanView: React.FC<{ initialSubTab?: PengaturanSubTab }> = ({
     }
   };
 
-  // Unggah LOGO Perusahaan (Cek tipe file PNG/JPG/WEBP & batasi ukuran max 3MB)
+  // Unggah LOGO Perusahaan (Mendukung file ukuran apa pun, otomatis resize & kompresi optimal)
   const handleLogoFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !targetCompanyForLogo) return;
 
-    // 1. Cek ukuran (Maksimal 3MB)
-    if (file.size > 3 * 1024 * 1024) {
-      showToast('Ukuran file logo terlalu besar. Maksimal 3MB.', 'error');
-      return;
-    }
-
-    // 2. Cek tipe MIME dasar
-    const allowedTypes = ['image/png', 'image/jpeg', 'image/webp'];
-    if (!allowedTypes.includes(file.type)) {
-      showToast('Format logo harus berupa file gambar PNG, JPG, atau WEBP.', 'error');
-      return;
-    }
-
     setUploadingLogoCompanyId(targetCompanyForLogo);
+    showToast('Sedang memproses dan menyesuaikan ukuran logo...', 'info');
 
     try {
-      const res = await uploadCompanyLogo(targetCompanyForLogo, file);
+      // Otomatis ubah ukuran dari ukuran apa pun ke format proporsional yang kecil dan tajam
+      const resized = await resizeImageForLogo(file, {
+        maxDimension: 512,
+        quality: 0.9,
+      });
+
+      const res = await uploadCompanyLogo(targetCompanyForLogo, resized.file);
       if (res.success && res.logoUrl) {
         await updateCompany(targetCompanyForLogo, { logo: res.logoUrl });
-        showToast('Logo perusahaan berhasil diunggah dan disimpan!');
+        if (targetCompanyForLogo === userCompanyId || targetCompanyForLogo === 'comp-main') {
+          updateCompanyProfile({ logoUrl: res.logoUrl });
+        }
+        showToast('Logo perusahaan berhasil diperbarui dan disesuaikan ukurannya!', 'success');
       } else {
         showToast(res.error || 'Gagal mengunggah logo perusahaan.', 'error');
       }
     } catch (err: any) {
-      showToast(err?.message || 'Terjadi kesalahan saat mengunggah logo.', 'error');
+      showToast(err?.message || 'Terjadi kesalahan saat memproses logo.', 'error');
     } finally {
       setUploadingLogoCompanyId(null);
       setTargetCompanyForLogo(null);
@@ -467,14 +459,6 @@ export const PengaturanView: React.FC<{ initialSubTab?: PengaturanSubTab }> = ({
       showToast('Anda tidak dapat menonaktifkan akun Anda sendiri.', 'error');
       return;
     }
-    const isAktif = (user.status || 'aktif') === 'aktif';
-    const confirmChange = window.confirm(
-      `${isAktif ? 'Nonaktifkan' : 'Aktifkan kembali'} akun pengguna "${user.name}"?\n\n` +
-        (isAktif
-          ? 'Pengguna akan segera ditolak oleh server dan tidak dapat login.'
-          : 'Pengguna akan dapat login kembali.')
-    );
-    if (!confirmChange) return;
 
     const res = await toggleUserStatus(user.id);
     if (res.success) {
@@ -489,9 +473,6 @@ export const PengaturanView: React.FC<{ initialSubTab?: PengaturanSubTab }> = ({
 
   // Reset Sandi User
   const handleResetUserPassword = async (user: AppUser) => {
-    if (!window.confirm(`Reset kata sandi akun "${user.name}"?\n\nSistem akan membuat sandi sementara baru.`)) {
-      return;
-    }
     const res = await resetUserPassword(user.id);
     if (res.success && res.temporaryPassword) {
       setResetModalData({
@@ -514,7 +495,6 @@ export const PengaturanView: React.FC<{ initialSubTab?: PengaturanSubTab }> = ({
       showToast('Tidak bisa menghapus akun Anda sendiri.', 'error');
       return;
     }
-    if (!window.confirm(`Hapus permanen akun pengguna "${user.name}"?`)) return;
 
     const res = deleteUser(user.id);
     if (res.success) {

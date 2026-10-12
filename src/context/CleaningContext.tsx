@@ -94,6 +94,7 @@ import {
   apiSwitchCompany,
   apiToggleUserStatus,
   apiResetUserPassword,
+  apiUpdateCompanyStatus,
   getAuthToken,
   setAuthToken,
 } from '../services/apiService';
@@ -170,6 +171,7 @@ interface CleaningContextType {
 
   // Multi-Company Management (Super Admin & Admin Perusahaan)
   companies: Company[];
+  currentCompany?: Company;
   addCompany: (comp: Omit<Company, 'id' | 'createdAt'>) => Promise<Company>;
   updateCompany: (id: string, updates: Partial<Company>) => Promise<void>;
   deleteCompany: (id: string, typedConfirmName: string) => Promise<{ success: boolean; message?: string }>;
@@ -780,17 +782,43 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   const updateCompany = async (id: string, updates: Partial<Company>): Promise<void> => {
+    if (!id || id === 'undefined' || id === 'null') {
+      console.warn('[updateCompany] ID perusahaan tidak valid:', id);
+      return;
+    }
+
     setCompanies((prev) =>
       prev.map((c) => (c.id === id ? { ...c, ...updates, updatedAt: new Date().toISOString() } : c))
     );
-    const existing = companies.find((c) => c.id === id);
-    if (existing) {
-      const merged = { ...existing, ...updates, updatedAt: new Date().toISOString() };
+
+    let targetComp = companies.find((c) => c.id === id);
+    if (!targetComp) {
+      targetComp = {
+        id,
+        nama: updates.nama || id,
+        slug: updates.slug || id,
+        status: updates.status || 'aktif',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        ...updates,
+      } as Company;
+    } else {
+      targetComp = { ...targetComp, ...updates, updatedAt: new Date().toISOString() };
+    }
+
+    // Jika perubahan menyangkut status operasional, panggil endpoint aktivasi khusus
+    if (updates.status) {
       try {
-        await upsertRecord(COLLECTIONS.COMPANIES, merged);
-      } catch (err) {
-        notifyServerError('memperbarui perusahaan', err);
+        await apiUpdateCompanyStatus(id, updates.status);
+      } catch (e) {
+        console.warn('[updateCompany] apiUpdateCompanyStatus notice:', e);
       }
+    }
+
+    try {
+      await upsertRecord(COLLECTIONS.COMPANIES, targetComp);
+    } catch (err) {
+      notifyServerError('memperbarui perusahaan', err);
     }
   };
 
@@ -839,6 +867,23 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     users.find((u) => u.id === activeUserId) ||
     users.find((u) => u.role === userRole) ||
     users[0];
+
+  // Perusahaan aktif sesuai tenant user yang sedang login
+  const currentCompany = useMemo(() => {
+    const userCompId = currentUser?.company_id || currentUser?.companyId || 'comp-main';
+    return companies.find((c) => c.id === userCompId) || companies[0];
+  }, [companies, currentUser]);
+
+  // Profil perusahaan dinamis yang selalu sesuai dengan perusahaan pengguna saat ini
+  const effectiveCompanyProfile: CompanyProfile = useMemo(() => {
+    const compName = currentCompany?.nama?.trim() || companyProfile?.companyName?.trim() || 'SMART SERVICE';
+    const compLogo = currentCompany?.logo || companyProfile?.logoUrl || '';
+    return {
+      ...companyProfile,
+      companyName: compName,
+      logoUrl: compLogo,
+    };
+  }, [currentCompany, companyProfile]);
 
   // User restriction:
   // Super Admin ('admin' or 'super_admin') can view all projects.
@@ -4580,7 +4625,8 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   return (
     <CleaningContext.Provider
       value={{
-        companyProfile,
+        companyProfile: effectiveCompanyProfile,
+        currentCompany,
         updateCompanyProfile,
         resetCompanyProfile,
         isPwaIconsRegenerating,

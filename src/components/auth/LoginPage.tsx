@@ -21,25 +21,13 @@ import {
 import { UserRole } from '../../types';
 
 export const LoginPage: React.FC = () => {
-  const { login, instantLogin, companyProfile, users, allProjects, projects, companies } = useCleaning();
-  const [selectedCompanyId, setSelectedCompanyId] = useState<string>(() => companies[0]?.id || 'comp-main');
+  const { login, instantLogin, users, allProjects, projects } = useCleaning();
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [activeLoginId, setActiveLoginId] = useState<string | null>(null);
-
-  const selectedCompany = useMemo(() => {
-    return (
-      companies.find((c) => c.id === selectedCompanyId) ||
-      companies[0] || {
-        id: 'comp-main',
-        nama: companyProfile?.companyName || 'Rajawali Smart Service',
-        logo: companyProfile?.logoUrl,
-      }
-    );
-  }, [companies, selectedCompanyId, companyProfile]);
 
   // Instant login filters
   const [selectedRoleFilter, setSelectedRoleFilter] = useState<'all' | UserRole>('all');
@@ -49,13 +37,9 @@ export const LoginPage: React.FC = () => {
   // Available projects list for displaying assigned project names
   const projectList = allProjects && allProjects.length > 0 ? allProjects : projects;
 
-  // Filtered users for instant login list (terfilter sesuai perusahaan yang dipilih atau super admin)
+  // Filtered users for instant login list
   const filteredUsers = useMemo(() => {
     return users.filter((u) => {
-      const uComp = u.company_id || u.companyId || 'comp-main';
-      const matchComp = u.role === 'super_admin' || u.role === 'admin' || uComp === selectedCompanyId;
-      if (!matchComp) return false;
-
       const matchRole = selectedRoleFilter === 'all' || u.role === selectedRoleFilter;
       const q = userSearchQuery.trim().toLowerCase();
       if (!q) return matchRole;
@@ -70,7 +54,7 @@ export const LoginPage: React.FC = () => {
 
       return matchRole && (matchName || matchUsername || matchEmail || matchProjects);
     });
-  }, [users, selectedCompanyId, selectedRoleFilter, userSearchQuery, projectList]);
+  }, [users, selectedRoleFilter, userSearchQuery, projectList]);
 
   const handleManualSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -89,7 +73,7 @@ export const LoginPage: React.FC = () => {
     setIsLoading(true);
 
     setTimeout(() => {
-      const result = login(identifier, password, selectedCompanyId);
+      const result = login(identifier, password);
       setIsLoading(false);
       if (!result.success) {
         setErrorMessage(result.message || 'Email atau kata sandi salah');
@@ -186,90 +170,18 @@ export const LoginPage: React.FC = () => {
       <div className="absolute bottom-1/4 -right-48 w-96 h-96 bg-indigo-600/15 rounded-full blur-3xl pointer-events-none" />
 
       <div className="w-full max-w-4xl relative z-10 my-4">
-        {/* Header Branding: Menampilkan Logo dan Nama Perusahaan Sesuai Pilihan */}
+        {/* Header Branding Aplikasi: SMART SERVICE - provide by jtismart */}
         <div className="text-center mb-6">
-          {selectedCompany?.logo ? (
-            <div className="inline-flex items-center justify-center p-2 rounded-2xl bg-white/10 backdrop-blur-md border border-white/20 shadow-xl shadow-sky-500/15 mb-3.5 transition-transform hover:scale-105">
-              <img
-                src={selectedCompany.logo}
-                alt={selectedCompany.nama || 'Company Logo'}
-                className="w-14 h-14 sm:w-16 sm:h-16 object-contain rounded-xl"
-                referrerPolicy="no-referrer"
-              />
-            </div>
-          ) : (
-            <div className="inline-flex items-center justify-center w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-gradient-to-tr from-sky-600 to-indigo-600 text-white shadow-lg shadow-sky-500/20 mb-3 border border-white/10 font-black text-xl uppercase">
-              {selectedCompany?.nama ? selectedCompany.nama.slice(0, 2) : <Building2 className="w-7 h-7" />}
-            </div>
-          )}
-          <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
-            {selectedCompany?.nama || companyProfile?.companyName || 'Rajawali Smart Service'}
+          <div className="inline-flex items-center justify-center w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-gradient-to-tr from-sky-500 via-indigo-600 to-blue-600 text-white shadow-xl shadow-sky-500/25 mb-3 border border-white/15">
+            <Sparkles className="w-7 h-7 sm:w-8 sm:h-8 text-white" />
+          </div>
+          <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-wider uppercase">
+            SMART SERVICE
           </h1>
-          <p className="text-xs sm:text-sm text-slate-400 mt-1 font-normal max-w-md mx-auto leading-relaxed">
-            Cleaning Operations & Multi-Project Facility Control System
+          <p className="text-xs sm:text-sm text-sky-400 mt-1 font-semibold tracking-wide">
+            provide by jtismart
           </p>
         </div>
-
-        {/* Pilihan Perusahaan: Hanya Menampilkan Nama dan Logo */}
-        {companies.length > 0 && (
-          <div className="mb-5 bg-slate-900/90 border border-slate-800 rounded-2xl p-3.5 sm:p-4 backdrop-blur-md shadow-xl">
-            <div className="flex items-center justify-between mb-2.5">
-              <span className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
-                <Building2 className="w-3.5 h-3.5 text-sky-400" />
-                <span>Pilih Perusahaan:</span>
-              </span>
-              <span className="text-[11px] text-slate-400 font-medium">
-                Masuk sesuai perusahaan tempat Anda terdaftar
-              </span>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
-              {companies
-                .filter((c) => c.status !== 'diarsipkan')
-                .map((comp) => {
-                  const isSelected = selectedCompanyId === comp.id;
-                  return (
-                    <button
-                      key={comp.id}
-                      type="button"
-                      onClick={() => {
-                        setSelectedCompanyId(comp.id);
-                        setErrorMessage(null);
-                      }}
-                      className={`flex items-center gap-3 p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
-                        isSelected
-                          ? 'bg-sky-600/25 border-sky-400 ring-1 ring-sky-400/60 shadow-md shadow-sky-500/10'
-                          : 'bg-slate-950/70 border-slate-800 hover:border-slate-700 hover:bg-slate-800/50 opacity-80 hover:opacity-100'
-                      }`}
-                    >
-                      <div className="w-9 h-9 rounded-lg bg-slate-800 border border-slate-700/80 flex items-center justify-center shrink-0 overflow-hidden">
-                        {comp.logo ? (
-                          <img
-                            src={comp.logo}
-                            alt={comp.nama}
-                            className="w-full h-full object-contain p-1"
-                            referrerPolicy="no-referrer"
-                          />
-                        ) : (
-                          <span className="text-xs font-bold text-sky-400 uppercase">
-                            {comp.nama.slice(0, 2)}
-                          </span>
-                        )}
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <span className={`text-xs font-bold truncate block ${isSelected ? 'text-white' : 'text-slate-200'}`}>
-                          {comp.nama}
-                        </span>
-                        <span className="text-[10px] text-slate-400 block truncate">
-                          {isSelected ? '✓ Terpilih' : 'Klik untuk memilih'}
-                        </span>
-                      </div>
-                    </button>
-                  );
-                })}
-            </div>
-          </div>
-        )}
 
         {/* Super Admin Quick Instant Login Banner */}
         {superAdminUser && (

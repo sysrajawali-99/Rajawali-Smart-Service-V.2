@@ -33,12 +33,19 @@ export const DEFAULT_HOSPITAL_KOP: KopSuratConfig = {
 
 export const getProjectKop = (
   project?: ProjectLocation,
-  companyProfile?: CompanyProfile
+  companyProfile?: CompanyProfile,
+  customCompany?: { nama?: string; logo?: string; companyName?: string },
+  currentUser?: { name?: string; role?: string }
 ): KopSuratConfig => {
   const profile = companyProfile || DEFAULT_COMPANY_PROFILE;
-  const compName = profile.companyName?.trim() || 'PT RAJAWALI TALENTA INDONESIA';
+  const compName =
+    customCompany?.nama?.trim() ||
+    customCompany?.companyName?.trim() ||
+    profile.companyName?.trim() ||
+    'SMART SERVICE';
   const subTitle = profile.documentHeaderTitle?.trim() || 'MANAJEMEN OPERASIONAL KEBERSIHAN & FASILITAS GEDUNG';
   const facility = project?.name ? project.name.trim().toUpperCase() : '';
+  const logo = customCompany?.logo || profile.logoUrl || '';
 
   // Clean address composition without trailing commas or empty lines
   const rawAddr = project?.address?.trim() || profile.address?.trim() || '';
@@ -48,7 +55,9 @@ export const getProjectKop = (
 
   // Clean contact composition without empty pipes or missing labels
   const contactParts: string[] = [];
-  if (project?.managerName?.trim()) {
+  if (currentUser?.name?.trim()) {
+    contactParts.push(`Dibuat oleh: ${currentUser.name.trim()}`);
+  } else if (project?.managerName?.trim()) {
     contactParts.push(`Facility Management: ${project.managerName.trim()}`);
   }
   if (profile.phone?.trim()) {
@@ -68,7 +77,7 @@ export const getProjectKop = (
     facilityName: facility,
     addressLine1: address,
     contactLine: contactLine,
-    logoUrl: profile.logoUrl || '',
+    logoUrl: logo,
     companyName: compName,
   };
 };
@@ -495,6 +504,10 @@ interface ExportMonthlyReportPDFOptions {
   selectedMonth: string; // e.g. "2026-09"
   monthLabel: string; // e.g. "September 2026"
   kopSurat?: KopSuratConfig;
+  createdByName?: string;
+  verifiedByName?: string;
+  currentUser?: { name?: string; role?: string };
+  companyProfile?: CompanyProfile;
 }
 
 export const exportMonthlyReportToPDF = async (
@@ -870,11 +883,15 @@ export const exportMonthlyReportToPDF = async (
   doc.setFontSize(7.5);
   doc.setTextColor(40, 40, 40);
 
+  const preparer = options.createdByName || options.currentUser?.name || 'Supervisor Operasional';
+  const verifier = options.verifiedByName || 'Quality Control (QC)';
+  const approver = project.managerName || 'Building Facility Manager';
+
   // Col 1: Dibuat
   doc.text('Dibuat Oleh,', marginX + colWidth * 0.5, sigY, { align: 'center' });
   doc.text('Supervisor Operasional', marginX + colWidth * 0.5, sigY + 4, { align: 'center' });
   doc.setFont('helvetica', 'bold');
-  doc.text('( Hendra Wijaya )', marginX + colWidth * 0.5, sigY + 20, { align: 'center' });
+  doc.text(`( ${preparer} )`, marginX + colWidth * 0.5, sigY + 20, { align: 'center' });
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(6.5);
   doc.text('Cleaning Service Team', marginX + colWidth * 0.5, sigY + 23.5, { align: 'center' });
@@ -884,7 +901,7 @@ export const exportMonthlyReportToPDF = async (
   doc.text('Diverifikasi Oleh,', marginX + colWidth * 1.5, sigY, { align: 'center' });
   doc.text('Quality Control (QC)', marginX + colWidth * 1.5, sigY + 4, { align: 'center' });
   doc.setFont('helvetica', 'bold');
-  doc.text('( Agus Prasetyo )', marginX + colWidth * 1.5, sigY + 20, { align: 'center' });
+  doc.text(`( ${verifier} )`, marginX + colWidth * 1.5, sigY + 20, { align: 'center' });
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(6.5);
   doc.text('Facility QC Inspector', marginX + colWidth * 1.5, sigY + 23.5, { align: 'center' });
@@ -894,7 +911,7 @@ export const exportMonthlyReportToPDF = async (
   doc.text('Disetujui Oleh,', marginX + colWidth * 2.5, sigY, { align: 'center' });
   doc.text('Building Management / Klien', marginX + colWidth * 2.5, sigY + 4, { align: 'center' });
   doc.setFont('helvetica', 'bold');
-  doc.text(`( ${project.managerName} )`, marginX + colWidth * 2.5, sigY + 20, { align: 'center' });
+  doc.text(`( ${approver} )`, marginX + colWidth * 2.5, sigY + 20, { align: 'center' });
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(6.5);
   doc.text(`Pengelola ${project.name}`, marginX + colWidth * 2.5, sigY + 23.5, { align: 'center' });
@@ -930,6 +947,9 @@ export interface ExportMasterProgramPDFOptions {
   month: number;
   year: number;
   kopSurat?: KopSuratConfig;
+  createdByName?: string;
+  verifiedByName?: string;
+  currentUser?: { name?: string; role?: string };
 }
 
 export const exportMasterCleaningProgramToPDF = (
@@ -1102,11 +1122,15 @@ export const exportMasterCleaningProgramToPDF = (
   doc.setFontSize(7);
   doc.setTextColor(40, 45, 55);
 
+  const preparer = options.createdByName || options.currentUser?.name || 'Supervisor Operasional';
+  const verifier = options.verifiedByName || 'Quality Control (QC)';
+  const approver = project.managerName || 'Building Facility Manager';
+
   // Col 1: Dibuat
   doc.text('Dibuat Oleh,', marginX + colW * 0.5, sigY, { align: 'center' });
   doc.text('Supervisor Cleaning Service', marginX + colW * 0.5, sigY + 3.5, { align: 'center' });
   doc.setFont('helvetica', 'bold');
-  doc.text('( Hendra Wijaya )', marginX + colW * 0.5, sigY + 18, { align: 'center' });
+  doc.text(`( ${preparer} )`, marginX + colW * 0.5, sigY + 18, { align: 'center' });
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(6);
   doc.text('Operational Team', marginX + colW * 0.5, sigY + 21, { align: 'center' });
@@ -1116,7 +1140,7 @@ export const exportMasterCleaningProgramToPDF = (
   doc.text('Diverifikasi Oleh,', marginX + colW * 1.5, sigY, { align: 'center' });
   doc.text('Quality Control (QC)', marginX + colW * 1.5, sigY + 3.5, { align: 'center' });
   doc.setFont('helvetica', 'bold');
-  doc.text('( Agus Prasetyo )', marginX + colW * 1.5, sigY + 18, { align: 'center' });
+  doc.text(`( ${verifier} )`, marginX + colW * 1.5, sigY + 18, { align: 'center' });
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(6);
   doc.text('Facility QC Inspector', marginX + colW * 1.5, sigY + 21, { align: 'center' });
@@ -1161,6 +1185,9 @@ export interface ExportDailyActivityPDFOptions {
   month: number;
   year: number;
   kopSurat?: KopSuratConfig;
+  createdByName?: string;
+  verifiedByName?: string;
+  currentUser?: { name?: string; role?: string };
 }
 
 export const exportDailyActivityToPDF = (
@@ -1379,10 +1406,14 @@ export const exportDailyActivityToPDF = (
   doc.setFontSize(7.5);
   doc.setTextColor(51, 65, 85);
 
+  const preparer = options.createdByName || options.currentUser?.name || 'Supervisor Operasional';
+  const verifier = options.verifiedByName || 'Quality Control (QC)';
+  const approver = project.managerName || 'Building Facility Manager';
+
   doc.text('Dibuat Oleh,', marginX + colW * 0.5, sigY, { align: 'center' });
   doc.text('Supervisor Cleaning Service', marginX + colW * 0.5, sigY + 4, { align: 'center' });
   doc.setFont('helvetica', 'bold');
-  doc.text('( Hendra Wijaya )', marginX + colW * 0.5, sigY + 19, { align: 'center' });
+  doc.text(`( ${preparer} )`, marginX + colW * 0.5, sigY + 19, { align: 'center' });
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(6.5);
   doc.text('Operational Team', marginX + colW * 0.5, sigY + 22.5, { align: 'center' });
@@ -1391,7 +1422,7 @@ export const exportDailyActivityToPDF = (
   doc.text('Diverifikasi Oleh,', marginX + colW * 1.5, sigY, { align: 'center' });
   doc.text('Quality Control (QC)', marginX + colW * 1.5, sigY + 4, { align: 'center' });
   doc.setFont('helvetica', 'bold');
-  doc.text('( Agus Prasetyo )', marginX + colW * 1.5, sigY + 19, { align: 'center' });
+  doc.text(`( ${verifier} )`, marginX + colW * 1.5, sigY + 19, { align: 'center' });
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(6.5);
   doc.text('Facility QC Inspector', marginX + colW * 1.5, sigY + 22.5, { align: 'center' });
@@ -1413,7 +1444,7 @@ export const exportDailyActivityToPDF = (
     doc.setFontSize(6);
     doc.setTextColor(148, 163, 184);
     doc.text(
-      `Dokumen Resmi Daily Activity  •  PT Rajawali Talenta Indonesia  •  ${project.name}  •  Tgl ${day} ${monthName} ${year}  •  Halaman ${p} dari ${totalPages}`,
+      `Dokumen Resmi Daily Activity  •  ${kopSurat.companyName || 'SMART SERVICE'}  •  ${project.name}  •  Tgl ${day} ${monthName} ${year}  •  Halaman ${p} dari ${totalPages}`,
       pageWidth / 2,
       pageHeight - 6,
       { align: 'center' }
@@ -1437,6 +1468,9 @@ export interface ExportWeeklyActivityPDFOptions {
   month: number;
   year: number;
   kopSurat?: KopSuratConfig;
+  createdByName?: string;
+  verifiedByName?: string;
+  currentUser?: { name?: string; role?: string };
 }
 
 export const exportWeeklyActivityToPDF = (
@@ -1660,10 +1694,14 @@ export const exportWeeklyActivityToPDF = (
   doc.setFontSize(7.5);
   doc.setTextColor(51, 65, 85);
 
+  const preparer = options.createdByName || options.currentUser?.name || 'Supervisor Operasional';
+  const verifier = options.verifiedByName || 'Quality Control (QC)';
+  const approver = project.managerName || 'Building Facility Manager';
+
   doc.text('Dibuat Oleh,', marginX + colW * 0.5, sigY, { align: 'center' });
   doc.text('Supervisor Cleaning Service', marginX + colW * 0.5, sigY + 4, { align: 'center' });
   doc.setFont('helvetica', 'bold');
-  doc.text('( Hendra Wijaya )', marginX + colW * 0.5, sigY + 19, { align: 'center' });
+  doc.text(`( ${preparer} )`, marginX + colW * 0.5, sigY + 19, { align: 'center' });
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(6.5);
   doc.text('Operational Team', marginX + colW * 0.5, sigY + 22.5, { align: 'center' });
@@ -1672,7 +1710,7 @@ export const exportWeeklyActivityToPDF = (
   doc.text('Diverifikasi Oleh,', marginX + colW * 1.5, sigY, { align: 'center' });
   doc.text('Quality Control (QC)', marginX + colW * 1.5, sigY + 4, { align: 'center' });
   doc.setFont('helvetica', 'bold');
-  doc.text('( Agus Prasetyo )', marginX + colW * 1.5, sigY + 19, { align: 'center' });
+  doc.text(`( ${verifier} )`, marginX + colW * 1.5, sigY + 19, { align: 'center' });
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(6.5);
   doc.text('Facility QC Inspector', marginX + colW * 1.5, sigY + 22.5, { align: 'center' });
@@ -1694,7 +1732,7 @@ export const exportWeeklyActivityToPDF = (
     doc.setFontSize(6);
     doc.setTextColor(148, 163, 184);
     doc.text(
-      `Dokumen Resmi Weekly Activity  •  PT Rajawali Talenta Indonesia  •  ${project.name}  •  Minggu ${selectedWeek} (${monthName} ${year})  •  Halaman ${p} dari ${totalPages}`,
+      `Dokumen Resmi Weekly Activity  •  ${kopSurat.companyName || 'SMART SERVICE'}  •  ${project.name}  •  Minggu ${selectedWeek} (${monthName} ${year})  •  Halaman ${p} dari ${totalPages}`,
       pageWidth / 2,
       pageHeight - 6,
       { align: 'center' }
@@ -1715,6 +1753,9 @@ export interface ExportMonthlyActivityPDFOptions {
   month: number;
   year: number;
   kopSurat?: KopSuratConfig;
+  createdByName?: string;
+  verifiedByName?: string;
+  currentUser?: { name?: string; role?: string };
 }
 
 export const exportMonthlyActivityToPDF = (
