@@ -21,7 +21,7 @@ import {
 import { UserRole } from '../../types';
 
 export const LoginPage: React.FC = () => {
-  const { login, instantLogin, users, allProjects, projects } = useCleaning();
+  const { login, instantLogin, users, allProjects, projects, companyProfile } = useCleaning();
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);

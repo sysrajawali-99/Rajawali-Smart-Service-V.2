@@ -159,6 +159,7 @@ export const PengaturanView: React.FC<{ initialSubTab?: PengaturanSubTab }> = ({
     resetUserPassword,
     projects,
     setActiveTab,
+    updateCompanyProfile,
     // Nilai context untuk modul warisan yang dipertahankan
     checklistTemplates,
     kpiConfig,
