@@ -32,7 +32,7 @@ import {
   FREQUENCY_META,
   MONTH_OPTIONS,
 } from '../../utils/mcpUtils';
-import { exportWeeklyActivityToPDF } from '../../utils/pdfExport';
+import { exportWeeklyActivityToPDF, getProjectKop } from '../../utils/pdfExport';
 
 export const WeeklyActivityView: React.FC = () => {
   const {
@@ -45,6 +45,9 @@ export const WeeklyActivityView: React.FC = () => {
     deleteMasterProgram,
     toggleMasterProgramDay,
     setActiveTab,
+    companyProfile,
+    currentCompany,
+    currentUser,
   } = useCleaning();
 
   // Date selection state: Default is 15 September 2026
@@ -414,6 +417,8 @@ export const WeeklyActivityView: React.FC = () => {
         endDay: end,
         month: selectedMonth,
         year: selectedYear,
+        kopSurat: getProjectKop(activeProject, companyProfile, currentCompany, currentUser),
+        currentUser,
       });
       showToast('Formulir Laporan Weekly Activity standar perusahaan berhasil disimpan ke PDF!');
     } catch (err) {

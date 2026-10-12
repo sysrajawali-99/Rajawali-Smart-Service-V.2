@@ -123,13 +123,15 @@ export interface ExportDamageSummaryOptions {
   filterStatus?: string;
   filterCategory?: string;
   filterFloor?: string;
+  createdByName?: string;
+  currentUser?: { name?: string; role?: string };
 }
 
 export const exportDamageSummaryToPDF = (options: ExportDamageSummaryOptions): void => {
   const {
     reports,
     project,
-    kopSurat = getProjectKop(project) || DEFAULT_HOSPITAL_KOP,
+    kopSurat = getProjectKop(project, undefined, undefined, options.currentUser) || DEFAULT_HOSPITAL_KOP,
     filterPeriod,
     filterStatus,
     filterCategory,
@@ -292,13 +294,16 @@ export const exportDamageSummaryToPDF = (options: ExportDamageSummaryOptions): v
   doc.setFontSize(7.5);
   doc.setTextColor(40, 45, 55);
 
+  const preparer = options.createdByName || options.currentUser?.name || 'Supervisor Operasional';
+  const companyTitle = kopSurat.companyName || kopSurat.institutionLine1 || 'SMART SERVICE';
+
   doc.text('Dilaporkan & Dibuat Oleh,', marginX + colW * 0.5, sigY, { align: 'center' });
   doc.text('Supervisor Cleaning / Operasional', marginX + colW * 0.5, sigY + 3.5, { align: 'center' });
   doc.setFont('helvetica', 'bold');
-  doc.text('( Hendra Wijaya )', marginX + colW * 0.5, sigY + 18, { align: 'center' });
+  doc.text(`( ${preparer} )`, marginX + colW * 0.5, sigY + 18, { align: 'center' });
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(6.5);
-  doc.text('PT Rajawali Talenta Indonesia', marginX + colW * 0.5, sigY + 21, { align: 'center' });
+  doc.text(companyTitle, marginX + colW * 0.5, sigY + 21, { align: 'center' });
 
   doc.setFontSize(7.5);
   doc.text('Ditindaklanjuti & Diperiksa Oleh,', marginX + colW * 1.5, sigY, { align: 'center' });

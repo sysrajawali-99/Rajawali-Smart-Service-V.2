@@ -108,6 +108,7 @@ export const CeklistAreaView: React.FC = () => {
     isSyncing,
     shifts,
     companyProfile,
+    currentCompany,
   } = useCleaning();
 
   const [selectedDate, setSelectedDate] = useState('2026-09-13');
@@ -229,7 +230,7 @@ export const CeklistAreaView: React.FC = () => {
     : null;
 
   // Active Kop Surat object
-  const activeKop = kopType === 'hospital' ? customKop : getProjectKop(activeProject, companyProfile);
+  const activeKop = kopType === 'hospital' ? customKop : getProjectKop(activeProject, companyProfile, currentCompany, currentUser);
 
   // Helper date formatter (DD/MM/YYYY) with optional day offset
   const computeDateFormatted = (dateInput: string, offsetDays = 0): string => {

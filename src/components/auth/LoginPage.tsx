@@ -175,11 +175,11 @@ export const LoginPage: React.FC = () => {
           <div className="inline-flex items-center justify-center w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-gradient-to-tr from-sky-500 via-indigo-600 to-blue-600 text-white shadow-xl shadow-sky-500/25 mb-3 border border-white/15">
             <Sparkles className="w-7 h-7 sm:w-8 sm:h-8 text-white" />
           </div>
-          <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-wider uppercase">
+          <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-wider uppercase font-heading">
             SMART SERVICE
           </h1>
           <p className="text-xs sm:text-sm text-sky-400 mt-1 font-semibold tracking-wide">
-            provide by jtismart
+            provided by jtismart
           </p>
         </div>
 
@@ -580,7 +580,7 @@ export const LoginPage: React.FC = () => {
 
         {/* Footer info */}
         <div className="text-center mt-5 text-slate-500 text-xs">
-          &copy; {new Date().getFullYear()} {companyProfile?.companyName || 'Rajawali Smart Service'}. Sistem Operasional Kebersihan Multi-Proyek.
+          &copy; {new Date().getFullYear()} SMART SERVICE • provided by jtismart
         </div>
       </div>
     </div>

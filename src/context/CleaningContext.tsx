@@ -1835,16 +1835,17 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       return { success: false, message: 'Email atau kata sandi salah' };
     }
 
-    // Pilihan perusahaan hanya menerima login untuk user milik perusahaan itu (pesan gagal tetap umum)
-    if (companyId && matchedUser.role !== 'super_admin' && matchedUser.role !== 'admin') {
-      const uComp = matchedUser.company_id || matchedUser.companyId || 'comp-main';
-      if (uComp !== companyId) {
+    // Perusahaan ditentukan otomatis dari akun user; tolak jika perusahaan nonaktif dengan pesan umum
+    const userCompanyId = matchedUser.company_id || matchedUser.companyId || 'comp-main';
+    if (matchedUser.role !== 'super_admin' && matchedUser.role !== 'admin') {
+      const userComp = companies.find((c) => c.id === userCompanyId);
+      if (userComp && userComp.status !== 'aktif') {
         return { success: false, message: 'Email atau kata sandi salah' };
       }
     }
 
     if (matchedUser.status === 'nonaktif') {
-      return { success: false, message: 'Akun Anda dinonaktifkan oleh Administrator.' };
+      return { success: false, message: 'Email atau kata sandi salah' };
     }
 
     const expectedPassword =

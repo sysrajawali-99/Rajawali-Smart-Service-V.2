@@ -1960,19 +1960,23 @@ export const exportMonthlyActivityToPDF = (
   doc.setFontSize(7);
   doc.setTextColor(40, 45, 55);
 
+  const preparer = options.createdByName || options.currentUser?.name || 'Supervisor Operasional';
+  const verifier = options.verifiedByName || 'Quality Control (QC)';
+  const companyTitle = kopSurat.companyName || kopSurat.institutionLine1 || 'SMART SERVICE';
+
   doc.text('Dibuat Oleh,', marginX + colW * 0.5, sigY, { align: 'center' });
   doc.text('Supervisor Cleaning Service', marginX + colW * 0.5, sigY + 3.5, { align: 'center' });
   doc.setFont('helvetica', 'bold');
-  doc.text('( Hendra Wijaya )', marginX + colW * 0.5, sigY + 18, { align: 'center' });
+  doc.text(`( ${preparer} )`, marginX + colW * 0.5, sigY + 18, { align: 'center' });
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(6);
-  doc.text('Operational Team', marginX + colW * 0.5, sigY + 21, { align: 'center' });
+  doc.text(companyTitle, marginX + colW * 0.5, sigY + 21, { align: 'center' });
 
   doc.setFontSize(7);
   doc.text('Diverifikasi Oleh,', marginX + colW * 1.5, sigY, { align: 'center' });
   doc.text('Quality Control (QC)', marginX + colW * 1.5, sigY + 3.5, { align: 'center' });
   doc.setFont('helvetica', 'bold');
-  doc.text('( Agus Prasetyo )', marginX + colW * 1.5, sigY + 18, { align: 'center' });
+  doc.text(`( ${verifier} )`, marginX + colW * 1.5, sigY + 18, { align: 'center' });
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(6);
   doc.text('Facility QC Inspector', marginX + colW * 1.5, sigY + 21, { align: 'center' });
@@ -1994,7 +1998,7 @@ export const exportMonthlyActivityToPDF = (
     doc.setFontSize(6);
     doc.setTextColor(140, 150, 160);
     doc.text(
-      `Dokumen Resmi Monthly Activity  •  PT Rajawali Talenta Indonesia  •  ${project.name}  •  Periode ${monthName} ${year}  •  Halaman ${p} dari ${totalPages}`,
+      `Dokumen Resmi Monthly Activity  •  ${companyTitle}  •  ${project.name}  •  Periode ${monthName} ${year}  •  Halaman ${p} dari ${totalPages}`,
       pageWidth / 2,
       pageHeight - 6,
       { align: 'center' }
@@ -2362,19 +2366,23 @@ export const exportKlienActivityReportToPDF = (
   doc.setFontSize(7.5);
   doc.setTextColor(51, 65, 85);
 
+  const preparer = (options as any).currentUser?.name || (options as any).createdByName || 'Supervisor Operasional';
+  const verifier = (options as any).verifiedByName || 'Quality Control (QC)';
+  const companyTitle = kopSurat.companyName || kopSurat.institutionLine1 || 'SMART SERVICE';
+
   doc.text('Dibuat Oleh,', marginX + colW * 0.5, sigY, { align: 'center' });
   doc.text('Supervisor Cleaning Service', marginX + colW * 0.5, sigY + 4, { align: 'center' });
   doc.setFont('helvetica', 'bold');
-  doc.text('( Hendra Wijaya )', marginX + colW * 0.5, sigY + 19, { align: 'center' });
+  doc.text(`( ${preparer} )`, marginX + colW * 0.5, sigY + 19, { align: 'center' });
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(6.5);
-  doc.text('Operational Team', marginX + colW * 0.5, sigY + 22.5, { align: 'center' });
+  doc.text(companyTitle, marginX + colW * 0.5, sigY + 22.5, { align: 'center' });
 
   doc.setFontSize(7.5);
   doc.text('Diverifikasi Oleh,', marginX + colW * 1.5, sigY, { align: 'center' });
   doc.text('Quality Control (QC)', marginX + colW * 1.5, sigY + 4, { align: 'center' });
   doc.setFont('helvetica', 'bold');
-  doc.text('( Agus Prasetyo )', marginX + colW * 1.5, sigY + 19, { align: 'center' });
+  doc.text(`( ${verifier} )`, marginX + colW * 1.5, sigY + 19, { align: 'center' });
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(6.5);
   doc.text('Facility QC Inspector', marginX + colW * 1.5, sigY + 22.5, { align: 'center' });
@@ -2396,7 +2404,7 @@ export const exportKlienActivityReportToPDF = (
     doc.setFontSize(6);
     doc.setTextColor(148, 163, 184);
     doc.text(
-      `Dokumen Resmi Activity Report Klien Mode  •  PT Rajawali Talenta Indonesia  •  ${scopeLabel}  •  Halaman ${p} dari ${totalPages}`,
+      `Dokumen Resmi Activity Report Klien Mode  •  ${companyTitle}  •  ${scopeLabel}  •  Halaman ${p} dari ${totalPages}`,
       pageWidth / 2,
       pageHeight - 6,
       { align: 'center' }

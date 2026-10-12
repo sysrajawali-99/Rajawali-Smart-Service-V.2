@@ -94,6 +94,8 @@ export const KlienActivitySection: React.FC = () => {
     specialJobs,
     activeProject,
     companyProfile,
+    currentCompany,
+    currentUser,
   } = useCleaning();
 
   // 4 Mode Kartu State
@@ -383,8 +385,9 @@ export const KlienActivitySection: React.FC = () => {
       dailyItems: dailyRows,
       locationSummaries,
       specialJobs: scopedSpecialJobs,
-      kopSurat: getProjectKop(activeProject, companyProfile),
-    });
+      kopSurat: getProjectKop(activeProject, companyProfile, currentCompany, currentUser),
+      currentUser,
+    } as any);
 
     const label =
       reportMode === 'daily_all_locations'

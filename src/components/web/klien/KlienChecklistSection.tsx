@@ -41,6 +41,8 @@ export const KlienChecklistSection: React.FC = () => {
     ensureDailyChecklist,
     shifts,
     companyProfile,
+    currentCompany,
+    currentUser,
   } = useCleaning();
 
   const [selectedDate, setSelectedDate] = useState('2026-09-13');
@@ -251,7 +253,8 @@ export const KlienChecklistSection: React.FC = () => {
         dailyChecklist: currentDailyChecklist,
         location: currentLocation,
         project: activeProject,
-        kopSurat: getProjectKop(activeProject, companyProfile),
+        kopSurat: getProjectKop(activeProject, companyProfile, currentCompany, currentUser),
+        currentUser,
         allowedHours: shiftSlotHours,
         shiftName: activeShift ? activeShift.name : '24 Jam Penuh',
         shiftHoursText: activeShift

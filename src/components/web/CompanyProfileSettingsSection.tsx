@@ -18,7 +18,7 @@ import {
 } from 'lucide-react';
 import { useCleaning } from '../../context/CleaningContext';
 import { CompanyProfile, DEFAULT_COMPANY_PROFILE } from '../../types';
-import { uploadPhoto } from '../../services/apiService';
+import { uploadPhoto, uploadCompanyLogo } from '../../services/apiService';
 import { updateDocumentFavicon, updateDocumentTitle } from '../../utils/dynamicFavicon';
 import { resizeImageForLogo } from '../../utils/imageResizer';
 
@@ -47,11 +47,11 @@ export const CompanyProfileSettingsSection: React.FC = () => {
 
     try {
       const resized = await resizeImageForLogo(file, { maxDimension: 512, quality: 0.9 });
-      const uploadedUrl = await uploadPhoto(resized.file);
-      if (uploadedUrl) {
-        setFormData((prev) => ({ ...prev, logoUrl: uploadedUrl }));
-        updateDocumentFavicon(uploadedUrl);
-        window.dispatchEvent(new CustomEvent('pwa-icons-updated', { detail: { icon: uploadedUrl } }));
+      const res = await uploadCompanyLogo('comp-main', resized.file);
+      if (res.success && res.logoUrl) {
+        setFormData((prev) => ({ ...prev, logoUrl: res.logoUrl }));
+        updateDocumentFavicon(res.logoUrl);
+        window.dispatchEvent(new CustomEvent('pwa-icons-updated', { detail: { icon: res.logoUrl } }));
         return;
       }
     } catch {
