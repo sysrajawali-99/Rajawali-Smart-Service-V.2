@@ -29,9 +29,11 @@ import {
 import { useCleaning } from '../../context/CleaningContext';
 import { CleaningTask } from '../../types';
 import { BeforeAfterModal } from '../modals/BeforeAfterModal';
-import { exportMonthlyReportToPDF, getProjectKop } from '../../utils/pdfExport';
+import { exportMonthlyReportToPDF } from '../../utils/pdfExport';
 import { exportTasksToExcel } from '../../utils/excelExport';
 import { PerformanceTrendsSection } from './PerformanceTrendsSection';
+
+
 
 export const LaporanReportView: React.FC = () => {
   const {
@@ -46,9 +48,6 @@ export const LaporanReportView: React.FC = () => {
     bulkExportToMonthlyReport,
     updateTaskWorkDescription,
     setActiveTab,
-    companyProfile,
-    currentCompany,
-    currentUser,
   } = useCleaning();
 
   // Active view tab inside Laporan: 'monthly_jobs' (Before, Progress, After) vs 'executive_kpi' vs 'performance_trends'
@@ -140,9 +139,6 @@ export const LaporanReportView: React.FC = () => {
         project: activeProject,
         selectedMonth,
         monthLabel: getMonthLabel(selectedMonth),
-        kopSurat: getProjectKop(activeProject, companyProfile, currentCompany, currentUser),
-        currentUser,
-        companyProfile,
       });
     } catch (err) {
       console.error('Error generating PDF:', err);
@@ -155,9 +151,7 @@ export const LaporanReportView: React.FC = () => {
     exportTasksToExcel(
       monthlyTasks,
       `Laporan_Bulanan_Pekerjaan_${selectedMonth}.csv`,
-      activeProject?.name || 'Gedung Operasional',
-      currentCompany?.nama || companyProfile?.companyName,
-      currentUser?.name
+      activeProject?.name || 'Gedung Operasional'
     );
   };
 

@@ -151,12 +151,10 @@ const MainLayout: React.FC = () => {
       case 'klien-activity':
       case 'klien-keluhan':
         return <KlienModeView initialSubTab={activeTab} />;
-      // Sistem & Master Data (Disederhanakan: Perusahaan & User)
+      // Sistem & Master Data
       case 'perusahaan':
       case 'companies':
-        return <PengaturanView initialSubTab="company" />;
-      case 'jabatan':
-        return <PengaturanView initialSubTab="users" />;
+        return <CompanyManagementView />;
       case 'pengaturan':
         return <PengaturanView />;
       default:

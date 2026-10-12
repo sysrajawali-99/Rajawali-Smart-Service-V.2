@@ -538,18 +538,18 @@ export const AuditLogSection: React.FC = () => {
                       {/* Details */}
                       <td className="p-3 align-top">
                         <p className="text-xs text-slate-700 leading-relaxed font-normal">
-                          {typeof log.details === 'object' ? JSON.stringify(log.details) : String(log.details || '')}
+                          {log.details}
                         </p>
                         {(log.previousState || log.newState) && (
                           <div className="mt-1 flex items-center gap-1.5 text-[11px] text-slate-500 bg-slate-50 p-1.5 rounded-lg border border-slate-100 max-w-lg">
                             {log.previousState && (
                               <span className="line-through text-slate-400 truncate max-w-[180px]">
-                                {typeof log.previousState === 'object' ? JSON.stringify(log.previousState) : String(log.previousState)}
+                                {log.previousState}
                               </span>
                             )}
                             <ArrowRight className="w-3 h-3 text-slate-400 shrink-0" />
                             <span className="font-semibold text-slate-800 truncate max-w-[200px]">
-                              {typeof log.newState === 'object' ? JSON.stringify(log.newState) : String(log.newState || '')}
+                              {log.newState}
                             </span>
                           </div>
                         )}
@@ -701,7 +701,7 @@ export const AuditLogSection: React.FC = () => {
             <div className="space-y-1.5">
               <span className="text-xs font-bold text-slate-700 block">Keterangan / Aktivitas yang Dilakukan:</span>
               <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 text-xs text-slate-800 leading-relaxed">
-                {typeof selectedLogDetail.details === 'object' ? JSON.stringify(selectedLogDetail.details) : String(selectedLogDetail.details || '-')}
+                {selectedLogDetail.details}
               </div>
             </div>
 
@@ -709,15 +709,11 @@ export const AuditLogSection: React.FC = () => {
               <div className="grid grid-cols-2 gap-3 text-xs">
                 <div className="p-3 bg-rose-50/60 rounded-xl border border-rose-100">
                   <span className="text-[10px] font-bold text-rose-700 block uppercase">Status / Nilai Sebelumnya</span>
-                  <span className="text-slate-700">
-                    {typeof selectedLogDetail.previousState === 'object' ? JSON.stringify(selectedLogDetail.previousState) : String(selectedLogDetail.previousState || '-')}
-                  </span>
+                  <span className="text-slate-700">{selectedLogDetail.previousState || '-'}</span>
                 </div>
                 <div className="p-3 bg-emerald-50/60 rounded-xl border border-emerald-100">
                   <span className="text-[10px] font-bold text-emerald-700 block uppercase">Status / Nilai Baru</span>
-                  <span className="text-slate-800 font-semibold">
-                    {typeof selectedLogDetail.newState === 'object' ? JSON.stringify(selectedLogDetail.newState) : String(selectedLogDetail.newState || '-')}
-                  </span>
+                  <span className="text-slate-800 font-semibold">{selectedLogDetail.newState || '-'}</span>
                 </div>
               </div>
             )}

@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useRef, useMemo } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import {
   UserRole,
   ViewMode,
@@ -39,9 +39,6 @@ import {
   KlienChecklistInspection,
   SpecialJobItem,
   Company,
-  Jabatan,
-  JabatanPermissionKey,
-  UserStatus,
 } from '../types';
 import { calculateShiftDuration } from '../utils/shiftUtils';
 import { normalizeFrequencyCode, getNextProgramDayStatus } from '../utils/mcpUtils';
@@ -56,8 +53,6 @@ import {
   INITIAL_NOTIFICATIONS,
   INITIAL_PROJECTS,
   INITIAL_USERS,
-  INITIAL_JABATAN,
-  createDefaultJabatanList,
   DEFAULT_RBAC_PERMISSIONS,
   INITIAL_CHECKLIST_TEMPLATES,
   INITIAL_CHECKLIST_LOCATIONS,
@@ -83,7 +78,6 @@ import {
   getRecords,
   upsertRecord,
   deleteRecord,
-  restoreRecord,
   onRecordChange,
   onServerReconnect,
   fetchServerStatus,
@@ -91,10 +85,6 @@ import {
   apiLogin,
   apiLogout,
   apiVerifySession,
-  apiSwitchCompany,
-  apiToggleUserStatus,
-  apiResetUserPassword,
-  apiUpdateCompanyStatus,
   getAuthToken,
   setAuthToken,
 } from '../services/apiService';
@@ -157,25 +147,14 @@ interface CleaningContextType {
   addUser: (user: Omit<AppUser, 'id'>) => AppUser;
   updateUser: (userId: string, updates: Partial<AppUser>) => void;
   deleteUser: (userId: string) => { success: boolean; message?: string };
-  toggleUserStatus: (userId: string) => Promise<{ success: boolean; status?: 'aktif' | 'nonaktif'; message?: string }>;
-  resetUserPassword: (userId: string) => Promise<{ success: boolean; temporaryPassword?: string; message?: string }>;
   updateUserProjectAssignment: (userId: string, projectIds: string[]) => void;
   allowedProjects: ProjectLocation[];
 
-  // Jabatan & Matriks Izin (Langkah 5B)
-  jabatan: Jabatan[];
-  addJabatan: (jab: Omit<Jabatan, 'id' | 'createdAt'>) => Promise<Jabatan>;
-  updateJabatan: (id: string, updates: Partial<Jabatan>) => Promise<void>;
-  deleteJabatan: (id: string) => Promise<{ success: boolean; message?: string }>;
-  getUserPermissions: (user?: AppUser) => Record<JabatanPermissionKey, boolean>;
-
-  // Multi-Company Management (Super Admin & Admin Perusahaan)
+  // Multi-Company Management (Super Admin)
   companies: Company[];
-  currentCompany?: Company;
   addCompany: (comp: Omit<Company, 'id' | 'createdAt'>) => Promise<Company>;
   updateCompany: (id: string, updates: Partial<Company>) => Promise<void>;
   deleteCompany: (id: string, typedConfirmName: string) => Promise<{ success: boolean; message?: string }>;
-  switchActiveCompany: (companyId: string) => Promise<{ success: boolean; message?: string }>;
 
   // Area Checklist (24 Hours & Master Data)
   checklistLocations: ChecklistLocation[];
@@ -223,13 +202,6 @@ interface CleaningContextType {
   addManualItemToDailyChecklist: (dailyChecklistId: string, itemName: string) => void;
   getOrCreateDailyChecklist: (projectId: string, locationId: string, date: string) => DailyAreaChecklist;
   ensureDailyChecklist: (projectId: string, locationId: string, date: string) => void;
-  updateSlotMeta: (
-    dailyChecklistId: string,
-    hour: number,
-    meta: { notes?: string; photoUrl?: string; photoUrls?: string[]; checkedBy?: string; supervisorVerified?: boolean }
-  ) => void;
-  softDeleteDailyChecklist: (id: string) => Promise<boolean>;
-  restoreDailyChecklist: (id: string) => Promise<boolean>;
 
   // Master Cleaning Program (dipisahkan sesuai lokasi kerja user / klien)
   masterPrograms: MasterCleaningProgramItem[];
@@ -396,7 +368,7 @@ interface CleaningContextType {
 
   // Authentication & Session
   isAuthenticated: boolean;
-  login: (identifier: string, pass: string, companyId?: string) => { success: boolean; message?: string };
+  login: (identifier: string, pass: string) => { success: boolean; message?: string };
   instantLogin: (userId: string) => { success: boolean; message?: string };
   logout: () => void;
 
@@ -782,43 +754,17 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   const updateCompany = async (id: string, updates: Partial<Company>): Promise<void> => {
-    if (!id || id === 'undefined' || id === 'null') {
-      console.warn('[updateCompany] ID perusahaan tidak valid:', id);
-      return;
-    }
-
     setCompanies((prev) =>
       prev.map((c) => (c.id === id ? { ...c, ...updates, updatedAt: new Date().toISOString() } : c))
     );
-
-    let targetComp = companies.find((c) => c.id === id);
-    if (!targetComp) {
-      targetComp = {
-        id,
-        nama: updates.nama || id,
-        slug: updates.slug || id,
-        status: updates.status || 'aktif',
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        ...updates,
-      } as Company;
-    } else {
-      targetComp = { ...targetComp, ...updates, updatedAt: new Date().toISOString() };
-    }
-
-    // Jika perubahan menyangkut status operasional, panggil endpoint aktivasi khusus
-    if (updates.status) {
+    const existing = companies.find((c) => c.id === id);
+    if (existing) {
+      const merged = { ...existing, ...updates, updatedAt: new Date().toISOString() };
       try {
-        await apiUpdateCompanyStatus(id, updates.status);
-      } catch (e) {
-        console.warn('[updateCompany] apiUpdateCompanyStatus notice:', e);
+        await upsertRecord(COLLECTIONS.COMPANIES, merged);
+      } catch (err) {
+        notifyServerError('memperbarui perusahaan', err);
       }
-    }
-
-    try {
-      await upsertRecord(COLLECTIONS.COMPANIES, targetComp);
-    } catch (err) {
-      notifyServerError('memperbarui perusahaan', err);
     }
   };
 
@@ -856,7 +802,6 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   // 3. Users & Project Assignments
   const [users, setUsers] = useState<AppUser[]>(INITIAL_USERS);
-  const [jabatan, setJabatan] = useState<Jabatan[]>(INITIAL_JABATAN);
 
   const [activeUserId, setActiveUserId] = useState<string>(() => {
     return localStorage.getItem('sco_active_user_id') || 'usr-admin';
@@ -867,23 +812,6 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     users.find((u) => u.id === activeUserId) ||
     users.find((u) => u.role === userRole) ||
     users[0];
-
-  // Perusahaan aktif sesuai tenant user yang sedang login
-  const currentCompany = useMemo(() => {
-    const userCompId = currentUser?.company_id || currentUser?.companyId || 'comp-main';
-    return companies.find((c) => c.id === userCompId) || companies[0];
-  }, [companies, currentUser]);
-
-  // Profil perusahaan dinamis yang selalu sesuai dengan perusahaan pengguna saat ini
-  const effectiveCompanyProfile: CompanyProfile = useMemo(() => {
-    const compName = currentCompany?.nama?.trim() || companyProfile?.companyName?.trim() || 'SMART SERVICE';
-    const compLogo = currentCompany?.logo || companyProfile?.logoUrl || '';
-    return {
-      ...companyProfile,
-      companyName: compName,
-      logoUrl: compLogo,
-    };
-  }, [currentCompany, companyProfile]);
 
   // User restriction:
   // Super Admin ('admin' or 'super_admin') can view all projects.
@@ -1029,7 +957,6 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         remoteProfile,
         remoteKpi,
         remoteCompanies,
-        remoteJabatan,
       ] = await Promise.all([
         getRecords<ProjectLocation>(COLLECTIONS.PROJECTS),
         getRecords<AppUser>(COLLECTIONS.USERS),
@@ -1055,7 +982,6 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         getRecords<CompanyProfile>(COLLECTIONS.COMPANY_PROFILE),
         getRecords<DashboardKpiVisibilityConfig>(COLLECTIONS.KPI_CONFIG),
         getRecords<Company>(COLLECTIONS.COMPANIES),
-        getRecords<Jabatan>(COLLECTIONS.JABATAN),
       ]);
 
       if (remoteCompanies && remoteCompanies.length > 0) {
@@ -1065,7 +991,6 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       await Promise.all([
         loadOrSeedCollection(COLLECTIONS.PROJECTS, remoteProjects, INITIAL_PROJECTS, setProjects),
         loadOrSeedCollection(COLLECTIONS.USERS, remoteUsers, INITIAL_USERS, setUsers),
-        loadOrSeedCollection(COLLECTIONS.JABATAN, remoteJabatan, INITIAL_JABATAN, setJabatan),
         loadOrSeedCollection(COLLECTIONS.RBAC_PERMISSIONS, remoteRbac, DEFAULT_RBAC_PERMISSIONS, setRbacPermissions),
         loadOrSeedCollection(COLLECTIONS.AREAS, remoteAreas, INITIAL_AREAS, setAreas),
         loadOrSeedCollection(COLLECTIONS.CLEANERS, remoteCleaners, INITIAL_CLEANERS, setCleaners),
@@ -1086,41 +1011,29 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         loadOrSeedCollection(COLLECTIONS.AUDIT_LOGS, remoteAuditLogs, INITIAL_AUDIT_LOGS, setAuditLogs),
       ]);
 
-      // Daily Checklists: (Proteksi Kuat: Jangan pernah menimpa dengan hasil kosong / merusak data terisi)
-      if (remoteDailyChecklists && remoteDailyChecklists.length > 0) {
+      // Daily Checklists:
+      if (remoteDailyChecklists.length > 0) {
         const serverMap = new Map(remoteDailyChecklists.map((c) => [c.id, c]));
         setDailyChecklists((prevLocal) => {
           const merged: DailyAreaChecklist[] = [];
-          for (const rem of remoteDailyChecklists) {
-            const localItem = prevLocal.find((d) => d.id === rem.id);
-            if (!localItem) {
+          if (!initialSyncDone.current) {
+            merged.push(...remoteDailyChecklists);
+            for (const loc of prevLocal) {
+              if (!serverMap.has(loc.id)) merged.push(loc);
+            }
+          } else {
+            for (const rem of remoteDailyChecklists) {
+              if (dirtyChecklistIdsRef.current.has(rem.id)) {
+                const dirty = prevLocal.find((d) => d.id === rem.id);
+                if (dirty) {
+                  merged.push(dirty);
+                  continue;
+                }
+              }
               merged.push(rem);
-              continue;
             }
-            if (dirtyChecklistIdsRef.current.has(rem.id)) {
-              merged.push(localItem);
-              continue;
-            }
-            // Safely merge slots: local filled items must NOT be destroyed by incoming empty slots
-            const mergedSlots = (localItem.hourlySlots || []).map((locSlot) => {
-              const remSlot = (rem.hourlySlots || []).find((s: any) => s.hour === locSlot.hour);
-              if (!remSlot) return locSlot;
-              const remItems = Array.isArray(remSlot.items) && remSlot.items.length > 0 ? remSlot.items : locSlot.items;
-              return {
-                ...locSlot,
-                ...remSlot,
-                items: remItems,
-              };
-            });
-            merged.push({
-              ...rem,
-              hourlySlots: mergedSlots.length > 0 ? mergedSlots : rem.hourlySlots,
-            });
-          }
-          // Pertahankan semua ceklist lokal yang belum sempat tersimpan di server
-          for (const loc of prevLocal) {
-            if (!serverMap.has(loc.id)) {
-              merged.push(loc);
+            for (const loc of prevLocal) {
+              if (!serverMap.has(loc.id)) merged.push(loc);
             }
           }
           for (const item of merged) {
@@ -1130,16 +1043,14 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           }
           return merged;
         });
-      } else if (!initialSyncDone.current && dailyChecklistsRef.current.length === 0 && INITIAL_DAILY_CHECKLISTS?.length > 0) {
-        // Hanya semai jika inisialisasi awal dan state lokal benar-benar belum memiliki data
-        console.debug(`[Seed] Koleksi 'daily_checklists' kosong di server saat pertama kali dibuka. Menyemai data awal...`);
+      } else if (INITIAL_DAILY_CHECKLISTS && INITIAL_DAILY_CHECKLISTS.length > 0) {
+        console.debug(`[Seed] Koleksi 'daily_checklists' kosong di server. Menyemai data awal...`);
         setDailyChecklists(INITIAL_DAILY_CHECKLISTS);
         for (const item of INITIAL_DAILY_CHECKLISTS) {
           checklistSnapshotRef.current.set(item.id, JSON.stringify(item));
           upsertRecord(COLLECTIONS.DAILY_CHECKLISTS, item).catch(() => {});
         }
       }
-      // Jika remoteDailyChecklists kosong di tengah jalan / polling, JANGAN PERNAH MENIMPA STATE LOKAL DENGAN KOSONG!
       initialSyncDone.current = true;
 
       // Company profile & KPI config:
@@ -1430,35 +1341,11 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             });
             break;
           case COLLECTIONS.DAILY_CHECKLISTS:
-            if (!data || !data.id) break;
             checklistSnapshotRef.current.set(id, JSON.stringify(data));
             dirtyChecklistIdsRef.current.delete(id);
             setDailyChecklists((prev) => {
               const idx = prev.findIndex((dc) => dc.id === id);
-              if (idx >= 0) {
-                const currentLocal = prev[idx];
-                // Safely merge slots: local filled items must NOT be destroyed by incoming empty items
-                const mergedSlots = (currentLocal.hourlySlots || []).map((localSlot) => {
-                  const incomingSlot = (data.hourlySlots || []).find((s: any) => s.hour === localSlot.hour);
-                  if (!incomingSlot) return localSlot;
-                  const incomingItems = Array.isArray(incomingSlot.items) && incomingSlot.items.length > 0
-                    ? incomingSlot.items
-                    : localSlot.items;
-                  return {
-                    ...localSlot,
-                    ...incomingSlot,
-                    items: incomingItems,
-                  };
-                });
-                const mergedChecklist = {
-                  ...currentLocal,
-                  ...data,
-                  hourlySlots: mergedSlots.length > 0 ? mergedSlots : data.hourlySlots || currentLocal.hourlySlots,
-                };
-                const next = [...prev];
-                next[idx] = mergedChecklist;
-                return next;
-              }
+              if (idx >= 0) { const next = [...prev]; next[idx] = { ...next[idx], ...data }; return next; }
               return [...prev, data];
             });
             break;
@@ -1805,19 +1692,10 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           }
         })
         .catch(() => {});
-    } else {
-      const activeId = localStorage.getItem('sco_active_user_id') || 'usr-admin';
-      apiLogin({ userId: activeId })
-        .then((res) => {
-          if (res?.token) {
-            setAuthToken(res.token);
-          }
-        })
-        .catch(() => {});
     }
   }, []);
 
-  const login = (identifier: string, pass: string, companyId?: string): { success: boolean; message?: string } => {
+  const login = (identifier: string, pass: string): { success: boolean; message?: string } => {
     const cleanId = identifier.trim().toLowerCase();
     const cleanPass = pass.trim();
 
@@ -1832,25 +1710,12 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     );
 
     if (!matchedUser) {
-      return { success: false, message: 'Email atau kata sandi salah' };
-    }
-
-    // Perusahaan ditentukan otomatis dari akun user; tolak jika perusahaan nonaktif dengan pesan umum
-    const userCompanyId = matchedUser.company_id || matchedUser.companyId || 'comp-main';
-    if (matchedUser.role !== 'super_admin' && matchedUser.role !== 'admin') {
-      const userComp = companies.find((c) => c.id === userCompanyId);
-      if (userComp && userComp.status !== 'aktif') {
-        return { success: false, message: 'Email atau kata sandi salah' };
-      }
-    }
-
-    if (matchedUser.status === 'nonaktif') {
-      return { success: false, message: 'Email atau kata sandi salah' };
+      return { success: false, message: 'Akun tidak ditemukan. Periksa kembali Username atau Email Anda.' };
     }
 
     const expectedPassword =
       matchedUser.password ||
-      (matchedUser.role === 'admin' || matchedUser.role === 'super_admin'
+      (matchedUser.role === 'admin'
         ? 'admin123'
         : matchedUser.role === 'supervisor'
         ? 'spv123'
@@ -1859,7 +1724,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         : 'klien123');
 
     if (expectedPassword !== cleanPass) {
-      return { success: false, message: 'Email atau kata sandi salah' };
+      return { success: false, message: 'Password salah. Silakan periksa kembali kata sandi Anda.' };
     }
 
     setIsAuthenticated(true);
@@ -1867,7 +1732,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setUserRole(matchedUser.role);
 
     const userAllowedProjs =
-      matchedUser.role === 'admin' || matchedUser.role === 'super_admin'
+      matchedUser.role === 'admin'
         ? projects
         : projects.filter((p) => matchedUser.assignedProjectIds?.includes(p.id));
     const nextProjId = userAllowedProjs[0]?.id || projects[0]?.id || 'proj-1';
@@ -1879,15 +1744,9 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     localStorage.setItem('sco_role', matchedUser.role);
 
     // Call backend API login asynchronously to retrieve and persist Bearer token
-    apiLogin({ identifier: cleanId, password: cleanPass, companyId })
-      .then((res) => {
-        if (res?.token) {
-          setAuthToken(res.token);
-        }
-      })
-      .catch((err) => {
-        console.warn('[Login Token] Backend token issuance notice:', err);
-      });
+    apiLogin({ identifier: cleanId, password: cleanPass }).catch((err) => {
+      console.warn('[Login Token] Backend token issuance notice:', err);
+    });
 
     if (matchedUser.role === 'klien') {
       setActiveTab('klien-manpower');
@@ -1921,15 +1780,9 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     localStorage.setItem('sco_role', matchedUser.role);
 
     // Call backend API login asynchronously to retrieve and persist Bearer token
-    apiLogin({ userId })
-      .then((res) => {
-        if (res?.token) {
-          setAuthToken(res.token);
-        }
-      })
-      .catch((err) => {
-        console.warn('[Instant Login Token] Backend token issuance notice:', err);
-      });
+    apiLogin({ userId }).catch((err) => {
+      console.warn('[Instant Login Token] Backend token issuance notice:', err);
+    });
 
     if (matchedUser.role === 'klien') {
       setActiveTab('klien-manpower');
@@ -2017,27 +1870,6 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     };
     setNotifications((prev) => [reloadNotif, ...prev]);
     setIsReloading(false);
-  };
-
-  // Switch Active Company (Requirement 4)
-  const switchActiveCompany = async (companyId: string): Promise<{ success: boolean; message?: string }> => {
-    try {
-      const res = await apiSwitchCompany(companyId);
-      if (res.success && res.user) {
-        setUsers((prev) =>
-          prev.map((u) =>
-            u.id === activeUserId
-              ? { ...u, company_id: companyId, companyId }
-              : u
-          )
-        );
-        await reloadSystemData();
-        return { success: true };
-      }
-      return { success: false, message: res.error || 'Gagal berpindah perusahaan aktif.' };
-    } catch (err: any) {
-      return { success: false, message: err?.message || 'Gagal menghubungi server.' };
-    }
   };
 
   // Delete helpers for Schedule and Complaint
@@ -2224,13 +2056,6 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       }
     }
 
-    if (userRole !== 'super_admin' && userRole !== 'admin') {
-      return {
-        success: false,
-        message: 'Hanya Super Administrator yang dapat menghapus permanen pengguna. Admin Perusahaan disarankan menonaktifkan akun melalui tombol Nonaktifkan.',
-      };
-    }
-
     setUsers((prev) => prev.filter((u) => u.id !== userId));
     deleteRecord(COLLECTIONS.USERS, userId).catch((err) => notifyServerError('menghapus pengguna', err));
 
@@ -2244,184 +2069,6 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
 
     return { success: true, message: `Akun ${target.name} (${target.role}) berhasil dihapus.` };
-  };
-
-  const toggleUserStatus = async (
-    userId: string
-  ): Promise<{ success: boolean; status?: 'aktif' | 'nonaktif'; message?: string }> => {
-    try {
-      const res = await apiToggleUserStatus(userId);
-      if (res.success && res.status) {
-        setUsers((prev) =>
-          prev.map((u) => (u.id === userId ? { ...u, status: res.status } : u))
-        );
-        return {
-          success: true,
-          status: res.status,
-          message: `Status pengguna berhasil diubah menjadi "${res.status}".`,
-        };
-      }
-      return { success: false, message: res.error || 'Gagal mengubah status pengguna di server.' };
-    } catch (err: any) {
-      return { success: false, message: err?.message || 'Gagal mengubah status pengguna di server.' };
-    }
-  };
-
-  const resetUserPassword = async (
-    userId: string
-  ): Promise<{ success: boolean; temporaryPassword?: string; message?: string }> => {
-    try {
-      const res = await apiResetUserPassword(userId);
-      if (res.success && res.temporaryPassword) {
-        setUsers((prev) =>
-          prev.map((u) =>
-            u.id === userId
-              ? { ...u, mustChangePassword: true, temporaryPassword: res.temporaryPassword }
-              : u
-          )
-        );
-        return {
-          success: true,
-          temporaryPassword: res.temporaryPassword,
-          message: `Kata sandi berhasil direset. Sandi sementara: ${res.temporaryPassword}`,
-        };
-      }
-      return { success: false, message: res.error || 'Gagal mereset kata sandi di server.' };
-    } catch (err: any) {
-      return { success: false, message: err?.message || 'Gagal mereset kata sandi di server.' };
-    }
-  };
-
-  const addJabatan = async (jabData: Omit<Jabatan, 'id' | 'createdAt'>): Promise<Jabatan> => {
-    const id = `jab-${Date.now()}`;
-    const newJab: Jabatan = {
-      ...jabData,
-      id,
-      createdAt: new Date().toISOString(),
-    };
-    setJabatan((prev) => [...prev, newJab]);
-    try {
-      await upsertRecord(COLLECTIONS.JABATAN, newJab);
-    } catch (err) {
-      notifyServerError('menambah jabatan', err);
-    }
-    return newJab;
-  };
-
-  const updateJabatan = async (id: string, updates: Partial<Jabatan>): Promise<void> => {
-    setJabatan((prev) =>
-      prev.map((j) => (j.id === id ? { ...j, ...updates, updatedAt: new Date().toISOString() } : j))
-    );
-    const existing = jabatan.find((j) => j.id === id);
-    if (existing) {
-      const merged = { ...existing, ...updates, updatedAt: new Date().toISOString() };
-      try {
-        await upsertRecord(COLLECTIONS.JABATAN, merged);
-      } catch (err) {
-        notifyServerError('memperbarui jabatan', err);
-      }
-    }
-  };
-
-  const deleteJabatan = async (id: string): Promise<{ success: boolean; message?: string }> => {
-    const target = jabatan.find((j) => j.id === id);
-    if (!target) {
-      return { success: false, message: 'Jabatan tidak ditemukan.' };
-    }
-    const inUse = users.some((u) => u.jabatanId === id);
-    if (inUse) {
-      return {
-        success: false,
-        message: `Jabatan "${target.nama}" masih ditugaskan pada satu atau lebih akun pengguna. Ubah jabatan pengguna terkait terlebih dahulu.`,
-      };
-    }
-    setJabatan((prev) => prev.filter((j) => j.id !== id));
-    try {
-      await deleteRecord(COLLECTIONS.JABATAN, id);
-    } catch (err) {
-      notifyServerError('menghapus jabatan', err);
-    }
-    return { success: true, message: `Jabatan "${target.nama}" berhasil dihapus.` };
-  };
-
-  const getUserPermissions = (user?: AppUser): Record<JabatanPermissionKey, boolean> => {
-    const target = user || currentUser;
-    if (!target) {
-      return {
-        lihat_proyek: true,
-        isi_ceklist: false,
-        kelola_ceklist: false,
-        lihat_laporan: false,
-        unduh_laporan: false,
-        kelola_user: false,
-        kelola_jadwal: false,
-        terima_notifikasi: false,
-      };
-    }
-    if (target.role === 'super_admin' || target.role === 'admin_perusahaan' || target.role === 'admin') {
-      return {
-        lihat_proyek: true,
-        isi_ceklist: true,
-        kelola_ceklist: true,
-        lihat_laporan: true,
-        unduh_laporan: true,
-        kelola_user: true,
-        kelola_jadwal: true,
-        terima_notifikasi: true,
-      };
-    }
-    if (target.jabatanId) {
-      const found = jabatan.find((j) => j.id === target.jabatanId);
-      if (found && found.permissions) {
-        return found.permissions;
-      }
-    }
-    if (target.role === 'supervisor') {
-      return {
-        lihat_proyek: true,
-        isi_ceklist: true,
-        kelola_ceklist: true,
-        lihat_laporan: true,
-        unduh_laporan: true,
-        kelola_user: false,
-        kelola_jadwal: true,
-        terima_notifikasi: true,
-      };
-    }
-    if (target.role === 'petugas') {
-      return {
-        lihat_proyek: true,
-        isi_ceklist: true,
-        kelola_ceklist: false,
-        lihat_laporan: false,
-        unduh_laporan: false,
-        kelola_user: false,
-        kelola_jadwal: false,
-        terima_notifikasi: false,
-      };
-    }
-    if (target.role === 'klien') {
-      return {
-        lihat_proyek: true,
-        isi_ceklist: false,
-        kelola_ceklist: false,
-        lihat_laporan: true,
-        unduh_laporan: true,
-        kelola_user: false,
-        kelola_jadwal: false,
-        terima_notifikasi: false,
-      };
-    }
-    return {
-      lihat_proyek: true,
-      isi_ceklist: false,
-      kelola_ceklist: false,
-      lihat_laporan: false,
-      unduh_laporan: false,
-      kelola_user: false,
-      kelola_jadwal: false,
-      terima_notifikasi: false,
-    };
   };
 
   // Checklist Master & Daily Methods
@@ -2514,14 +2161,11 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     const nowStr = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB';
     let affectedItemName = itemKeyOrId;
     let locationName = '';
-    let locationId = '';
-    let capturedUpdatedItems: HourlyCheckItemEntry[] = [];
 
     setDailyChecklists((prev) =>
       prev.map((d) => {
         if (d.id !== dailyChecklistId) return d;
         locationName = d.locationName;
-        locationId = d.locationId;
         const location = checklistLocations.find((l) => l.id === d.locationId);
         const category = d.category || location?.category || 'toilet';
 
@@ -2563,8 +2207,6 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             updatedItems = [...currentItems, newItem];
           }
 
-          capturedUpdatedItems = updatedItems;
-
           const hasIssue = updatedItems.some(
             (i) => i.status === 'issue' || i.status === 'dirty' || i.status === 'broken'
           );
@@ -2588,17 +2230,14 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       })
     );
 
-    dirtyChecklistIdsRef.current.add(dailyChecklistId);
-
-    // Save to Dexie outbox for resilient offline storage & background sync (KIRIM ITEM ASLI)
+    // Save to Dexie outbox for resilient offline storage & background sync
     saveChecklistToOutbox({
       type: 'hourly_slot_update',
       projectId: safeActiveProjectId,
       checklistId: dailyChecklistId,
-      locationId,
       locationName,
       slotHour: hour,
-      answers: capturedUpdatedItems,
+      answers: [],
       captured_at: new Date().toISOString(),
     }).catch(() => {});
 
@@ -2636,14 +2275,11 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   ) => {
     const nowStr = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB';
     let locationName = '';
-    let locationId = '';
-    let capturedUpdatedItems: HourlyCheckItemEntry[] = [];
 
     setDailyChecklists((prev) =>
       prev.map((d) => {
         if (d.id !== dailyChecklistId) return d;
         locationName = d.locationName;
-        locationId = d.locationId;
         const location = checklistLocations.find((l) => l.id === d.locationId);
         const category = d.category || location?.category || 'toilet';
 
@@ -2651,7 +2287,6 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           if (slot.hour !== hour) return slot;
           const currentItems = ensureCompleteSlotItems(slot.items, category, checklistTemplates);
           const updatedItems = currentItems.map((item) => ({ ...item, status }));
-          capturedUpdatedItems = updatedItems;
           const slotStatus: 'clean' | 'has_issue' | 'pending' =
             status === 'clean'
               ? 'clean'
@@ -2670,17 +2305,14 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       })
     );
 
-    dirtyChecklistIdsRef.current.add(dailyChecklistId);
-
-    // Save batch update to Dexie outbox (KIRIM ITEM ASLI)
+    // Save batch update to Dexie outbox
     saveChecklistToOutbox({
       type: 'hourly_slot_batch',
       projectId: safeActiveProjectId,
       checklistId: dailyChecklistId,
-      locationId,
       locationName,
       slotHour: hour,
-      answers: capturedUpdatedItems,
+      answers: [],
       captured_at: new Date().toISOString(),
     }).catch(() => {});
 
@@ -2705,19 +2337,11 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     checkedBy: string,
     supervisorVerified?: boolean
   ) => {
-    dirtyChecklistIdsRef.current.add(dailyChecklistId);
-    let locationId = '';
-    let locationName = '';
-    let slotItems: HourlyCheckItemEntry[] = [];
-
     setDailyChecklists((prev) =>
       prev.map((d) => {
         if (d.id !== dailyChecklistId) return d;
-        locationId = d.locationId;
-        locationName = d.locationName;
         const updatedSlots = d.hourlySlots.map((slot) => {
           if (slot.hour !== hour) return slot;
-          slotItems = slot.items;
           return {
             ...slot,
             checkedBy,
@@ -2727,115 +2351,6 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         return { ...d, hourlySlots: updatedSlots };
       })
     );
-
-    saveChecklistToOutbox({
-      type: 'hourly_slot_update',
-      projectId: safeActiveProjectId,
-      checklistId: dailyChecklistId,
-      locationId,
-      locationName,
-      slotHour: hour,
-      answers: slotItems,
-      captured_at: new Date().toISOString(),
-    }).catch(() => {});
-
-    if (typeof navigator !== 'undefined' && navigator.onLine) {
-      syncService.triggerSync().catch(() => {});
-    }
-  };
-
-  const updateSlotMeta = (
-    dailyChecklistId: string,
-    hour: number,
-    meta: { notes?: string; photoUrl?: string; photoUrls?: string[]; checkedBy?: string; supervisorVerified?: boolean }
-  ) => {
-    dirtyChecklistIdsRef.current.add(dailyChecklistId);
-    let locationId = '';
-    let locationName = '';
-    let slotItems: HourlyCheckItemEntry[] = [];
-
-    setDailyChecklists((prev) =>
-      prev.map((d) => {
-        if (d.id !== dailyChecklistId) return d;
-        locationId = d.locationId;
-        locationName = d.locationName;
-        const updatedSlots = d.hourlySlots.map((slot) => {
-          if (slot.hour !== hour) return slot;
-          slotItems = slot.items;
-          return {
-            ...slot,
-            ...(meta.notes !== undefined ? { notes: meta.notes } : {}),
-            ...(meta.photoUrl !== undefined ? { photoUrl: meta.photoUrl } : {}),
-            ...(meta.photoUrls !== undefined ? { photoUrls: meta.photoUrls } : {}),
-            ...(meta.checkedBy !== undefined ? { checkedBy: meta.checkedBy } : {}),
-            ...(meta.supervisorVerified !== undefined ? { supervisorVerified: meta.supervisorVerified } : {}),
-          };
-        });
-        return { ...d, hourlySlots: updatedSlots };
-      })
-    );
-
-    saveChecklistToOutbox({
-      type: 'hourly_slot_update',
-      projectId: safeActiveProjectId,
-      checklistId: dailyChecklistId,
-      locationId,
-      locationName,
-      slotHour: hour,
-      answers: slotItems,
-      notes: meta.notes,
-      captured_at: new Date().toISOString(),
-    }).catch(() => {});
-
-    if (typeof navigator !== 'undefined' && navigator.onLine) {
-      syncService.triggerSync().catch(() => {});
-    }
-  };
-
-  const softDeleteDailyChecklist = async (id: string): Promise<boolean> => {
-    try {
-      const target = dailyChecklists.find((d) => d.id === id);
-      setDailyChecklists((prev) => prev.filter((d) => d.id !== id));
-      checklistSnapshotRef.current.delete(id);
-      dirtyChecklistIdsRef.current.delete(id);
-      await deleteRecord(COLLECTIONS.DAILY_CHECKLISTS, id);
-      addAuditLog({
-        action: 'delete',
-        module: 'ceklist_area',
-        entityId: id,
-        entityName: target?.locationName || id,
-        details: `Menghapus lunak (soft delete) Ceklist Area "${target?.locationName || id}" (${target?.date})`,
-      });
-      return true;
-    } catch (err: any) {
-      notifyServerError('menghapus ceklis area', err);
-      return false;
-    }
-  };
-
-  const restoreDailyChecklist = async (id: string): Promise<boolean> => {
-    try {
-      const restored = await restoreRecord<DailyAreaChecklist>(COLLECTIONS.DAILY_CHECKLISTS, id);
-      if (restored && restored.id) {
-        setDailyChecklists((prev) => {
-          const exists = prev.some((d) => d.id === restored.id);
-          return exists ? prev.map((d) => (d.id === restored.id ? restored : d)) : [...prev, restored];
-        });
-        checklistSnapshotRef.current.set(restored.id, JSON.stringify(restored));
-        addAuditLog({
-          action: 'restore',
-          module: 'ceklist_area',
-          entityId: id,
-          entityName: restored.locationName || id,
-          details: `Memulihkan Ceklist Area "${restored.locationName || id}" (${restored.date})`,
-        });
-        return true;
-      }
-      return false;
-    } catch (err: any) {
-      notifyServerError('memulihkan ceklis area', err);
-      return false;
-    }
   };
 
   const fillDailyChecklistClean = (
@@ -2966,7 +2481,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     (cl) => (cl.projectId || 'proj-1') === safeActiveProjectId
   );
   const filteredDailyChecklists = dailyChecklists.filter(
-    (d) => (d.projectId || 'proj-1') === safeActiveProjectId && !d.isDeleted
+    (d) => (d.projectId || 'proj-1') === safeActiveProjectId
   );
   const filteredMasterPrograms = masterPrograms.filter(
     (m) => (m.projectId || 'proj-1') === safeActiveProjectId
@@ -4626,8 +4141,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   return (
     <CleaningContext.Provider
       value={{
-        companyProfile: effectiveCompanyProfile,
-        currentCompany,
+        companyProfile,
         updateCompanyProfile,
         resetCompanyProfile,
         isPwaIconsRegenerating,
@@ -4676,12 +4190,11 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         updateProject,
         deleteProject,
 
-        // Multi-Company Management (Super Admin & Admin Perusahaan)
+        // Multi-Company Management (Super Admin)
         companies,
         addCompany,
         updateCompany,
         deleteCompany,
-        switchActiveCompany,
 
         // Users & Permissions
         users,
@@ -4691,17 +4204,8 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         addUser,
         updateUser,
         deleteUser,
-        toggleUserStatus,
-        resetUserPassword,
         updateUserProjectAssignment,
         allowedProjects,
-
-        // Jabatan & Matriks Izin (Langkah 5B)
-        jabatan,
-        addJabatan,
-        updateJabatan,
-        deleteJabatan,
-        getUserPermissions,
 
         // Connection & Offline Sync Management
         isOnline,
@@ -4731,9 +4235,6 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         addManualItemToDailyChecklist,
         getOrCreateDailyChecklist,
         ensureDailyChecklist,
-        updateSlotMeta,
-        softDeleteDailyChecklist,
-        restoreDailyChecklist,
 
         // Filtered operational data for active project location
         areas: filteredAreas,

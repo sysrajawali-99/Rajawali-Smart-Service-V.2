@@ -43,7 +43,6 @@ import {
   exportDamageSummaryToPDF,
   exportDamageWorkOrderToPDF,
 } from '../../utils/damagePdfExport';
-import { getProjectKop } from '../../utils/pdfExport';
 import { uploadPhoto } from '../../services/apiService';
 
 export const DamageReportView: React.FC = () => {
@@ -57,8 +56,6 @@ export const DamageReportView: React.FC = () => {
     cleaners,
     activeProject,
     currentUser,
-    companyProfile,
-    currentCompany,
   } = useCleaning();
 
   // Search & Filters
@@ -463,8 +460,6 @@ export const DamageReportView: React.FC = () => {
       exportDamageSummaryToPDF({
         reports: filteredReports,
         project: activeProject,
-        kopSurat: getProjectKop(activeProject, companyProfile, currentCompany, currentUser),
-        currentUser,
         filterPeriod: activePeriodLabel,
         filterStatus: statusFilter !== 'all' ? statusFilter : undefined,
         filterCategory: categoryFilter !== 'all' ? categoryFilter : undefined,
@@ -485,7 +480,6 @@ export const DamageReportView: React.FC = () => {
       await exportDamageWorkOrderToPDF({
         report,
         project: activeProject,
-        kopSurat: getProjectKop(activeProject, companyProfile, currentCompany, currentUser),
       });
     } catch (err) {
       console.error('Error generating work order PDF:', err);

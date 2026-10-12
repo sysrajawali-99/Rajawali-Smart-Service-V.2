@@ -18,9 +18,8 @@ import {
 } from 'lucide-react';
 import { useCleaning } from '../../context/CleaningContext';
 import { CompanyProfile, DEFAULT_COMPANY_PROFILE } from '../../types';
-import { uploadPhoto, uploadCompanyLogo } from '../../services/apiService';
+import { uploadPhoto } from '../../services/apiService';
 import { updateDocumentFavicon, updateDocumentTitle } from '../../utils/dynamicFavicon';
-import { resizeImageForLogo } from '../../utils/imageResizer';
 
 export const CompanyProfileSettingsSection: React.FC = () => {
   const { companyProfile, updateCompanyProfile, resetCompanyProfile, activeProject, userRole } = useCleaning();
@@ -45,13 +44,18 @@ export const CompanyProfileSettingsSection: React.FC = () => {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    // Validate size (max 2MB)
+    if (file.size > 2 * 1024 * 1024) {
+      alert('Ukuran file logo terlalu besar. Maksimal 2MB.');
+      return;
+    }
+
     try {
-      const resized = await resizeImageForLogo(file, { maxDimension: 512, quality: 0.9 });
-      const res = await uploadCompanyLogo('comp-main', resized.file);
-      if (res.success && res.logoUrl) {
-        setFormData((prev) => ({ ...prev, logoUrl: res.logoUrl }));
-        updateDocumentFavicon(res.logoUrl);
-        window.dispatchEvent(new CustomEvent('pwa-icons-updated', { detail: { icon: res.logoUrl } }));
+      const uploadedUrl = await uploadPhoto(file);
+      if (uploadedUrl) {
+        setFormData((prev) => ({ ...prev, logoUrl: uploadedUrl }));
+        updateDocumentFavicon(uploadedUrl);
+        window.dispatchEvent(new CustomEvent('pwa-icons-updated', { detail: { icon: uploadedUrl } }));
         return;
       }
     } catch {
@@ -82,6 +86,7 @@ export const CompanyProfileSettingsSection: React.FC = () => {
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
     if (!isSuperAdmin) {
+      alert('Akses ditolak: Hanya Super Administrator yang berwenang mengubah profil dan branding global sistem.');
       return;
     }
     updateCompanyProfile(formData);

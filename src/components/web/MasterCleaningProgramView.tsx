@@ -31,7 +31,7 @@ import {
 } from 'lucide-react';
 import { useCleaning } from '../../context/CleaningContext';
 import { MasterCleaningProgramItem, ProgramDayStatus, ProgramFrequencyCode } from '../../types';
-import { exportMasterCleaningProgramToPDF, getProjectKop } from '../../utils/pdfExport';
+import { exportMasterCleaningProgramToPDF } from '../../utils/pdfExport';
 import { normalizeFrequencyCode, FREQUENCY_META, PROGRAM_STATUS_META } from '../../utils/mcpUtils';
 
 export const MasterCleaningProgramView: React.FC = () => {
@@ -47,9 +47,6 @@ export const MasterCleaningProgramView: React.FC = () => {
     batchSetMasterProgramDays,
     duplicateMasterProgram,
     userRole,
-    companyProfile,
-    currentCompany,
-    currentUser,
   } = useCleaning();
 
   // Filter and period states
@@ -254,8 +251,6 @@ export const MasterCleaningProgramView: React.FC = () => {
       project: activeProject,
       month: selectedMonth,
       year: selectedYear,
-      kopSurat: getProjectKop(activeProject, companyProfile, currentCompany, currentUser),
-      currentUser,
     });
     showToast('Dokumen PDF Master Cleaning Program berhasil diunduh.');
   };

@@ -21,7 +21,7 @@ import {
 import { UserRole } from '../../types';
 
 export const LoginPage: React.FC = () => {
-  const { login, instantLogin, users, allProjects, projects, companyProfile } = useCleaning();
+  const { login, instantLogin, companyProfile, users, allProjects, projects } = useCleaning();
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -76,7 +76,7 @@ export const LoginPage: React.FC = () => {
       const result = login(identifier, password);
       setIsLoading(false);
       if (!result.success) {
-        setErrorMessage(result.message || 'Email atau kata sandi salah');
+        setErrorMessage(result.message || 'Username/Email atau Password salah.');
       }
     }, 350);
   };
@@ -170,16 +170,27 @@ export const LoginPage: React.FC = () => {
       <div className="absolute bottom-1/4 -right-48 w-96 h-96 bg-indigo-600/15 rounded-full blur-3xl pointer-events-none" />
 
       <div className="w-full max-w-4xl relative z-10 my-4">
-        {/* Header Branding Aplikasi: SMART SERVICE - provide by jtismart */}
+        {/* Header Branding */}
         <div className="text-center mb-6">
-          <div className="inline-flex items-center justify-center w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-gradient-to-tr from-sky-500 via-indigo-600 to-blue-600 text-white shadow-xl shadow-sky-500/25 mb-3 border border-white/15">
-            <Sparkles className="w-7 h-7 sm:w-8 sm:h-8 text-white" />
-          </div>
-          <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-wider uppercase font-heading">
-            SMART SERVICE
+          {companyProfile?.logoUrl ? (
+            <div className="inline-flex items-center justify-center p-2 rounded-2xl bg-white/10 backdrop-blur-md border border-white/20 shadow-xl shadow-sky-500/15 mb-3.5 transition-transform hover:scale-105">
+              <img
+                src={companyProfile.logoUrl}
+                alt={companyProfile.companyName || 'Company Logo'}
+                className="w-12 h-12 sm:w-14 sm:h-14 object-contain rounded-xl"
+                referrerPolicy="no-referrer"
+              />
+            </div>
+          ) : (
+            <div className="inline-flex items-center justify-center w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-gradient-to-tr from-sky-600 to-cyan-500 text-white shadow-lg shadow-sky-500/20 mb-3 border border-white/10">
+              <Sparkles className="w-6 h-6 sm:w-7 sm:h-7" />
+            </div>
+          )}
+          <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
+            {companyProfile?.companyName || 'Rajawali Smart Service'}
           </h1>
-          <p className="text-xs sm:text-sm text-sky-400 mt-1 font-semibold tracking-wide">
-            provided by jtismart
+          <p className="text-xs sm:text-sm text-slate-400 mt-1 font-normal max-w-md mx-auto leading-relaxed">
+            {companyProfile?.tagline || 'Cleaning Operations & Multi-Project Facility Control System'}
           </p>
         </div>
 
@@ -580,7 +591,7 @@ export const LoginPage: React.FC = () => {
 
         {/* Footer info */}
         <div className="text-center mt-5 text-slate-500 text-xs">
-          &copy; {new Date().getFullYear()} SMART SERVICE • provided by jtismart
+          &copy; {new Date().getFullYear()} {companyProfile?.companyName || 'Rajawali Smart Service'}. Sistem Operasional Kebersihan Multi-Proyek.
         </div>
       </div>
     </div>

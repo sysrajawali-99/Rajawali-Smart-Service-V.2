@@ -49,7 +49,7 @@
       "name": "Super Administrator",
       "email": "superadmin@cleaningops.com",
       "username": "superadmin",
-      "password": "$2b$10$3iIZ8OUVmEM9Vf8dYWC/TO3g5bPAIAiJFsNaCpR2wvHZZPypyRy82",
+      "password": "$2b$10$m9m8qXF7mLL7OcPOh5XtNOsFr8Nq1thCH5sB61U1RCt2ivfJYEKZ6",
       "role": "super_admin",
       "assignedProjectIds": [
         "proj-1",
@@ -91,14 +91,13 @@
       "name": "Asep Supriyadi (Petugas Mandiri)",
       "email": "asep.cln@cleaningops.com",
       "username": "petugas1",
-      "password": "$2b$10$Fn6Ro81D63Pm.qtkk8dnYOA.vz5Jlo8NtAGTTrIDHQJV.X.txs4AG",
+      "password": "$2b$10$AZo4BG3vJIs7NNl.feJqiOZk5gLPzuPISjnmhQgEvVLkaPP.VCXiW",
       "role": "petugas",
       "assignedProjectIds": [
         "proj-1"
       ],
       "company_id": "comp-main",
-      "companyId": "comp-main",
-      "status": "aktif"
+      "companyId": "comp-main"
     },
     "usr-cln-2": {
       "id": "usr-cln-2",
@@ -151,17 +150,6 @@
       ],
       "company_id": "comp-main",
       "companyId": "comp-main"
-    },
-    "user-sub": {
-      "id": "user-sub",
-      "name": "Petugas Sub",
-      "email": "sub@cleaningops.com",
-      "username": "subpetugas",
-      "password": "$2b$10$TOaXNbmyyqKOM1iWTaPqIeQOrIrEucm/k1QKEDjikD87YF44tLcGG",
-      "role": "petugas",
-      "status": "aktif",
-      "company_id": "comp-sub",
-      "companyId": "comp-sub"
     }
   },
   "areas": {
@@ -4741,218 +4729,6 @@
       "action": "PASSWORD_CHANGED",
       "module": "KEAMANAN",
       "description": "Kata sandi berhasil diperbarui untuk Super Administrator (superadmin@cleaningops.com)",
-      "userId": "usr-admin",
-      "userName": "Super Administrator",
-      "company_id": "comp-main",
-      "companyId": "comp-main"
-    },
-    "log-1791613029392-a740s": {
-      "id": "log-1791613029392-a740s",
-      "timestamp": "2026-10-10T06:17:09.392Z",
-      "action": "PUSH_SUBSCRIBE",
-      "module": "NOTIFIKASI",
-      "description": "Perangkat diaktifkan untuk notifikasi Web Push (Asep Supriyadi (Petugas Mandiri))",
-      "userId": "usr-cln-1",
-      "userName": "Asep Supriyadi (Petugas Mandiri)",
-      "projectId": "proj-1",
-      "company_id": "comp-main",
-      "companyId": "comp-main"
-    },
-    "log-1791613029421-bnwls": {
-      "id": "log-1791613029421-bnwls",
-      "timestamp": "2026-10-10T06:17:09.421Z",
-      "action": "TEST_NOTIFICATION_SENT",
-      "module": "NOTIFIKASI",
-      "description": "Notifikasi uji coba dikirim ke 0 perangkat",
-      "userId": "usr-cln-1",
-      "userName": "Asep Supriyadi (Petugas Mandiri)",
-      "company_id": "comp-main",
-      "companyId": "comp-main"
-    },
-    "log-1791613078882-huxp2": {
-      "id": "log-1791613078882-huxp2",
-      "timestamp": "2026-10-10T06:17:58.882Z",
-      "action": "USER_DEACTIVATED",
-      "module": "MANAJEMEN_PENGGUNA",
-      "description": "Akun pengguna Asep Supriyadi (Petugas Mandiri) (asep.cln@cleaningops.com) dinonaktifkan oleh Super Administrator",
-      "userId": "usr-admin",
-      "userName": "Super Administrator",
-      "company_id": "comp-main",
-      "details": {
-        "targetUserId": "usr-cln-1",
-        "targetUserName": "Asep Supriyadi (Petugas Mandiri)",
-        "status": "nonaktif"
-      },
-      "companyId": "comp-main"
-    },
-    "log-1791613078915-92dzz": {
-      "id": "log-1791613078915-92dzz",
-      "timestamp": "2026-10-10T06:17:58.915Z",
-      "action": "USER_ACTIVATED",
-      "module": "MANAJEMEN_PENGGUNA",
-      "description": "Akun pengguna Asep Supriyadi (Petugas Mandiri) (asep.cln@cleaningops.com) diaktifkan kembali oleh Super Administrator",
-      "userId": "usr-admin",
-      "userName": "Super Administrator",
-      "company_id": "comp-main",
-      "details": {
-        "targetUserId": "usr-cln-1",
-        "targetUserName": "Asep Supriyadi (Petugas Mandiri)",
-        "status": "aktif"
-      },
-      "companyId": "comp-main"
-    },
-    "log-1791613087858-re6s9": {
-      "id": "log-1791613087858-re6s9",
-      "timestamp": "2026-10-10T06:18:07.858Z",
-      "action": "USER_PASSWORD_RESET",
-      "module": "KEAMANAN",
-      "description": "Kata sandi akun Asep Supriyadi (Petugas Mandiri) (asep.cln@cleaningops.com) direset oleh Super Administrator (wajib ganti sandi saat login)",
-      "userId": "usr-admin",
-      "userName": "Super Administrator",
-      "company_id": "comp-main",
-      "details": {
-        "targetUserId": "usr-cln-1",
-        "targetUserName": "Asep Supriyadi (Petugas Mandiri)",
-        "mustChangePassword": true
-      },
-      "companyId": "comp-main"
-    },
-    "log-1791613098221-5rjyo": {
-      "id": "log-1791613098221-5rjyo",
-      "timestamp": "2026-10-10T06:18:18.221Z",
-      "action": "USER_PASSWORD_RESET",
-      "module": "KEAMANAN",
-      "description": "Kata sandi akun Asep Supriyadi (Petugas Mandiri) (asep.cln@cleaningops.com) direset oleh Super Administrator (wajib ganti sandi saat login)",
-      "userId": "usr-admin",
-      "userName": "Super Administrator",
-      "company_id": "comp-main",
-      "details": {
-        "targetUserId": "usr-cln-1",
-        "targetUserName": "Asep Supriyadi (Petugas Mandiri)",
-        "mustChangePassword": true
-      },
-      "companyId": "comp-main"
-    },
-    "log-1791733151497-ehd12": {
-      "id": "log-1791733151497-ehd12",
-      "timestamp": "2026-10-11T15:39:11.497Z",
-      "action": "UPDATE_COMPANY_STATUS",
-      "module": "PERUSAHAAN",
-      "description": "Status perusahaan \"PT Test Baru\" diubah menjadi \"aktif\" oleh Super Administrator",
-      "userId": "usr-admin",
-      "userName": "Super Administrator",
-      "company_id": "comp-test",
-      "details": {
-        "newStatus": "aktif"
-      },
-      "companyId": "comp-test"
-    },
-    "log-1791733157245-j8fxy": {
-      "id": "log-1791733157245-j8fxy",
-      "timestamp": "2026-10-11T15:39:17.245Z",
-      "action": "UPDATE_COMPANY_STATUS",
-      "module": "PERUSAHAAN",
-      "description": "Status perusahaan \"PT Test Baru\" diubah menjadi \"ditangguhkan\" oleh Super Administrator",
-      "userId": "usr-admin",
-      "userName": "Super Administrator",
-      "company_id": "comp-test",
-      "details": {
-        "newStatus": "ditangguhkan"
-      },
-      "companyId": "comp-test"
-    },
-    "log-1791733160348-3jlqp": {
-      "id": "log-1791733160348-3jlqp",
-      "timestamp": "2026-10-11T15:39:20.348Z",
-      "action": "UPDATE_COMPANY_STATUS",
-      "module": "PERUSAHAAN",
-      "description": "Status perusahaan \"PT Test Baru\" diubah menjadi \"aktif\" oleh Super Administrator",
-      "userId": "usr-admin",
-      "userName": "Super Administrator",
-      "company_id": "comp-test",
-      "details": {
-        "newStatus": "aktif"
-      },
-      "companyId": "comp-test"
-    },
-    "log-1791818802012-cdcr7": {
-      "id": "log-1791818802012-cdcr7",
-      "timestamp": "2026-10-12T15:26:42.012Z",
-      "action": "UPDATE_COMPANY_STATUS",
-      "module": "PERUSAHAAN",
-      "description": "Status perusahaan \"PT RAJAWALI TALENTA INDONESIA\" diubah menjadi \"aktif\" oleh Super Administrator",
-      "userId": "usr-admin",
-      "userName": "Super Administrator",
-      "company_id": "comp-main",
-      "details": {
-        "newStatus": "aktif"
-      },
-      "companyId": "comp-main"
-    },
-    "log-1791818855327-0colr": {
-      "id": "log-1791818855327-0colr",
-      "timestamp": "2026-10-12T15:27:35.327Z",
-      "action": "UPDATE_COMPANY_STATUS",
-      "module": "PERUSAHAAN",
-      "description": "Status perusahaan \"PT Subordinate Mitra\" diubah menjadi \"aktif\" oleh Super Administrator",
-      "userId": "usr-admin",
-      "userName": "Super Administrator",
-      "company_id": "comp-sub",
-      "details": {
-        "newStatus": "aktif"
-      },
-      "companyId": "comp-sub"
-    },
-    "log-1791818855445-hji34": {
-      "id": "log-1791818855445-hji34",
-      "timestamp": "2026-10-12T15:27:35.446Z",
-      "action": "USER_UPDATED",
-      "module": "MANAJEMEN_PENGGUNA",
-      "description": "Pengguna diperbarui: Petugas Sub (petugas)",
-      "userId": "usr-admin",
-      "userName": "Super Administrator",
-      "company_id": "comp-sub",
-      "details": {
-        "targetUserId": "user-sub",
-        "role": "petugas",
-        "status": "aktif"
-      },
-      "companyId": "comp-sub"
-    },
-    "log-1791818855554-3rejs": {
-      "id": "log-1791818855554-3rejs",
-      "timestamp": "2026-10-12T15:27:35.554Z",
-      "action": "UPDATE_COMPANY_STATUS",
-      "module": "PERUSAHAAN",
-      "description": "Status perusahaan \"PT Subordinate Mitra\" diubah menjadi \"ditangguhkan\" oleh Super Administrator",
-      "userId": "usr-admin",
-      "userName": "Super Administrator",
-      "company_id": "comp-sub",
-      "details": {
-        "newStatus": "ditangguhkan"
-      },
-      "companyId": "comp-sub"
-    },
-    "log-1791818855662-0cnze": {
-      "id": "log-1791818855662-0cnze",
-      "timestamp": "2026-10-12T15:27:35.662Z",
-      "action": "UPDATE_COMPANY_STATUS",
-      "module": "PERUSAHAAN",
-      "description": "Status perusahaan \"PT Subordinate Mitra\" diubah menjadi \"aktif\" oleh Super Administrator",
-      "userId": "usr-admin",
-      "userName": "Super Administrator",
-      "company_id": "comp-sub",
-      "details": {
-        "newStatus": "aktif"
-      },
-      "companyId": "comp-sub"
-    },
-    "log-1791818970904-jcjp2": {
-      "id": "log-1791818970904-jcjp2",
-      "timestamp": "2026-10-12T15:29:30.904Z",
-      "action": "UPDATE_COMPANY",
-      "module": "PERUSAHAAN",
-      "description": "Logo perusahaan \"PT RAJAWALI TALENTA INDONESIA\" berhasil diperbarui oleh Super Administrator",
       "userId": "usr-admin",
       "userName": "Super Administrator",
       "company_id": "comp-main",
@@ -9878,17 +9654,16 @@
   "company_profile": {
     "main": {
       "id": "main",
-      "companyName": "SMART SERVICE",
+      "companyName": "PT RAJAWALI TALENTA INDONESIA",
       "documentHeaderTitle": "MANAJEMEN OPERASIONAL KEBERSIHAN & FASILITAS GEDUNG",
       "address": "Jl. Pemuda No. 123",
       "city": "Jakarta",
       "phone": "021-1234567",
-      "email": "operasional@jtismart.com",
-      "website": "https://jtismart.com",
-      "logoUrl": "/uploads/comp-main/logo-3ad9b6899d6dffa643b98035.png",
+      "email": "info@rajawali.co.id",
+      "website": "https://rajawali.co.id",
+      "logoUrl": "",
       "company_id": "comp-main",
-      "companyId": "comp-main",
-      "updatedAt": "2026-10-12T15:29:30.904Z"
+      "companyId": "comp-main"
     }
   },
   "kpi_config": {
@@ -9910,24 +9685,21 @@
   "companies": {
     "comp-main": {
       "id": "comp-main",
-      "nama": "SMART SERVICE",
+      "nama": "PT RAJAWALI TALENTA INDONESIA",
       "slug": "utama",
-      "logo": "/uploads/comp-main/logo-3ad9b6899d6dffa643b98035.png",
+      "logo": "",
       "warna": "#0284c7",
       "status": "aktif",
       "createdAt": "2026-10-07T06:30:04.913Z",
-      "updatedAt": "2026-10-12T15:29:30.904Z",
+      "updatedAt": "2026-10-07T06:30:04.915Z",
       "company_id": "comp-main",
       "companyId": "comp-main"
     },
-    "comp-sub": {
-      "id": "comp-sub",
-      "nama": "PT Subordinate Mitra",
-      "slug": "sub-mitra",
-      "status": "aktif",
-      "company_id": "comp-sub",
-      "companyId": "comp-sub",
-      "updatedAt": "2026-10-12T15:27:35.662Z"
+    "undefined": {
+      "status": "ditangguhkan",
+      "id": "undefined",
+      "company_id": "comp-main",
+      "companyId": "comp-main"
     }
   },
   "photos": {
@@ -9942,88 +9714,5 @@
       "uploadedBy": "usr-spv-1",
       "createdAt": "2026-10-07T07:05:13.341Z"
     }
-  },
-  "jabatan": {
-    "jab-mgr-comp-main": {
-      "id": "jab-mgr-comp-main",
-      "company_id": "comp-main",
-      "companyId": "comp-main",
-      "nama": "Manajer Proyek",
-      "keterangan": "Akses penuh operasional proyek, laporan, penjadwalan, dan pengelolaan tim",
-      "isDefault": true,
-      "defaultRoleCode": "admin",
-      "permissions": {
-        "lihat_proyek": true,
-        "isi_ceklist": true,
-        "kelola_ceklist": true,
-        "lihat_laporan": true,
-        "unduh_laporan": true,
-        "kelola_user": true,
-        "kelola_jadwal": true,
-        "terima_notifikasi": true
-      },
-      "createdAt": "2026-03-01T00:00:00Z"
-    },
-    "jab-spv-comp-main": {
-      "id": "jab-spv-comp-main",
-      "company_id": "comp-main",
-      "companyId": "comp-main",
-      "nama": "Supervisor",
-      "keterangan": "Pengawasan mutu lapangan, verifikasi QC, atur shift, dan tangani komplain",
-      "isDefault": true,
-      "defaultRoleCode": "supervisor",
-      "permissions": {
-        "lihat_proyek": true,
-        "isi_ceklist": true,
-        "kelola_ceklist": true,
-        "lihat_laporan": true,
-        "unduh_laporan": true,
-        "kelola_user": false,
-        "kelola_jadwal": true,
-        "terima_notifikasi": true
-      },
-      "createdAt": "2026-03-01T00:00:00Z"
-    },
-    "jab-petugas-comp-main": {
-      "id": "jab-petugas-comp-main",
-      "company_id": "comp-main",
-      "companyId": "comp-main",
-      "nama": "Petugas Kebersihan",
-      "keterangan": "Pelaksana lapangan pengisian ceklis berkala 24 jam dan pengerjaan tugas",
-      "isDefault": true,
-      "defaultRoleCode": "petugas",
-      "permissions": {
-        "lihat_proyek": true,
-        "isi_ceklist": true,
-        "kelola_ceklist": false,
-        "lihat_laporan": false,
-        "unduh_laporan": false,
-        "kelola_user": false,
-        "kelola_jadwal": false,
-        "terima_notifikasi": false
-      },
-      "createdAt": "2026-03-01T00:00:00Z"
-    },
-    "jab-klien-comp-main": {
-      "id": "jab-klien-comp-main",
-      "company_id": "comp-main",
-      "companyId": "comp-main",
-      "nama": "Klien",
-      "keterangan": "Perwakilan pemilik gedung, pemantau kepatuhan ceklis & unduh laporan berkala",
-      "isDefault": true,
-      "defaultRoleCode": "klien",
-      "permissions": {
-        "lihat_proyek": true,
-        "isi_ceklist": false,
-        "kelola_ceklist": false,
-        "lihat_laporan": true,
-        "unduh_laporan": true,
-        "kelola_user": false,
-        "kelola_jadwal": false,
-        "terima_notifikasi": false
-      },
-      "createdAt": "2026-03-01T00:00:00Z"
-    }
-  },
-  "push_subscriptions": {}
+  }
 }

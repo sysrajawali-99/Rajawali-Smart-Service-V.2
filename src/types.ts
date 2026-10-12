@@ -8,26 +8,6 @@ export type UserRole =
 
 export type CompanyStatus = 'aktif' | 'ditangguhkan' | 'diarsipkan';
 
-export type FixedUserLevel =
-  | 'Owner'
-  | 'Manager'
-  | 'Supervisor'
-  | 'Team Leader'
-  | 'Petugas'
-  | 'Klien';
-
-export interface CompanyFeatures {
-  ceklist: boolean;
-  area: boolean;
-  activity: boolean;
-  inspeksi: boolean;
-  report: boolean;
-  petugas: boolean;
-  shift: boolean;
-  kerusakan: boolean;
-  complaint: boolean;
-}
-
 export interface Company {
   id: string;
   nama: string;
@@ -37,7 +17,6 @@ export interface Company {
   status: CompanyStatus;
   createdAt: string;
   updatedAt?: string;
-  features?: Partial<CompanyFeatures>;
 }
 
 export type ViewMode = 'split' | 'web' | 'mobile';
@@ -317,95 +296,19 @@ export interface ProjectLocation {
   createdAt: string;
 }
 
-export type UserStatus = 'aktif' | 'nonaktif';
-
-export type JabatanPermissionKey =
-  | 'lihat_proyek'
-  | 'isi_ceklist'
-  | 'kelola_ceklist'
-  | 'lihat_laporan'
-  | 'unduh_laporan'
-  | 'kelola_user'
-  | 'kelola_jadwal'
-  | 'terima_notifikasi';
-
-export interface Jabatan {
-  id: string;
-  company_id: string;
-  companyId?: string;
-  nama: string;
-  keterangan?: string;
-  isDefault?: boolean;
-  defaultRoleCode?: 'admin' | 'supervisor' | 'petugas' | 'klien';
-  permissions: Record<JabatanPermissionKey, boolean>;
-  createdAt: string;
-  updatedAt?: string;
-}
-
-export const JABATAN_PERMISSIONS_METADATA: Record<
-  JabatanPermissionKey,
-  { label: string; description: string; category: string }
-> = {
-  lihat_proyek: {
-    label: 'Lihat Proyek',
-    description: 'Akses melihat daftar dan detail proyek lokasi gedung',
-    category: 'Proyek & Lokasi',
-  },
-  isi_ceklist: {
-    label: 'Isi Ceklist',
-    description: 'Akses mengisi dan centang pengerjaan ceklis berkala 24 jam',
-    category: 'Ceklis & Tugas',
-  },
-  kelola_ceklist: {
-    label: 'Kelola Ceklist',
-    description: 'Menambah, mengubah master SOP, lokasi, dan template ceklis',
-    category: 'Ceklis & Tugas',
-  },
-  lihat_laporan: {
-    label: 'Lihat Laporan',
-    description: 'Melihat ringkasan laporan inspeksi, kerusakan barang, dan QC',
-    category: 'Laporan & Audit',
-  },
-  unduh_laporan: {
-    label: 'Unduh Laporan',
-    description: 'Ekspor dan mengunduh berkas laporan format PDF atau data',
-    category: 'Laporan & Audit',
-  },
-  kelola_user: {
-    label: 'Kelola Pengguna',
-    description: 'Menambah, mengubah, menonaktifkan pengguna, dan reset sandi',
-    category: 'Administrasi',
-  },
-  kelola_jadwal: {
-    label: 'Kelola Jadwal',
-    description: 'Mengatur penugasan shift dan jadwal kerja petugas kebersihan',
-    category: 'Operasional',
-  },
-  terima_notifikasi: {
-    label: 'Terima Notifikasi',
-    description: 'Menerima alert push tugas terlambat dan terlewat batas SLA',
-    category: 'Notifikasi',
-  },
-};
-
 export interface AppUser {
   id: string;
   company_id?: string;
   companyId?: string;
-  assignedCompanyIds?: string[]; // Daftar ID perusahaan yang berhak dikelola (multi-perusahaan untuk super_admin)
   name: string;
   email: string;
   username?: string;
   password?: string;
   role: UserRole;
-  level?: FixedUserLevel;
-  jabatanId?: string;
-  status?: UserStatus; // 'aktif' | 'nonaktif' (default 'aktif')
   assignedProjectIds: string[]; // Projects this user is allowed to access
   phone?: string;
   createdAt?: string;
   mustChangePassword?: boolean;
-  temporaryPassword?: string;
 }
 
 export interface RoleModulePermission {
@@ -476,8 +379,6 @@ export interface HourlyChecklistSlot {
   checkedAt?: string;
   items: HourlyCheckItemEntry[];
   notes?: string;
-  photoUrl?: string;
-  photoUrls?: string[];
   supervisorVerified?: boolean;
   supervisorName?: string;
 }
@@ -492,10 +393,6 @@ export interface DailyAreaChecklist {
   category: ChecklistLocationCategory;
   date: string; // "YYYY-MM-DD" e.g. "2026-09-13"
   hourlySlots: HourlyChecklistSlot[]; // 24 slots (hour 0..23)
-  isDeleted?: boolean;
-  deletedAt?: string;
-  deletedBy?: string;
-  deletedById?: string;
 }
 
 export interface AppNotification {
@@ -650,14 +547,14 @@ export interface CompanyProfile {
 }
 
 export const DEFAULT_COMPANY_PROFILE: CompanyProfile = {
-  companyName: 'SMART SERVICE',
+  companyName: 'PT RAJAWALI TALENTA INDONESIA',
   tagline: 'Cleaning Operations & Facility Management System',
   documentHeaderTitle: 'MANAJEMEN OPERASIONAL KEBERSIHAN & FASILITAS GEDUNG',
-  address: 'Gedung Office Tower, Jl. Jend. Sudirman',
-  city: 'Jakarta Selatan',
+  address: 'Gedung Office Tower Lt. 8, Jl. Jend. Sudirman No. 45',
+  city: 'Jakarta Selatan 12190',
   phone: '021-5558901 / 0812-3456-7890',
-  email: 'support@jtismart.com',
-  website: 'www.jtismart.com',
+  email: 'rajawalitalentaindonesia@gmail.com',
+  website: 'www.rajawali-smart.co.id',
   logoUrl: '',
 };
 
@@ -665,7 +562,6 @@ export type AuditActionType =
   | 'create'
   | 'update'
   | 'delete'
-  | 'restore'
   | 'verify_approve'
   | 'verify_reject'
   | 'bulk_delete'

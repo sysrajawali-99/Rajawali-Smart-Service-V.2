@@ -55,7 +55,6 @@ export const Sidebar: React.FC = () => {
     mobileMenuOpen,
     setMobileMenuOpen,
     hasAccess,
-    companies,
   } = useCleaning();
 
   const pendingDamageCount = damageReports.filter(
@@ -220,32 +219,11 @@ export const Sidebar: React.FC = () => {
     },
   ];
 
-  // Ambil konfigurasi fitur perusahaan aktif
-  const currentCompany = companies.find(
-    (c) => c.id === (currentUser?.company_id || currentUser?.companyId || 'comp-main')
-  );
-
-  const isFeatureEnabled = (itemId: string): boolean => {
-    if (userRole === 'super_admin' || userRole === 'admin') return true;
-    if (!currentCompany?.features) return true;
-    const feat = currentCompany.features;
-    if (itemId === 'ceklist' && feat.ceklist === false) return false;
-    if (itemId === 'area' && feat.area === false) return false;
-    if (itemId === 'activity' && feat.activity === false) return false;
-    if (itemId === 'inspeksi' && feat.inspeksi === false) return false;
-    if (itemId === 'report' && feat.report === false) return false;
-    if (itemId === 'petugas' && feat.petugas === false) return false;
-    if (itemId === 'shift' && feat.shift === false) return false;
-    if (itemId === 'kerusakan' && feat.kerusakan === false) return false;
-    if (itemId === 'complaint' && feat.complaint === false) return false;
-    return true;
-  };
-
-  // Filter groups and items by RBAC matrix & Company Features
+  // Filter groups and items by RBAC matrix
   const menuGroups: MenuGroup[] = rawMenuGroups
     .map((group) => ({
       ...group,
-      items: group.items.filter((item) => hasAccess(userRole, item.id) && isFeatureEnabled(item.id)),
+      items: group.items.filter((item) => hasAccess(userRole, item.id)),
     }))
     .filter((group) => group.items.length > 0);
 

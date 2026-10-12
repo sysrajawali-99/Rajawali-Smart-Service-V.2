@@ -31,9 +31,7 @@ export function escapeCSV(field: string | number | boolean | null | undefined): 
 export function exportTasksToExcel(
   tasks: CleaningTask[],
   filename: string,
-  projectName?: string,
-  companyName?: string,
-  userName?: string
+  projectName?: string
 ): void {
   const headers = [
     'No',
@@ -83,16 +81,11 @@ export function exportTasksToExcel(
     ];
   });
 
-  const compLabel = companyName?.trim() || 'SMART SERVICE';
-  const authorLabel = userName?.trim() || 'Tim Operasional';
-
   const titleRow = [
-    `LAPORAN HASIL PEKERJAAN OPERASIONAL CLEANING SERVICE - ${compLabel.toUpperCase()}`,
+    `LAPORAN HASIL PEKERJAAN OPERASIONAL CLEANING SERVICE`,
   ];
   const projectRow = [`Lokasi Proyek / Gedung: ${projectName || 'Semua Lokasi'}`];
-  const dateRow = [
-    `Dibuat Oleh: ${authorLabel} | Perusahaan: ${compLabel} | Tanggal Unduh: ${new Date().toLocaleDateString('id-ID', { dateStyle: 'full' })}`,
-  ];
+  const dateRow = [`Tanggal Download: ${new Date().toLocaleDateString('id-ID', { dateStyle: 'full' })}`];
   const emptyRow: string[] = [];
 
   const csvContent = [
