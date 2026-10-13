@@ -22,9 +22,13 @@ import {
   X,
   Palette,
   Check,
+  Upload,
+  Camera,
 } from 'lucide-react';
 import { useCleaning } from '../../context/CleaningContext';
 import { Company, CompanyStatus } from '../../types';
+import { uploadCompanyLogo } from '../../services/apiService';
+import { resizeImageForLogo } from '../../utils/imageResizer';
 
 export const CompanyManagementView: React.FC = () => {
   const {
@@ -101,6 +105,10 @@ export const CompanyManagementView: React.FC = () => {
     warna: '#0284c7',
     status: 'aktif',
   });
+
+  const [isUploadingLogo, setIsUploadingLogo] = useState(false);
+  const addLogoInputRef = React.useRef<HTMLInputElement>(null);
+  const editLogoInputRef = React.useRef<HTMLInputElement>(null);
 
   // Jika bukan Super Admin, tolak akses di tampilan
   if (!isSuperAdmin) {
@@ -204,6 +212,50 @@ export const CompanyManagementView: React.FC = () => {
     });
   };
 
+  const handleAddLogoFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setIsUploadingLogo(true);
+    try {
+      const resized = await resizeImageForLogo(file, { maxDimension: 512, quality: 0.9 });
+      setAddForm((prev) => ({ ...prev, logo: resized.dataUrl }));
+      showToast('Logo berhasil dipilih dan disesuaikan!');
+    } catch {
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        if (ev.target?.result) {
+          setAddForm((prev) => ({ ...prev, logo: String(ev.target.result) }));
+        }
+      };
+      reader.readAsDataURL(file);
+    } finally {
+      setIsUploadingLogo(false);
+    }
+  };
+
+  const handleEditLogoFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !editingCompany) return;
+    setIsUploadingLogo(true);
+    try {
+      const res = await uploadCompanyLogo(editingCompany.id, file);
+      if (res.success && res.logoUrl) {
+        setEditForm((prev) => ({ ...prev, logo: res.logoUrl! }));
+        await updateCompany(editingCompany.id, { logo: res.logoUrl });
+        showToast('Logo perusahaan berhasil diperbarui ke server!');
+      } else {
+        const resized = await resizeImageForLogo(file, { maxDimension: 512, quality: 0.9 });
+        setEditForm((prev) => ({ ...prev, logo: resized.dataUrl }));
+        await updateCompany(editingCompany.id, { logo: resized.dataUrl });
+        showToast('Logo berhasil diperbarui secara lokal!');
+      }
+    } catch (err: any) {
+      showToast(err?.message || 'Gagal mengunggah logo.', 'error');
+    } finally {
+      setIsUploadingLogo(false);
+    }
+  };
+
   // Submit Edit Perusahaan
   const handleEditSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -234,10 +286,14 @@ export const CompanyManagementView: React.FC = () => {
 
   // Quick Action: Ubah Status (Tangguhkan / Arsipkan / Aktifkan)
   const handleQuickStatusChange = async (c: Company, newStatus: CompanyStatus) => {
-    await updateCompany(c.id, { status: newStatus });
-    const label =
-      newStatus === 'aktif' ? 'diaktifkan' : newStatus === 'ditangguhkan' ? 'ditangguhkan' : 'diarsipkan';
-    showToast(`Perusahaan "${c.nama}" berhasil ${label}.`);
+    try {
+      await updateCompany(c.id, { status: newStatus });
+      const label =
+        newStatus === 'aktif' ? 'diaktifkan' : newStatus === 'ditangguhkan' ? 'ditangguhkan' : 'diarsipkan';
+      showToast(`Perusahaan "${c.nama}" berhasil ${label}.`);
+    } catch (err: any) {
+      showToast(err?.message || 'Gagal mengubah status perusahaan.', 'error');
+    }
   };
 
   // Confirm Delete
@@ -724,13 +780,52 @@ export const CompanyManagementView: React.FC = () => {
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Logo URL (Opsional)</label>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">Logo Perusahaan (Opsional)</label>
+                <div className="flex items-center gap-3 mb-2">
+                  <div
+                    className="w-12 h-12 rounded-xl flex items-center justify-center font-bold text-white shadow-xs shrink-0 overflow-hidden border border-slate-200"
+                    style={{ backgroundColor: addForm.warna || '#0284c7' }}
+                  >
+                    {addForm.logo ? (
+                      <img src={addForm.logo} alt="Preview" className="w-full h-full object-cover" />
+                    ) : (
+                      <span>{addForm.nama ? addForm.nama.slice(0, 2).toUpperCase() : 'CO'}</span>
+                    )}
+                  </div>
+                  <div className="flex-1">
+                    <input
+                      type="file"
+                      ref={addLogoInputRef}
+                      onChange={handleAddLogoFile}
+                      accept="image/png,image/jpeg,image/webp"
+                      className="hidden"
+                    />
+                    <button
+                      type="button"
+                      disabled={isUploadingLogo}
+                      onClick={() => addLogoInputRef.current?.click()}
+                      className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold inline-flex items-center gap-1.5 transition-colors cursor-pointer"
+                    >
+                      <Upload className="w-3.5 h-3.5 text-slate-500" />
+                      <span>{isUploadingLogo ? 'Memproses...' : 'Pilih File Logo (PNG/JPG/WEBP)'}</span>
+                    </button>
+                    {addForm.logo && (
+                      <button
+                        type="button"
+                        onClick={() => setAddForm((prev) => ({ ...prev, logo: '' }))}
+                        className="ml-2 text-xs text-rose-600 hover:text-rose-700 font-semibold"
+                      >
+                        Hapus
+                      </button>
+                    )}
+                  </div>
+                </div>
                 <input
                   type="text"
                   value={addForm.logo}
                   onChange={(e) => setAddForm((prev) => ({ ...prev, logo: e.target.value }))}
-                  placeholder="https://... atau /uploads/..."
-                  className="w-full px-3.5 py-2 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500"
+                  placeholder="Atau masukkan tautan URL logo (https://...)"
+                  className="w-full px-3.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500"
                 />
               </div>
 
@@ -841,13 +936,52 @@ export const CompanyManagementView: React.FC = () => {
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Logo URL</label>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">Logo Perusahaan</label>
+                <div className="flex items-center gap-3 mb-2">
+                  <div
+                    className="w-12 h-12 rounded-xl flex items-center justify-center font-bold text-white shadow-xs shrink-0 overflow-hidden border border-slate-200"
+                    style={{ backgroundColor: editForm.warna || '#0284c7' }}
+                  >
+                    {editForm.logo ? (
+                      <img src={editForm.logo} alt="Preview" className="w-full h-full object-cover" />
+                    ) : (
+                      <span>{editForm.nama ? editForm.nama.slice(0, 2).toUpperCase() : 'CO'}</span>
+                    )}
+                  </div>
+                  <div className="flex-1">
+                    <input
+                      type="file"
+                      ref={editLogoInputRef}
+                      onChange={handleEditLogoFile}
+                      accept="image/png,image/jpeg,image/webp"
+                      className="hidden"
+                    />
+                    <button
+                      type="button"
+                      disabled={isUploadingLogo}
+                      onClick={() => editLogoInputRef.current?.click()}
+                      className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold inline-flex items-center gap-1.5 transition-colors cursor-pointer"
+                    >
+                      <Upload className="w-3.5 h-3.5 text-slate-500" />
+                      <span>{isUploadingLogo ? 'Mengunggah...' : 'Unggah File Logo Baru (PNG/JPG/WEBP)'}</span>
+                    </button>
+                    {editForm.logo && (
+                      <button
+                        type="button"
+                        onClick={() => setEditForm((prev) => ({ ...prev, logo: '' }))}
+                        className="ml-2 text-xs text-rose-600 hover:text-rose-700 font-semibold"
+                      >
+                        Hapus
+                      </button>
+                    )}
+                  </div>
+                </div>
                 <input
                   type="text"
                   value={editForm.logo}
                   onChange={(e) => setEditForm((prev) => ({ ...prev, logo: e.target.value }))}
-                  placeholder="https://... atau /uploads/..."
-                  className="w-full px-3.5 py-2 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-hidden"
+                  placeholder="Atau tautan URL logo (/uploads/... atau https://...)"
+                  className="w-full px-3.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-hidden"
                 />
               </div>
 

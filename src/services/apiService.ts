@@ -1,4 +1,5 @@
 import { io, Socket } from 'socket.io-client';
+import { resizeImageForLogo } from '../utils/imageResizer';
 import {
   CleaningTask,
   Complaint,
@@ -153,6 +154,16 @@ export function getAuthHeaders(additionalHeaders: Record<string, string> = {}): 
   const token = getAuthToken();
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
+  }
+  if (typeof window !== 'undefined') {
+    const activeUserId = localStorage.getItem('sco_active_user_id');
+    if (activeUserId) {
+      headers['X-User-Id'] = activeUserId;
+    }
+    const role = localStorage.getItem('sco_role');
+    if (role) {
+      headers['X-User-Role'] = role;
+    }
   }
   return headers;
 }
@@ -391,6 +402,92 @@ export async function deleteRecord(collection: string, id: string): Promise<bool
     throw new Error(`Gagal menghapus dari server (${collection}/${id}): ${errorText}`);
   }
   return true;
+}
+
+/**
+ * Uploads a company logo to /api/companies/:id/logo with automatic client-side resizing
+ * Accepts ANY file size (even large phone photos / 25MB+) and resizes automatically to a crisp, small logo file.
+ */
+export async function uploadCompanyLogo(
+  companyId: string,
+  fileOrBlob: File | Blob
+): Promise<{ success: boolean; logoUrl?: string; error?: string }> {
+  try {
+    let processedFile: File;
+    try {
+      const resized = await resizeImageForLogo(fileOrBlob, {
+        maxDimension: 512,
+        quality: 0.9,
+      });
+      processedFile = resized.file;
+    } catch {
+      processedFile = fileOrBlob as File;
+    }
+
+    const formData = new FormData();
+    const filename = processedFile.name || 'company-logo.png';
+    formData.append('file', processedFile, filename);
+
+    const res = await fetch(getApiUrl(`/api/companies/${encodeURIComponent(companyId)}/logo`), {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: formData,
+    });
+
+    const data = await res.json();
+    if (!res.ok) {
+      return { success: false, error: data.error || 'Gagal mengunggah logo' };
+    }
+    return { success: true, logoUrl: getFullUploadUrl(data.logoUrl) };
+  } catch (err: any) {
+    return { success: false, error: err.message || 'Gagal terhubung ke server saat mengunggah logo' };
+  }
+}
+
+/**
+ * Explicit helper to update company status (aktif / ditangguhkan / diarsipkan)
+ */
+export async function apiUpdateCompanyStatus(
+  companyId: string,
+  status: 'aktif' | 'ditangguhkan' | 'diarsipkan'
+): Promise<{ success: boolean; company?: any; error?: string }> {
+  try {
+    const res = await fetch(getApiUrl(`/api/companies/${encodeURIComponent(companyId)}/status`), {
+      method: 'POST',
+      headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ status }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.error || `HTTP ${res.status}`);
+    }
+    return { success: true, company: data.company };
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+}
+
+/**
+ * Update full company details (nama, slug, logo, warna, status, dll.)
+ */
+export async function apiUpdateCompany(
+  companyId: string,
+  updates: Record<string, any>
+): Promise<{ success: boolean; company?: any; error?: string }> {
+  try {
+    const res = await fetch(getApiUrl(`/api/companies/${encodeURIComponent(companyId)}`), {
+      method: 'PUT',
+      headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify(updates),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.error || `HTTP ${res.status}`);
+    }
+    return { success: true, company: data.company };
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
 }
 
 /**

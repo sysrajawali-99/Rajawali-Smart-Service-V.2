@@ -18,6 +18,7 @@ import {
 import { useCleaning } from '../../context/CleaningContext';
 import { UserRole } from '../../types';
 import { getActiveAppIcon } from '../../utils/dynamicFavicon';
+import { getFullUploadUrl } from '../../services/apiService';
 import { SupabaseStatusModal } from '../modals/SupabaseStatusModal';
 
 export const Header: React.FC = () => {
@@ -164,7 +165,7 @@ export const Header: React.FC = () => {
           <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-sky-600 flex items-center justify-center text-white shadow-xs shadow-sky-200 shrink-0 overflow-hidden p-1 border border-sky-400/30">
             {companyProfile?.logoUrl || getActiveAppIcon() ? (
               <img
-                src={companyProfile?.logoUrl || getActiveAppIcon()}
+                src={companyProfile?.logoUrl ? getFullUploadUrl(companyProfile.logoUrl) : getActiveAppIcon()}
                 alt="Logo"
                 className="w-full h-full object-contain"
                 onError={(e) => {

@@ -56,7 +56,7 @@ export const LoginPage: React.FC = () => {
     });
   }, [users, selectedRoleFilter, userSearchQuery, projectList]);
 
-  const handleManualSubmit = (e: React.FormEvent) => {
+  const handleManualSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage(null);
 
@@ -72,28 +72,35 @@ export const LoginPage: React.FC = () => {
 
     setIsLoading(true);
 
-    setTimeout(() => {
-      const result = login(identifier, password);
+    try {
+      const result = await login(identifier, password);
       setIsLoading(false);
       if (!result.success) {
-        setErrorMessage(result.message || 'Username/Email atau Password salah.');
+        setErrorMessage(result.message || 'Email atau kata sandi salah');
       }
-    }, 350);
+    } catch {
+      setIsLoading(false);
+      setErrorMessage('Terjadi kendala koneksi ke server saat masuk.');
+    }
   };
 
-  const handleInstantLogin = (userId: string) => {
+  const handleInstantLogin = async (userId: string) => {
     setErrorMessage(null);
     setActiveLoginId(userId);
     setIsLoading(true);
 
-    setTimeout(() => {
-      const result = instantLogin(userId);
+    try {
+      const result = await instantLogin(userId);
       setIsLoading(false);
       setActiveLoginId(null);
       if (!result.success) {
         setErrorMessage(result.message || 'Gagal masuk akun instan.');
       }
-    }, 300);
+    } catch {
+      setIsLoading(false);
+      setActiveLoginId(null);
+      setErrorMessage('Terjadi kendala koneksi saat masuk instan.');
+    }
   };
 
   const handleFillCredentials = (username: string, role: UserRole, customPass?: string) => {
@@ -187,10 +194,10 @@ export const LoginPage: React.FC = () => {
             </div>
           )}
           <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
-            {companyProfile?.companyName || 'Rajawali Smart Service'}
+            {companyProfile?.companyName || 'SMART SERVICE'}
           </h1>
           <p className="text-xs sm:text-sm text-slate-400 mt-1 font-normal max-w-md mx-auto leading-relaxed">
-            {companyProfile?.tagline || 'Cleaning Operations & Multi-Project Facility Control System'}
+            {companyProfile?.tagline || 'provided by jtismart'}
           </p>
         </div>
 

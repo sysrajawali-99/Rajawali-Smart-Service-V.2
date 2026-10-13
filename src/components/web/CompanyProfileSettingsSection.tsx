@@ -18,16 +18,17 @@ import {
 } from 'lucide-react';
 import { useCleaning } from '../../context/CleaningContext';
 import { CompanyProfile, DEFAULT_COMPANY_PROFILE } from '../../types';
-import { uploadPhoto } from '../../services/apiService';
+import { uploadPhoto, uploadCompanyLogo } from '../../services/apiService';
 import { updateDocumentFavicon, updateDocumentTitle } from '../../utils/dynamicFavicon';
 
 export const CompanyProfileSettingsSection: React.FC = () => {
-  const { companyProfile, updateCompanyProfile, resetCompanyProfile, activeProject, userRole } = useCleaning();
+  const { companyProfile, updateCompanyProfile, resetCompanyProfile, activeProject, userRole, currentCompany } = useCleaning();
 
   const isSuperAdmin = userRole === 'admin' || userRole === 'super_admin';
 
   const [formData, setFormData] = useState<CompanyProfile>({ ...companyProfile });
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [activePreviewTab, setActivePreviewTab] = useState<'kop_pdf' | 'login_page'>('kop_pdf');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -44,10 +45,24 @@ export const CompanyProfileSettingsSection: React.FC = () => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Validate size (max 2MB)
-    if (file.size > 2 * 1024 * 1024) {
-      alert('Ukuran file logo terlalu besar. Maksimal 2MB.');
+    // Validate size (max 25MB - will be auto resized)
+    if (file.size > 25 * 1024 * 1024) {
+      setErrorMessage('Ukuran file logo terlalu besar. Maksimal 25MB.');
+      setTimeout(() => setErrorMessage(null), 4000);
       return;
+    }
+
+    try {
+      const targetCompanyId = currentCompany?.id || 'comp-main';
+      const uploadRes = await uploadCompanyLogo(targetCompanyId, file);
+      if (uploadRes.success && uploadRes.logoUrl) {
+        setFormData((prev) => ({ ...prev, logoUrl: uploadRes.logoUrl! }));
+        updateDocumentFavicon(uploadRes.logoUrl);
+        window.dispatchEvent(new CustomEvent('pwa-icons-updated', { detail: { icon: uploadRes.logoUrl } }));
+        return;
+      }
+    } catch {
+      // fallback
     }
 
     try {
@@ -59,7 +74,7 @@ export const CompanyProfileSettingsSection: React.FC = () => {
         return;
       }
     } catch {
-      // fallback
+      // fallback to reader
     }
 
     const reader = new FileReader();
@@ -86,7 +101,8 @@ export const CompanyProfileSettingsSection: React.FC = () => {
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
     if (!isSuperAdmin) {
-      alert('Akses ditolak: Hanya Super Administrator yang berwenang mengubah profil dan branding global sistem.');
+      setErrorMessage('Akses ditolak: Hanya Super Administrator yang berwenang mengubah profil dan branding global sistem.');
+      setTimeout(() => setErrorMessage(null), 4000);
       return;
     }
     updateCompanyProfile(formData);
@@ -111,12 +127,10 @@ export const CompanyProfileSettingsSection: React.FC = () => {
   };
 
   const handleReset = () => {
-    if (window.confirm('Kembalikan pengaturan data perusahaan dan logo ke nilai default awal?')) {
-      resetCompanyProfile();
-      setFormData({ ...DEFAULT_COMPANY_PROFILE });
-      setSaveSuccess(true);
-      setTimeout(() => setSaveSuccess(false), 3000);
-    }
+    resetCompanyProfile();
+    setFormData({ ...DEFAULT_COMPANY_PROFILE });
+    setSaveSuccess(true);
+    setTimeout(() => setSaveSuccess(false), 3000);
   };
 
   return (
@@ -159,6 +173,13 @@ export const CompanyProfileSettingsSection: React.FC = () => {
           </button>
         </div>
       </div>
+
+      {errorMessage && (
+        <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold rounded-xl flex items-center gap-2">
+          <span>⚠️</span>
+          <span>{errorMessage}</span>
+        </div>
+      )}
 
       {!isSuperAdmin && (
         <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs flex items-center gap-2.5">

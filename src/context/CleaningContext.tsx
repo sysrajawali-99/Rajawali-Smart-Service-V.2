@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef, useMemo } from 'react';
 import {
   UserRole,
   ViewMode,
@@ -85,6 +85,8 @@ import {
   apiLogin,
   apiLogout,
   apiVerifySession,
+  apiUpdateCompanyStatus,
+  apiUpdateCompany,
   getAuthToken,
   setAuthToken,
 } from '../services/apiService';
@@ -366,10 +368,13 @@ interface CleaningContextType {
   resetKpiConfig: () => void;
   toggleKpiWidget: (key: keyof DashboardKpiVisibilityConfig) => void;
 
+  // Multi-Company Active State
+  currentCompany?: Company;
+
   // Authentication & Session
   isAuthenticated: boolean;
-  login: (identifier: string, pass: string) => { success: boolean; message?: string };
-  instantLogin: (userId: string) => { success: boolean; message?: string };
+  login: (identifier: string, pass: string) => Promise<{ success: boolean; message?: string }>;
+  instantLogin: (userId: string) => Promise<{ success: boolean; message?: string }>;
   logout: () => void;
 
   // System Reload Feature
@@ -758,12 +763,39 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       prev.map((c) => (c.id === id ? { ...c, ...updates, updatedAt: new Date().toISOString() } : c))
     );
     const existing = companies.find((c) => c.id === id);
-    if (existing) {
-      const merged = { ...existing, ...updates, updatedAt: new Date().toISOString() };
+    const merged: Company = existing
+      ? { ...existing, ...updates, updatedAt: new Date().toISOString() }
+      : ({
+          id,
+          nama: updates.nama || id,
+          slug: updates.slug || id,
+          status: updates.status || 'aktif',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          ...updates,
+        } as Company);
+
+    if (updates.status) {
+      try {
+        const res = await apiUpdateCompanyStatus(id, updates.status);
+        if (!res.success && res.error) {
+          console.warn('[updateCompany] apiUpdateCompanyStatus notice:', res.error);
+        }
+      } catch (e) {
+        console.warn('[updateCompany] apiUpdateCompanyStatus error:', e);
+      }
+    }
+
+    try {
+      const res = await apiUpdateCompany(id, merged);
+      if (!res.success) {
+        await upsertRecord(COLLECTIONS.COMPANIES, merged);
+      }
+    } catch (err) {
       try {
         await upsertRecord(COLLECTIONS.COMPANIES, merged);
-      } catch (err) {
-        notifyServerError('memperbarui perusahaan', err);
+      } catch (upsertErr) {
+        notifyServerError('memperbarui perusahaan', upsertErr);
       }
     }
   };
@@ -812,6 +844,27 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     users.find((u) => u.id === activeUserId) ||
     users.find((u) => u.role === userRole) ||
     users[0];
+
+  // Active Company Determination based on authenticated user
+  const userCompanyId = currentUser?.companyId || (currentUser as any)?.company_id || 'comp-main';
+  const currentCompany = companies.find((c) => c.id === userCompanyId);
+
+  // Dynamic Company Profile: Reflects the active logged-in user's company branding
+  const effectiveCompanyProfile: CompanyProfile = useMemo(() => {
+    if (currentCompany) {
+      return {
+        ...companyProfile,
+        companyName: currentCompany.nama || companyProfile.companyName,
+        logoUrl: currentCompany.logo || (currentCompany as any).logoUrl || companyProfile.logoUrl,
+        address: (currentCompany as any).address || (currentCompany as any).alamat || companyProfile.address,
+        phone: (currentCompany as any).phone || (currentCompany as any).telepon || companyProfile.phone,
+        email: (currentCompany as any).email || companyProfile.email,
+        website: (currentCompany as any).website || companyProfile.website,
+        tagline: (currentCompany as any).tagline || companyProfile.tagline,
+      };
+    }
+    return companyProfile;
+  }, [currentCompany, companyProfile]);
 
   // User restriction:
   // Super Admin ('admin' or 'super_admin') can view all projects.
@@ -1271,6 +1324,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           case COLLECTIONS.KLIEN_CHECKLIST_INSPECTIONS: setKlienChecklistInspections((prev) => prev.filter((k) => k.id !== id)); break;
           case COLLECTIONS.NOTIFICATIONS: setNotifications((prev) => prev.filter((n) => n.id !== id)); break;
           case COLLECTIONS.AUDIT_LOGS: setAuditLogs((prev) => prev.filter((a) => a.id !== id)); break;
+          case COLLECTIONS.COMPANIES: setCompanies((prev) => prev.filter((c) => c.id !== id)); break;
         }
         return;
       }
@@ -1695,7 +1749,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
   }, []);
 
-  const login = (identifier: string, pass: string): { success: boolean; message?: string } => {
+  const login = async (identifier: string, pass: string): Promise<{ success: boolean; message?: string }> => {
     const cleanId = identifier.trim().toLowerCase();
     const cleanPass = pass.trim();
 
@@ -1703,6 +1757,42 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       return { success: false, message: 'Harap masukkan Username/Email dan Password.' };
     }
 
+    // 1. Coba autentikasi ke server backend secara autoritatif
+    try {
+      const apiRes = await apiLogin({ identifier: cleanId, password: cleanPass });
+      if (apiRes && apiRes.success && apiRes.user) {
+        setIsAuthenticated(true);
+        setActiveUserId(apiRes.user.id);
+        setUserRole(apiRes.user.role);
+
+        const userAllowedProjs =
+          apiRes.user.role === 'admin' || apiRes.user.role === 'super_admin' || apiRes.user.role === 'admin_perusahaan'
+            ? projects
+            : projects.filter((p) => apiRes.user.assignedProjectIds?.includes(p.id));
+        const nextProjId = userAllowedProjs[0]?.id || projects[0]?.id || 'proj-1';
+        setActiveProjectIdState(nextProjId);
+        localStorage.setItem('sco_active_project_id', nextProjId);
+
+        localStorage.setItem('sco_auth_state', 'true');
+        localStorage.setItem('sco_active_user_id', apiRes.user.id);
+        localStorage.setItem('sco_role', apiRes.user.role);
+
+        if (apiRes.user.role === 'klien') {
+          setActiveTab('klien-manpower');
+        } else {
+          setActiveTab('dashboard');
+        }
+
+        return { success: true };
+      } else if (apiRes && !apiRes.success && apiRes.error) {
+        // Backend menolak (password salah atau perusahaan ditangguhkan/diarsipkan)
+        return { success: false, message: apiRes.error || 'Email atau kata sandi salah' };
+      }
+    } catch {
+      // Backend offline / network issue: lanjutkan verifikasi lokal fallback
+    }
+
+    // 2. Fallback verifikasi lokal jika server sedang tidak dapat dijangkau
     const matchedUser = users.find(
       (u) =>
         (u.username && u.username.toLowerCase() === cleanId) ||
@@ -1710,7 +1800,16 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     );
 
     if (!matchedUser) {
-      return { success: false, message: 'Akun tidak ditemukan. Periksa kembali Username atau Email Anda.' };
+      return { success: false, message: 'Email atau kata sandi salah' };
+    }
+
+    // Cek status perusahaan pengguna: jika ditangguhkan / diarsipkan, tolak dengan pesan umum
+    const uCompId = matchedUser.companyId || (matchedUser as any).company_id || 'comp-main';
+    if (matchedUser.role !== 'super_admin' && matchedUser.role !== 'admin') {
+      const userComp = companies.find((c) => c.id === uCompId);
+      if (userComp && (userComp.status === 'ditangguhkan' || userComp.status === 'diarsipkan')) {
+        return { success: false, message: 'Email atau kata sandi salah' };
+      }
     }
 
     const expectedPassword =
@@ -1724,7 +1823,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         : 'klien123');
 
     if (expectedPassword !== cleanPass) {
-      return { success: false, message: 'Password salah. Silakan periksa kembali kata sandi Anda.' };
+      return { success: false, message: 'Email atau kata sandi salah' };
     }
 
     setIsAuthenticated(true);
@@ -1732,7 +1831,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setUserRole(matchedUser.role);
 
     const userAllowedProjs =
-      matchedUser.role === 'admin'
+      matchedUser.role === 'admin' || matchedUser.role === 'super_admin' || matchedUser.role === 'admin_perusahaan'
         ? projects
         : projects.filter((p) => matchedUser.assignedProjectIds?.includes(p.id));
     const nextProjId = userAllowedProjs[0]?.id || projects[0]?.id || 'proj-1';
@@ -1743,10 +1842,8 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     localStorage.setItem('sco_active_user_id', matchedUser.id);
     localStorage.setItem('sco_role', matchedUser.role);
 
-    // Call backend API login asynchronously to retrieve and persist Bearer token
-    apiLogin({ identifier: cleanId, password: cleanPass }).catch((err) => {
-      console.warn('[Login Token] Backend token issuance notice:', err);
-    });
+    // Kirim request login ke backend di latar belakang jika tersedia
+    apiLogin({ identifier: cleanId, password: cleanPass }).catch(() => {});
 
     if (matchedUser.role === 'klien') {
       setActiveTab('klien-manpower');
@@ -1757,7 +1854,36 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     return { success: true };
   };
 
-  const instantLogin = (userId: string): { success: boolean; message?: string } => {
+  const instantLogin = async (userId: string): Promise<{ success: boolean; message?: string }> => {
+    try {
+      const apiRes = await apiLogin({ userId });
+      if (apiRes && apiRes.success && apiRes.user) {
+        setIsAuthenticated(true);
+        setActiveUserId(apiRes.user.id);
+        setUserRole(apiRes.user.role);
+
+        const userAllowedProjs =
+          apiRes.user.role === 'admin' || apiRes.user.role === 'super_admin' || apiRes.user.role === 'admin_perusahaan'
+            ? projects
+            : projects.filter((p) => apiRes.user.assignedProjectIds?.includes(p.id));
+        const nextProjId = userAllowedProjs[0]?.id || projects[0]?.id || 'proj-1';
+        setActiveProjectIdState(nextProjId);
+        localStorage.setItem('sco_active_project_id', nextProjId);
+
+        localStorage.setItem('sco_auth_state', 'true');
+        localStorage.setItem('sco_active_user_id', apiRes.user.id);
+        localStorage.setItem('sco_role', apiRes.user.role);
+
+        if (apiRes.user.role === 'klien') {
+          setActiveTab('klien-manpower');
+        } else {
+          setActiveTab('dashboard');
+        }
+
+        return { success: true };
+      }
+    } catch {}
+
     const matchedUser = users.find((u) => u.id === userId);
     if (!matchedUser) {
       return { success: false, message: 'Akun pengguna tidak ditemukan.' };
@@ -1768,7 +1894,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setUserRole(matchedUser.role);
 
     const userAllowedProjs =
-      matchedUser.role === 'admin'
+      matchedUser.role === 'admin' || matchedUser.role === 'super_admin' || matchedUser.role === 'admin_perusahaan'
         ? projects
         : projects.filter((p) => matchedUser.assignedProjectIds?.includes(p.id));
     const nextProjId = userAllowedProjs[0]?.id || projects[0]?.id || 'proj-1';
@@ -4141,7 +4267,8 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   return (
     <CleaningContext.Provider
       value={{
-        companyProfile,
+        companyProfile: effectiveCompanyProfile,
+        currentCompany,
         updateCompanyProfile,
         resetCompanyProfile,
         isPwaIconsRegenerating,
