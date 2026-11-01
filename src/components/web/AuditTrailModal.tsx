@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { useCleaning } from '../../context/CleaningContext';
 import { AuditActionType } from '../../types';
+import { getSafeLogDetails } from './AuditLogSection';
 
 export const AuditTrailModal: React.FC<{ isOpen: boolean; onClose: () => void }> = ({
   isOpen,
@@ -27,8 +28,8 @@ export const AuditTrailModal: React.FC<{ isOpen: boolean; onClose: () => void }>
     if (selectedAction !== 'ALL' && log.action !== selectedAction) return false;
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
-      const matchUser = log.userName.toLowerCase().includes(q);
-      const matchDetails = log.details.toLowerCase().includes(q);
+      const matchUser = (log.userName || '').toLowerCase().includes(q);
+      const matchDetails = getSafeLogDetails(log).toLowerCase().includes(q);
       const matchModule = (log.module || '').toLowerCase().includes(q);
       const matchEntity = (log.entityName || '').toLowerCase().includes(q);
       const matchProject = (log.projectName || '').toLowerCase().includes(q);
@@ -93,7 +94,7 @@ export const AuditTrailModal: React.FC<{ isOpen: boolean; onClose: () => void }>
         `"${log.module}"`,
         `"${log.entityName || '-'}"`,
         `"${log.projectName || '-'}"`,
-        `"${log.details.replace(/"/g, '""')}"`,
+        `"${getSafeLogDetails(log).replace(/"/g, '""')}"`,
       ]),
     ];
 
@@ -236,7 +237,7 @@ export const AuditTrailModal: React.FC<{ isOpen: boolean; onClose: () => void }>
                     </td>
 
                     <td className="py-2.5 px-3 text-slate-700">
-                      <div className="line-clamp-2">{log.details}</div>
+                      <div className="line-clamp-2">{getSafeLogDetails(log)}</div>
                     </td>
                   </tr>
                 ))

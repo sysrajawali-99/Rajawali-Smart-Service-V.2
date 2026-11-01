@@ -1058,6 +1058,38 @@ app.get('/api/records/:collection', async (req: Request, res: Response) => {
       }
     }
 
+    // Defensive Sanitization: Ensure audit log details is ALWAYS a valid string (never raw objects)
+    if (collection === 'audit_logs') {
+      items = items.map((l: any) => {
+        let detailsText = '';
+        if (typeof l.details === 'string' && l.details.trim()) {
+          detailsText = l.details;
+        } else if (typeof l.description === 'string' && l.description.trim()) {
+          detailsText = l.description;
+        } else if (l.details && typeof l.details === 'object') {
+          if (l.details.outboxId) {
+            const reasonPart = l.details.flagReason ? ` - Alasan: ${l.details.flagReason}` : '';
+            detailsText = `${l.description || 'Sinkronisasi Ceklist'} (ID: ${l.details.outboxId}${l.details.flagged ? ', Ditandai Tinjau' : ''}${reasonPart})`;
+          } else if (l.details.taskId) {
+            detailsText = `${l.description || 'Notifikasi Tugas'} (ID Tugas: ${l.details.taskId})`;
+          } else {
+            try {
+              detailsText = JSON.stringify(l.details);
+            } catch {
+              detailsText = String(l.details);
+            }
+          }
+        } else {
+          detailsText = l.description || '-';
+        }
+        return {
+          ...l,
+          details: detailsText,
+          description: detailsText,
+        };
+      });
+    }
+
     return res.json(items);
   } catch (err: any) {
     console.error(`[GET /api/records/${collection}] Error:`, err);
@@ -1089,6 +1121,32 @@ app.get('/api/records/:collection/:id', async (req: Request, res: Response) => {
           return res.status(404).json({ error: 'Data tidak ditemukan' });
         }
       }
+    }
+
+    if (collection === 'audit_logs' && record) {
+      let detailsText = '';
+      if (typeof record.details === 'string' && record.details.trim()) {
+        detailsText = record.details;
+      } else if (typeof record.description === 'string' && record.description.trim()) {
+        detailsText = record.description;
+      } else if (record.details && typeof record.details === 'object') {
+        if (record.details.outboxId) {
+          const reasonPart = record.details.flagReason ? ` - Alasan: ${record.details.flagReason}` : '';
+          detailsText = `${record.description || 'Sinkronisasi Ceklist'} (ID: ${record.details.outboxId}${record.details.flagged ? ', Ditandai Tinjau' : ''}${reasonPart})`;
+        } else if (record.details.taskId) {
+          detailsText = `${record.description || 'Notifikasi Tugas'} (ID Tugas: ${record.details.taskId})`;
+        } else {
+          try {
+            detailsText = JSON.stringify(record.details);
+          } catch {
+            detailsText = String(record.details);
+          }
+        }
+      } else {
+        detailsText = record.description || '-';
+      }
+      record.details = detailsText;
+      record.description = detailsText;
     }
 
     return res.json(record);
@@ -1815,7 +1873,7 @@ function isRateLimited(key: string, limit = 60, windowMs = 60000): boolean {
 async function addAuditLog(entry: {
   action: string;
   module: string;
-  description: string;
+  description?: string;
   userId?: string;
   userName?: string;
   projectId?: string;
@@ -1825,10 +1883,35 @@ async function addAuditLog(entry: {
 }) {
   const logId = 'log-' + Date.now() + '-' + Math.random().toString(36).substring(2, 7);
   const company_id = entry.company_id || entry.companyId || 'comp-main';
+
+  let detailsText = '';
+  if (typeof entry.details === 'string' && entry.details.trim()) {
+    detailsText = entry.details;
+  } else if (typeof entry.description === 'string' && entry.description.trim()) {
+    detailsText = entry.description;
+  } else if (entry.details && typeof entry.details === 'object') {
+    if (entry.details.outboxId) {
+      const reasonPart = entry.details.flagReason ? ` - Alasan: ${entry.details.flagReason}` : '';
+      detailsText = `${entry.description || 'Sinkronisasi Ceklist'} (ID: ${entry.details.outboxId}${entry.details.flagged ? ', Ditandai Tinjau' : ''}${reasonPart})`;
+    } else if (entry.details.taskId) {
+      detailsText = `${entry.description || 'Notifikasi Tugas'} (ID Tugas: ${entry.details.taskId})`;
+    } else {
+      try {
+        detailsText = JSON.stringify(entry.details);
+      } catch {
+        detailsText = String(entry.details);
+      }
+    }
+  } else {
+    detailsText = entry.description || '-';
+  }
+
   const logData = {
     id: logId,
     timestamp: new Date().toISOString(),
     ...entry,
+    details: detailsText,
+    description: detailsText,
     company_id,
     companyId: company_id,
   };
@@ -2101,7 +2184,17 @@ app.post('/api/sync/checklist', async (req: Request, res: Response) => {
         }
 
         if (!checklistRecord) {
-          // If record doesn't exist yet, look up in initial store or create container
+          const defaultSlots = Array.from({ length: 24 }, (_, h) => ({
+            hour: h,
+            hourLabel: `${String(h).padStart(2, '0')}.00 - ${String(h + 1 === 24 ? 24 : h + 1).padStart(2, '0')}.00`,
+            status: 'pending',
+            checkedBy: '',
+            checkedAt: '',
+            items: [],
+          }));
+
+          const dateStr = req.body?.date || (captured_at ? captured_at.split('T')[0] : new Date().toISOString().split('T')[0]);
+
           checklistRecord = {
             id: targetChecklistId,
             company_id: sessionCompanyId,
@@ -2109,9 +2202,9 @@ app.post('/api/sync/checklist', async (req: Request, res: Response) => {
             projectId: projectId || 'proj-1',
             locationId: locationId || 'loc-1',
             locationName: req.body?.locationName || 'Area Lokasi',
-            category: 'toilet',
-            date: new Date().toISOString().split('T')[0],
-            hourlySlots: [],
+            category: req.body?.category || 'toilet',
+            date: dateStr,
+            hourlySlots: defaultSlots,
           };
         } else {
           checklistRecord.company_id = sessionCompanyId;
@@ -2122,15 +2215,31 @@ app.post('/api/sync/checklist', async (req: Request, res: Response) => {
         const hour = typeof slotHour === 'number' ? slotHour : new Date(captured_at || received_at).getHours();
         const slots = Array.isArray(checklistRecord.hourlySlots) ? [...checklistRecord.hourlySlots] : [];
         let slotIndex = slots.findIndex((s: any) => s.hour === hour);
+        const existingSlot = slotIndex >= 0 ? slots[slotIndex] : null;
+
+        // Preserve items if answers is empty/missing
+        let finalItems: any[] = [];
+        if (Array.isArray(answers) && answers.length > 0) {
+          finalItems = answers;
+        } else if (existingSlot && Array.isArray(existingSlot.items) && existingSlot.items.length > 0) {
+          finalItems = existingSlot.items;
+        }
+
+        const hasIssue = finalItems.some(
+          (i: any) => i.status === 'issue' || i.status === 'dirty' || i.status === 'broken'
+        );
+        const allClean = finalItems.length > 0 && finalItems.every((i: any) => i.status === 'clean');
+        const computedSlotStatus = hasIssue ? 'has_issue' : allClean ? 'clean' : (existingSlot?.status || 'pending');
 
         const updatedSlot = {
           hour,
-          hourLabel: hourLabel || `${String(hour).padStart(2, '0')}.00 - ${String(hour + 1).padStart(2, '0')}.00`,
-          status: 'clean',
-          checkedBy: user?.name || req.body?.checkedBy || 'Petugas',
+          hourLabel: hourLabel || existingSlot?.hourLabel || `${String(hour).padStart(2, '0')}.00 - ${String(hour + 1).padStart(2, '0')}.00`,
+          status: computedSlotStatus,
+          checkedBy: user?.name || req.body?.checkedBy || existingSlot?.checkedBy || 'Petugas',
           checkedAt: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB',
-          items: answers || [],
-          notes: notes || '',
+          items: finalItems,
+          notes: notes !== undefined ? notes : existingSlot?.notes || '',
+          supervisorVerified: existingSlot?.supervisorVerified || false,
           flaggedForSupervisorReview,
           flagReason,
           captured_at,
@@ -2215,7 +2324,9 @@ app.post('/api/sync/checklist', async (req: Request, res: Response) => {
       userName: user?.name,
       projectId,
       company_id: sessionCompanyId,
-      details: { outboxId, flagged: flaggedForSupervisorReview, flagReason },
+      details: flaggedForSupervisorReview
+        ? `Sinkronisasi ceklist diterima tapi DITANDAI tinjau: ${flagReason} (ID Outbox: ${outboxId})`
+        : `Sinkronisasi ceklist berhasil diproses dari antrean outbox perangkat (ID Outbox: ${outboxId})`,
     });
 
     return res.json({
@@ -2364,7 +2475,7 @@ async function runTaskNotificationScheduler() {
           description: `Pengingat tugas 15 menit dikirim untuk ${task.areaName} (${task.cleanerName})`,
           projectId,
           company_id: taskCompany,
-          details: { taskId: task.id },
+          details: `Pengingat batas waktu 15 menit dikirim untuk ${task.areaName} (ID Tugas: ${task.id})`,
         });
       }
 
@@ -2418,7 +2529,7 @@ async function runTaskNotificationScheduler() {
           description: `Peringatan tugas terlambat dikirim untuk ${task.areaName}`,
           projectId,
           company_id: taskCompany,
-          details: { taskId: task.id },
+          details: `Peringatan tugas terlambat dikirim untuk ${task.areaName} (ID Tugas: ${task.id})`,
         });
       }
 
@@ -2471,7 +2582,7 @@ async function runTaskNotificationScheduler() {
           description: `Peringatan tugas terlewat (missed) dikirim untuk ${task.areaName}`,
           projectId,
           company_id: taskCompany,
-          details: { taskId: task.id },
+          details: `Peringatan tugas terlewat (missed) dikirim untuk ${task.areaName} (ID Tugas: ${task.id})`,
         });
       }
     }

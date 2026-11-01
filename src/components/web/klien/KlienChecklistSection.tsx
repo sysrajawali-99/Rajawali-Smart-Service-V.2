@@ -24,6 +24,7 @@ import {
   STANDARD_TOILET_PARAMETERS,
   findMatchingSlotItem,
   calculateShiftChecklistStats,
+  ensureCompleteSlotItems,
 } from '../../../utils/checklistHelper';
 
 interface ShiftSlotDefinition {
@@ -37,6 +38,7 @@ export const KlienChecklistSection: React.FC = () => {
   const {
     activeProject,
     checklistLocations,
+    checklistTemplates,
     getOrCreateDailyChecklist,
     ensureDailyChecklist,
     shifts,
@@ -202,11 +204,13 @@ export const KlienChecklistSection: React.FC = () => {
 
   // Hourly slots matching active shift with date and time metadata
   const displayedSlotsWithMeta = useMemo(() => {
+    const category = currentLocation?.category || 'toilet';
     return shiftSlotDefs.map((def) => {
-      const rawSlot = currentDailyChecklist?.hourlySlots.find((s) => s.hour === def.hour);
+      const rawSlot = currentDailyChecklist?.hourlySlots?.find((s) => s.hour === def.hour);
       if (rawSlot) {
         return {
           ...rawSlot,
+          items: ensureCompleteSlotItems(rawSlot.items || [], category, checklistTemplates),
           timeLabel: def.timeLabel,
           dateStr: def.dateStr,
           isNextDay: def.isNextDay,
@@ -221,10 +225,10 @@ export const KlienChecklistSection: React.FC = () => {
         status: 'pending' as const,
         checkedBy: '',
         supervisorVerified: false,
-        items: [],
+        items: ensureCompleteSlotItems([], category, checklistTemplates),
       };
     });
-  }, [shiftSlotDefs, currentDailyChecklist]);
+  }, [shiftSlotDefs, currentDailyChecklist, currentLocation, checklistTemplates]);
 
   // Stats calculation matching Inspeksi Report / Ceklist Kebersihan Area
   const {

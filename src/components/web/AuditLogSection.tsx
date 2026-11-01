@@ -24,6 +24,31 @@ import {
 import { useCleaning } from '../../context/CleaningContext';
 import { AuditActionType, AuditLogEntry } from '../../types';
 
+export function getSafeLogDetails(log: any): string {
+  if (!log) return '-';
+  if (typeof log.details === 'string' && log.details.trim()) {
+    return log.details;
+  }
+  if (typeof log.description === 'string' && log.description.trim()) {
+    return log.description;
+  }
+  if (log.details && typeof log.details === 'object') {
+    if (log.details.outboxId) {
+      const reasonPart = log.details.flagReason ? ` - Alasan: ${log.details.flagReason}` : '';
+      return `${log.description || 'Sinkronisasi Ceklist'} (ID: ${log.details.outboxId}${log.details.flagged ? ', Ditandai Tinjau' : ''}${reasonPart})`;
+    }
+    if (log.details.taskId) {
+      return `${log.description || 'Notifikasi Tugas'} (ID Tugas: ${log.details.taskId})`;
+    }
+    try {
+      return JSON.stringify(log.details);
+    } catch {
+      return String(log.details);
+    }
+  }
+  return String(log.description || log.details || '-');
+}
+
 export const AuditLogSection: React.FC = () => {
   const {
     auditLogs,
@@ -64,7 +89,7 @@ export const AuditLogSection: React.FC = () => {
         const q = searchQuery.toLowerCase();
         const matchUser = (log.userName || '').toLowerCase().includes(q);
         const matchRole = (log.userRole || '').toLowerCase().includes(q);
-        const matchDetails = (log.details || '').toLowerCase().includes(q);
+        const matchDetails = getSafeLogDetails(log).toLowerCase().includes(q);
         const matchModule = (log.module || '').toLowerCase().includes(q);
         const matchEntity = (log.entityName || '').toLowerCase().includes(q);
         const matchProject = (log.projectName || '').toLowerCase().includes(q);
@@ -204,7 +229,7 @@ export const AuditLogSection: React.FC = () => {
         `"${log.module || '-'}"`,
         `"${(log.entityName || '-').replace(/"/g, '""')}"`,
         `"${(log.projectName || '-').replace(/"/g, '""')}"`,
-        `"${log.details.replace(/"/g, '""')}"`,
+        `"${getSafeLogDetails(log).replace(/"/g, '""')}"`,
         `"${(log.previousState || '-').replace(/"/g, '""')}"`,
         `"${(log.newState || '-').replace(/"/g, '""')}"`,
       ]),
@@ -538,7 +563,7 @@ export const AuditLogSection: React.FC = () => {
                       {/* Details */}
                       <td className="p-3 align-top">
                         <p className="text-xs text-slate-700 leading-relaxed font-normal">
-                          {log.details}
+                          {getSafeLogDetails(log)}
                         </p>
                         {(log.previousState || log.newState) && (
                           <div className="mt-1 flex items-center gap-1.5 text-[11px] text-slate-500 bg-slate-50 p-1.5 rounded-lg border border-slate-100 max-w-lg">
@@ -701,7 +726,7 @@ export const AuditLogSection: React.FC = () => {
             <div className="space-y-1.5">
               <span className="text-xs font-bold text-slate-700 block">Keterangan / Aktivitas yang Dilakukan:</span>
               <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 text-xs text-slate-800 leading-relaxed">
-                {selectedLogDetail.details}
+                {getSafeLogDetails(selectedLogDetail)}
               </div>
             </div>
 

@@ -220,8 +220,14 @@ class AppErrorBoundary extends React.Component<
               </button>
               <button
                 type="button"
-                onClick={() => {
-                  localStorage.clear();
+                onClick={async () => {
+                  try {
+                    localStorage.clear();
+                    sessionStorage.clear();
+                    if (window.indexedDB) {
+                      window.indexedDB.deleteDatabase('JTISmartDB');
+                    }
+                  } catch {}
                   window.location.reload();
                 }}
                 className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-xl cursor-pointer"

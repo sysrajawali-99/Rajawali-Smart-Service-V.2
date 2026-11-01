@@ -4732,7 +4732,8 @@
       "userId": "usr-admin",
       "userName": "Super Administrator",
       "company_id": "comp-main",
-      "companyId": "comp-main"
+      "companyId": "comp-main",
+      "details": "Kata sandi berhasil diperbarui untuk Super Administrator (superadmin@cleaningops.com)"
     }
   },
   "daily_checklists": {

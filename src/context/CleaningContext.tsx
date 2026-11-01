@@ -443,6 +443,36 @@ interface CleaningContextType {
 }
 
 
+export function normalizeAuditLog(raw: any): AuditLogEntry {
+  if (!raw) return raw;
+  let detailsText = '';
+  if (typeof raw.details === 'string' && raw.details.trim()) {
+    detailsText = raw.details;
+  } else if (typeof raw.description === 'string' && raw.description.trim()) {
+    detailsText = raw.description;
+  } else if (raw.details && typeof raw.details === 'object') {
+    if (raw.details.outboxId) {
+      const reasonPart = raw.details.flagReason ? ` - Alasan: ${raw.details.flagReason}` : '';
+      detailsText = `${raw.description || 'Sinkronisasi Ceklist'} (ID: ${raw.details.outboxId}${raw.details.flagged ? ', Ditandai Tinjau' : ''}${reasonPart})`;
+    } else if (raw.details.taskId) {
+      detailsText = `${raw.description || 'Notifikasi Tugas'} (ID Tugas: ${raw.details.taskId})`;
+    } else {
+      try {
+        detailsText = JSON.stringify(raw.details);
+      } catch {
+        detailsText = String(raw.details);
+      }
+    }
+  } else {
+    detailsText = raw.description || '-';
+  }
+
+  return {
+    ...raw,
+    details: detailsText,
+  };
+}
+
 const CleaningContext = createContext<CleaningContextType | undefined>(undefined);
 
 export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -933,7 +963,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const [klienChecklistItems, setKlienChecklistItems] = useState<KlienChecklistItem[]>(INITIAL_KLIEN_CHECKLIST_ITEMS);
   const [klienChecklistInspections, setKlienChecklistInspections] = useState<KlienChecklistInspection[]>(INITIAL_KLIEN_CHECKLIST_INSPECTIONS);
   const [specialJobs, setSpecialJobs] = useState<SpecialJobItem[]>(INITIAL_SPECIAL_JOBS);
-  const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>(INITIAL_AUDIT_LOGS);
+  const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>(() => INITIAL_AUDIT_LOGS.map(normalizeAuditLog));
   const [rbacPermissions, setRbacPermissions] = useState<RoleModulePermission[]>(DEFAULT_RBAC_PERMISSIONS);
 
   // ==================== VPS POSTGRESQL & SOCKET.IO REALTIME SYNC ====================
@@ -1061,7 +1091,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         loadOrSeedCollection(COLLECTIONS.KLIEN_CHECKLIST_ITEMS, remoteKlienItems, INITIAL_KLIEN_CHECKLIST_ITEMS, setKlienChecklistItems),
         loadOrSeedCollection(COLLECTIONS.KLIEN_CHECKLIST_INSPECTIONS, remoteKlienInspections, INITIAL_KLIEN_CHECKLIST_INSPECTIONS, setKlienChecklistInspections),
         loadOrSeedCollection(COLLECTIONS.NOTIFICATIONS, remoteNotifs, INITIAL_NOTIFICATIONS, setNotifications),
-        loadOrSeedCollection(COLLECTIONS.AUDIT_LOGS, remoteAuditLogs, INITIAL_AUDIT_LOGS, setAuditLogs),
+        loadOrSeedCollection(COLLECTIONS.AUDIT_LOGS, remoteAuditLogs.map(normalizeAuditLog), INITIAL_AUDIT_LOGS.map(normalizeAuditLog), setAuditLogs),
       ]);
 
       // Daily Checklists:
@@ -1394,15 +1424,40 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
               return [...prev, data];
             });
             break;
-          case COLLECTIONS.DAILY_CHECKLISTS:
-            checklistSnapshotRef.current.set(id, JSON.stringify(data));
-            dirtyChecklistIdsRef.current.delete(id);
+          case COLLECTIONS.DAILY_CHECKLISTS: {
             setDailyChecklists((prev) => {
               const idx = prev.findIndex((dc) => dc.id === id);
-              if (idx >= 0) { const next = [...prev]; next[idx] = { ...next[idx], ...data }; return next; }
+              if (idx >= 0) {
+                const localDoc = prev[idx];
+                const incomingDoc = data as DailyAreaChecklist;
+                // Merge hourlySlots so remote socket broadcast doesn't clobber populated local slot items
+                const mergedSlots = (incomingDoc.hourlySlots || []).map((inSlot) => {
+                  const localSlot = localDoc.hourlySlots?.find((ls) => ls.hour === inSlot.hour);
+                  if (!localSlot) return inSlot;
+                  const inHasItems = Array.isArray(inSlot.items) && inSlot.items.length > 0;
+                  const localHasItems = Array.isArray(localSlot.items) && localSlot.items.length > 0;
+                  if (!inHasItems && localHasItems) {
+                    return { ...inSlot, items: localSlot.items, status: localSlot.status };
+                  }
+                  return inSlot;
+                });
+                const mergedDoc: DailyAreaChecklist = {
+                  ...localDoc,
+                  ...incomingDoc,
+                  hourlySlots: mergedSlots.length > 0 ? mergedSlots : incomingDoc.hourlySlots || localDoc.hourlySlots,
+                };
+                checklistSnapshotRef.current.set(id, JSON.stringify(mergedDoc));
+                dirtyChecklistIdsRef.current.delete(id);
+                const next = [...prev];
+                next[idx] = mergedDoc;
+                return next;
+              }
+              checklistSnapshotRef.current.set(id, JSON.stringify(data));
+              dirtyChecklistIdsRef.current.delete(id);
               return [...prev, data];
             });
             break;
+          }
           case COLLECTIONS.TASKS:
             setTasks((prev) => {
               const idx = prev.findIndex((t) => t.id === id);
@@ -1475,9 +1530,10 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             break;
           case COLLECTIONS.AUDIT_LOGS:
             setAuditLogs((prev) => {
+              const cleanData = normalizeAuditLog(data);
               const idx = prev.findIndex((a) => a.id === id);
-              if (idx >= 0) { const next = [...prev]; next[idx] = { ...next[idx], ...data }; return next; }
-              return [data, ...prev];
+              if (idx >= 0) { const next = [...prev]; next[idx] = { ...next[idx], ...cleanData }; return next; }
+              return [cleanData, ...prev];
             });
             break;
           case COLLECTIONS.COMPANY_PROFILE:
@@ -1537,7 +1593,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     });
     const timestampStr = `${dateFormatted}, ${timeFormatted} WIB`;
 
-    const newLog: AuditLogEntry = {
+    const newLog: AuditLogEntry = normalizeAuditLog({
       id: `audit-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
       timestamp: timestampStr,
       userId: currentUser?.id || 'usr-system',
@@ -1552,7 +1608,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       details: entry.details,
       previousState: entry.previousState,
       newState: entry.newState,
-    };
+    });
 
     setAuditLogs((prev) => [newLog, ...prev]);
     upsertRecord(COLLECTIONS.AUDIT_LOGS, newLog).catch(() => {});
@@ -2287,83 +2343,133 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     const nowStr = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB';
     let affectedItemName = itemKeyOrId;
     let locationName = '';
+    let updatedDailyToPersist: DailyAreaChecklist | null = null;
+    let updatedItemsForSync: HourlyCheckItemEntry[] = [];
 
-    setDailyChecklists((prev) =>
-      prev.map((d) => {
-        if (d.id !== dailyChecklistId) return d;
-        locationName = d.locationName;
-        const location = checklistLocations.find((l) => l.id === d.locationId);
-        const category = d.category || location?.category || 'toilet';
+    setDailyChecklists((prev) => {
+      const targetIndex = prev.findIndex((d) => d.id === dailyChecklistId);
+      let targetDaily: DailyAreaChecklist;
 
-        const updatedSlots = d.hourlySlots.map((slot) => {
-          if (slot.hour !== hour) return slot;
-
-          // 1. Ensure all standard items exist for category without losing existing entries
-          const currentItems = ensureCompleteSlotItems(slot.items, category, checklistTemplates);
-
-          // 2. Deterministically find item by id, standard key, or name
-          let targetIndex = currentItems.findIndex(
-            (it) => it.itemId === itemKeyOrId || it.itemId.toLowerCase() === itemKeyOrId.toLowerCase()
-          );
-
-          if (targetIndex === -1) {
-            const matched = findMatchingSlotItem(currentItems, itemKeyOrId);
-            if (matched) {
-              targetIndex = currentItems.findIndex((it) => it.itemId === matched.itemId);
-            }
+      if (targetIndex === -1) {
+        let pId = safeActiveProjectId;
+        let locId = '';
+        let dt = new Date().toISOString().split('T')[0];
+        if (dailyChecklistId.startsWith('dchk-')) {
+          const rest = dailyChecklistId.slice(5);
+          const foundLoc = checklistLocations.find((l) => rest.includes(l.id));
+          if (foundLoc) {
+            locId = foundLoc.id;
+            pId = foundLoc.projectId || safeActiveProjectId;
           }
-
-          let updatedItems: HourlyCheckItemEntry[];
-
-          if (targetIndex !== -1) {
-            const targetItem = currentItems[targetIndex];
-            affectedItemName = targetItem.itemName;
-            const nextStatus = forcedStatus !== undefined ? forcedStatus : getNextChecklistStatus(targetItem.status);
-            updatedItems = currentItems.map((item, idx) =>
-              idx === targetIndex ? { ...item, status: nextStatus } : item
-            );
-          } else {
-            // New custom item
-            const nextStatus = forcedStatus !== undefined ? forcedStatus : 'clean';
-            const newItem: HourlyCheckItemEntry = {
-              itemId: itemKeyOrId.startsWith('tpl-') ? itemKeyOrId : `item-${itemKeyOrId}`,
-              itemName: itemKeyOrId,
-              status: nextStatus,
-            };
-            updatedItems = [...currentItems, newItem];
+          if (rest.length >= 10) {
+            dt = rest.slice(-10);
           }
+        }
+        targetDaily = buildDailyChecklistObject(pId, locId, dt);
+        targetDaily.id = dailyChecklistId;
+      } else {
+        targetDaily = prev[targetIndex];
+      }
 
-          const hasIssue = updatedItems.some(
-            (i) => i.status === 'issue' || i.status === 'dirty' || i.status === 'broken'
+      locationName = targetDaily.locationName;
+      const location = checklistLocations.find((l) => l.id === targetDaily.locationId);
+      const category = targetDaily.category || location?.category || 'toilet';
+
+      const baseSlots =
+        targetDaily.hourlySlots && targetDaily.hourlySlots.length > 0
+          ? targetDaily.hourlySlots
+          : generate24HourSlots(category, checklistTemplates, 'empty');
+
+      const updatedSlots = baseSlots.map((slot) => {
+        if (slot.hour !== hour) return slot;
+
+        // 1. Ensure all standard items exist for category without losing existing entries
+        const currentItems = ensureCompleteSlotItems(slot.items || [], category, checklistTemplates);
+
+        // 2. Deterministically find item by id, standard key, or name
+        let itemTargetIndex = currentItems.findIndex(
+          (it) => it.itemId === itemKeyOrId || it.itemId.toLowerCase() === itemKeyOrId.toLowerCase()
+        );
+
+        if (itemTargetIndex === -1) {
+          const matched = findMatchingSlotItem(currentItems, itemKeyOrId);
+          if (matched) {
+            itemTargetIndex = currentItems.findIndex((it) => it.itemId === matched.itemId);
+          }
+        }
+
+        let updatedItems: HourlyCheckItemEntry[];
+
+        if (itemTargetIndex !== -1) {
+          const targetItem = currentItems[itemTargetIndex];
+          affectedItemName = targetItem.itemName;
+          const nextStatus = forcedStatus !== undefined ? forcedStatus : getNextChecklistStatus(targetItem.status);
+          updatedItems = currentItems.map((item, idx) =>
+            idx === itemTargetIndex ? { ...item, status: nextStatus } : item
           );
-          const allClean = updatedItems.every((i) => i.status === 'clean');
-          const slotStatus: 'clean' | 'has_issue' | 'pending' = hasIssue ? 'has_issue' : allClean ? 'clean' : 'pending';
-
-          return {
-            ...slot,
-            items: updatedItems,
-            status: slotStatus,
-            checkedAt: slot.checkedAt || nowStr,
-            checkedBy:
-              slot.checkedBy ||
-              (currentUser?.name?.split(' ')[0]
-                ? `${currentUser.name.split(' ')[0]} (Petugas)`
-                : 'Asep S. (Petugas)'),
+        } else {
+          // New custom item
+          const nextStatus = forcedStatus !== undefined ? forcedStatus : 'clean';
+          const newItem: HourlyCheckItemEntry = {
+            itemId: itemKeyOrId.startsWith('tpl-') ? itemKeyOrId : `item-${itemKeyOrId}`,
+            itemName: itemKeyOrId,
+            status: nextStatus,
           };
-        });
+          updatedItems = [...currentItems, newItem];
+        }
 
-        return { ...d, hourlySlots: updatedSlots };
-      })
-    );
+        const hasIssue = updatedItems.some(
+          (i) => i.status === 'issue' || i.status === 'dirty' || i.status === 'broken'
+        );
+        const allClean = updatedItems.length > 0 && updatedItems.every((i) => i.status === 'clean');
+        const slotStatus: 'clean' | 'has_issue' | 'pending' = hasIssue ? 'has_issue' : allClean ? 'clean' : 'pending';
 
-    // Save to Dexie outbox for resilient offline storage & background sync
+        return {
+          ...slot,
+          items: updatedItems,
+          status: slotStatus,
+          checkedAt: slot.checkedAt || nowStr,
+          checkedBy:
+            slot.checkedBy ||
+            (currentUser?.name?.split(' ')[0]
+              ? `${currentUser.name.split(' ')[0]} (Petugas)`
+              : 'Asep S. (Petugas)'),
+        };
+      });
+
+      const updatedTargetSlot = updatedSlots.find((s) => s.hour === hour);
+      if (updatedTargetSlot) {
+        updatedItemsForSync = updatedTargetSlot.items;
+      }
+
+      const updatedDaily: DailyAreaChecklist = { ...targetDaily, hourlySlots: updatedSlots };
+      updatedDailyToPersist = updatedDaily;
+
+      if (targetIndex === -1) {
+        return [...prev, updatedDaily];
+      } else {
+        const nextList = [...prev];
+        nextList[targetIndex] = updatedDaily;
+        return nextList;
+      }
+    });
+
+    if (updatedDailyToPersist) {
+      checklistSnapshotRef.current.set(dailyChecklistId, JSON.stringify(updatedDailyToPersist));
+      dirtyChecklistIdsRef.current.delete(dailyChecklistId);
+      upsertRecord(COLLECTIONS.DAILY_CHECKLISTS, updatedDailyToPersist).catch((err) => {
+        console.warn('Failed to upsert daily checklist directly:', err);
+      });
+    }
+
+    // Save to Dexie outbox with real updated answers
     saveChecklistToOutbox({
       type: 'hourly_slot_update',
       projectId: safeActiveProjectId,
       checklistId: dailyChecklistId,
       locationName,
       slotHour: hour,
-      answers: [],
+      answers: updatedItemsForSync,
       captured_at: new Date().toISOString(),
     }).catch(() => {});
 
@@ -2401,44 +2507,95 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   ) => {
     const nowStr = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB';
     let locationName = '';
+    let updatedDailyToPersist: DailyAreaChecklist | null = null;
+    let updatedItemsForSync: HourlyCheckItemEntry[] = [];
 
-    setDailyChecklists((prev) =>
-      prev.map((d) => {
-        if (d.id !== dailyChecklistId) return d;
-        locationName = d.locationName;
-        const location = checklistLocations.find((l) => l.id === d.locationId);
-        const category = d.category || location?.category || 'toilet';
+    setDailyChecklists((prev) => {
+      const targetIndex = prev.findIndex((d) => d.id === dailyChecklistId);
+      let targetDaily: DailyAreaChecklist;
 
-        const updatedSlots = d.hourlySlots.map((slot) => {
-          if (slot.hour !== hour) return slot;
-          const currentItems = ensureCompleteSlotItems(slot.items, category, checklistTemplates);
-          const updatedItems = currentItems.map((item) => ({ ...item, status }));
-          const slotStatus: 'clean' | 'has_issue' | 'pending' =
-            status === 'clean'
-              ? 'clean'
-              : status === 'issue' || status === 'dirty' || status === 'broken'
-              ? 'has_issue'
-              : 'pending';
-          return {
-            ...slot,
-            items: updatedItems,
-            status: slotStatus,
-            checkedBy,
-            checkedAt: nowStr,
-          };
-        });
-        return { ...d, hourlySlots: updatedSlots };
-      })
-    );
+      if (targetIndex === -1) {
+        let pId = safeActiveProjectId;
+        let locId = '';
+        let dt = new Date().toISOString().split('T')[0];
+        if (dailyChecklistId.startsWith('dchk-')) {
+          const rest = dailyChecklistId.slice(5);
+          const foundLoc = checklistLocations.find((l) => rest.includes(l.id));
+          if (foundLoc) {
+            locId = foundLoc.id;
+            pId = foundLoc.projectId || safeActiveProjectId;
+          }
+          if (rest.length >= 10) {
+            dt = rest.slice(-10);
+          }
+        }
+        targetDaily = buildDailyChecklistObject(pId, locId, dt);
+        targetDaily.id = dailyChecklistId;
+      } else {
+        targetDaily = prev[targetIndex];
+      }
 
-    // Save batch update to Dexie outbox
+      locationName = targetDaily.locationName;
+      const location = checklistLocations.find((l) => l.id === targetDaily.locationId);
+      const category = targetDaily.category || location?.category || 'toilet';
+
+      const baseSlots =
+        targetDaily.hourlySlots && targetDaily.hourlySlots.length > 0
+          ? targetDaily.hourlySlots
+          : generate24HourSlots(category, checklistTemplates, 'empty');
+
+      const updatedSlots = baseSlots.map((slot) => {
+        if (slot.hour !== hour) return slot;
+        const currentItems = ensureCompleteSlotItems(slot.items || [], category, checklistTemplates);
+        const updatedItems = currentItems.map((item) => ({ ...item, status }));
+        const slotStatus: 'clean' | 'has_issue' | 'pending' =
+          status === 'clean'
+            ? 'clean'
+            : status === 'issue' || status === 'dirty' || status === 'broken'
+            ? 'has_issue'
+            : 'pending';
+        return {
+          ...slot,
+          items: updatedItems,
+          status: slotStatus,
+          checkedBy,
+          checkedAt: nowStr,
+        };
+      });
+
+      const updatedTargetSlot = updatedSlots.find((s) => s.hour === hour);
+      if (updatedTargetSlot) {
+        updatedItemsForSync = updatedTargetSlot.items;
+      }
+
+      const updatedDaily: DailyAreaChecklist = { ...targetDaily, hourlySlots: updatedSlots };
+      updatedDailyToPersist = updatedDaily;
+
+      if (targetIndex === -1) {
+        return [...prev, updatedDaily];
+      } else {
+        const nextList = [...prev];
+        nextList[targetIndex] = updatedDaily;
+        return nextList;
+      }
+    });
+
+    if (updatedDailyToPersist) {
+      checklistSnapshotRef.current.set(dailyChecklistId, JSON.stringify(updatedDailyToPersist));
+      dirtyChecklistIdsRef.current.delete(dailyChecklistId);
+      upsertRecord(COLLECTIONS.DAILY_CHECKLISTS, updatedDailyToPersist).catch((err) => {
+        console.warn('Failed to direct upsert daily checklist:', err);
+      });
+    }
+
+    // Save batch update to Dexie outbox with actual updated items
     saveChecklistToOutbox({
       type: 'hourly_slot_batch',
       projectId: safeActiveProjectId,
       checklistId: dailyChecklistId,
       locationName,
       slotHour: hour,
-      answers: [],
+      answers: updatedItemsForSync,
       captured_at: new Date().toISOString(),
     }).catch(() => {});
 
@@ -2463,20 +2620,31 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     checkedBy: string,
     supervisorVerified?: boolean
   ) => {
-    setDailyChecklists((prev) =>
-      prev.map((d) => {
-        if (d.id !== dailyChecklistId) return d;
-        const updatedSlots = d.hourlySlots.map((slot) => {
-          if (slot.hour !== hour) return slot;
-          return {
-            ...slot,
-            checkedBy,
-            ...(supervisorVerified !== undefined ? { supervisorVerified } : {}),
-          };
-        });
-        return { ...d, hourlySlots: updatedSlots };
-      })
-    );
+    let updatedDailyToPersist: DailyAreaChecklist | null = null;
+    setDailyChecklists((prev) => {
+      const targetIndex = prev.findIndex((d) => d.id === dailyChecklistId);
+      if (targetIndex === -1) return prev;
+      const targetDaily = prev[targetIndex];
+      const updatedSlots = targetDaily.hourlySlots.map((slot) => {
+        if (slot.hour !== hour) return slot;
+        return {
+          ...slot,
+          checkedBy,
+          ...(supervisorVerified !== undefined ? { supervisorVerified } : {}),
+        };
+      });
+      const updatedDaily = { ...targetDaily, hourlySlots: updatedSlots };
+      updatedDailyToPersist = updatedDaily;
+      const nextList = [...prev];
+      nextList[targetIndex] = updatedDaily;
+      return nextList;
+    });
+
+    if (updatedDailyToPersist) {
+      checklistSnapshotRef.current.set(dailyChecklistId, JSON.stringify(updatedDailyToPersist));
+      dirtyChecklistIdsRef.current.delete(dailyChecklistId);
+      upsertRecord(COLLECTIONS.DAILY_CHECKLISTS, updatedDailyToPersist).catch(() => {});
+    }
   };
 
   const fillDailyChecklistClean = (
@@ -2506,34 +2674,77 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
     const nowStr = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB';
     let locationName = '';
+    let updatedDailyToPersist: DailyAreaChecklist | null = null;
 
-    setDailyChecklists((prev) =>
-      prev.map((d) => {
-        if (d.id !== dailyChecklistId) return d;
-        locationName = d.locationName;
-        const location = checklistLocations.find((l) => l.id === d.locationId);
-        const category = d.category || location?.category || 'toilet';
+    setDailyChecklists((prev) => {
+      const targetIndex = prev.findIndex((d) => d.id === dailyChecklistId);
+      let targetDaily: DailyAreaChecklist;
 
-        const updatedSlots = d.hourlySlots.map((slot) => {
-          if (!targetHours.includes(slot.hour)) return slot;
-          const currentItems = ensureCompleteSlotItems(slot.items, category, checklistTemplates);
-          const updatedItems = currentItems.map((it) => ({
-            ...it,
-            status: 'clean' as HourlyCheckItemStatus,
-          }));
-          return {
-            ...slot,
-            status: 'clean' as const,
-            checkedBy,
-            checkedAt: nowStr,
-            supervisorVerified: true,
-            supervisorName: checkedBy,
-            items: updatedItems,
-          };
-        });
-        return { ...d, hourlySlots: updatedSlots };
-      })
-    );
+      if (targetIndex === -1) {
+        let pId = safeActiveProjectId;
+        let locId = '';
+        let dt = new Date().toISOString().split('T')[0];
+        if (dailyChecklistId.startsWith('dchk-')) {
+          const rest = dailyChecklistId.slice(5);
+          const foundLoc = checklistLocations.find((l) => rest.includes(l.id));
+          if (foundLoc) {
+            locId = foundLoc.id;
+            pId = foundLoc.projectId || safeActiveProjectId;
+          }
+          if (rest.length >= 10) {
+            dt = rest.slice(-10);
+          }
+        }
+        targetDaily = buildDailyChecklistObject(pId, locId, dt);
+        targetDaily.id = dailyChecklistId;
+      } else {
+        targetDaily = prev[targetIndex];
+      }
+
+      locationName = targetDaily.locationName;
+      const location = checklistLocations.find((l) => l.id === targetDaily.locationId);
+      const category = targetDaily.category || location?.category || 'toilet';
+
+      const baseSlots =
+        targetDaily.hourlySlots && targetDaily.hourlySlots.length > 0
+          ? targetDaily.hourlySlots
+          : generate24HourSlots(category, checklistTemplates, 'empty');
+
+      const updatedSlots = baseSlots.map((slot) => {
+        if (!targetHours.includes(slot.hour)) return slot;
+        const currentItems = ensureCompleteSlotItems(slot.items || [], category, checklistTemplates);
+        const updatedItems = currentItems.map((it) => ({
+          ...it,
+          status: 'clean' as HourlyCheckItemStatus,
+        }));
+        return {
+          ...slot,
+          status: 'clean' as const,
+          checkedBy,
+          checkedAt: nowStr,
+          supervisorVerified: true,
+          supervisorName: checkedBy,
+          items: updatedItems,
+        };
+      });
+
+      const updatedDaily: DailyAreaChecklist = { ...targetDaily, hourlySlots: updatedSlots };
+      updatedDailyToPersist = updatedDaily;
+
+      if (targetIndex === -1) {
+        return [...prev, updatedDaily];
+      } else {
+        const nextList = [...prev];
+        nextList[targetIndex] = updatedDaily;
+        return nextList;
+      }
+    });
+
+    if (updatedDailyToPersist) {
+      checklistSnapshotRef.current.set(dailyChecklistId, JSON.stringify(updatedDailyToPersist));
+      dirtyChecklistIdsRef.current.delete(dailyChecklistId);
+      upsertRecord(COLLECTIONS.DAILY_CHECKLISTS, updatedDailyToPersist).catch(() => {});
+    }
 
     if (!isOnline) {
       addOfflineQueueEntry({
@@ -2548,16 +2759,27 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const addManualItemToDailyChecklist = (dailyChecklistId: string, itemName: string) => {
     const newItemId = `item-man-${Date.now()}`;
-    setDailyChecklists((prev) =>
-      prev.map((d) => {
-        if (d.id !== dailyChecklistId) return d;
-        const updatedSlots = d.hourlySlots.map((slot) => ({
-          ...slot,
-          items: [...slot.items, { itemId: newItemId, itemName, status: 'not_checked' as HourlyCheckItemStatus }],
-        }));
-        return { ...d, hourlySlots: updatedSlots };
-      })
-    );
+    let updatedDailyToPersist: DailyAreaChecklist | null = null;
+    setDailyChecklists((prev) => {
+      const targetIndex = prev.findIndex((d) => d.id === dailyChecklistId);
+      if (targetIndex === -1) return prev;
+      const targetDaily = prev[targetIndex];
+      const updatedSlots = targetDaily.hourlySlots.map((slot) => ({
+        ...slot,
+        items: [...slot.items, { itemId: newItemId, itemName, status: 'not_checked' as HourlyCheckItemStatus }],
+      }));
+      const updatedDaily = { ...targetDaily, hourlySlots: updatedSlots };
+      updatedDailyToPersist = updatedDaily;
+      const nextList = [...prev];
+      nextList[targetIndex] = updatedDaily;
+      return nextList;
+    });
+
+    if (updatedDailyToPersist) {
+      checklistSnapshotRef.current.set(dailyChecklistId, JSON.stringify(updatedDailyToPersist));
+      dirtyChecklistIdsRef.current.delete(dailyChecklistId);
+      upsertRecord(COLLECTIONS.DAILY_CHECKLISTS, updatedDailyToPersist).catch(() => {});
+    }
   };
 
   const buildDailyChecklistObject = (projectId: string, locationId: string, date: string): DailyAreaChecklist => {
@@ -2578,14 +2800,23 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   const ensureDailyChecklist = (projectId: string, locationId: string, date: string) => {
+    let created: DailyAreaChecklist | null = null;
     setDailyChecklists((prev) => {
       const existing = prev.find(
         (d) => d.projectId === projectId && d.locationId === locationId && d.date === date
       );
       if (existing) return prev;
       const newDaily = buildDailyChecklistObject(projectId, locationId, date);
+      created = newDaily;
       return [...prev, newDaily];
     });
+
+    if (created) {
+      const toSave = created as DailyAreaChecklist;
+      checklistSnapshotRef.current.set(toSave.id, JSON.stringify(toSave));
+      dirtyChecklistIdsRef.current.delete(toSave.id);
+      upsertRecord(COLLECTIONS.DAILY_CHECKLISTS, toSave).catch(() => {});
+    }
   };
 
   const getOrCreateDailyChecklist = (projectId: string, locationId: string, date: string): DailyAreaChecklist => {

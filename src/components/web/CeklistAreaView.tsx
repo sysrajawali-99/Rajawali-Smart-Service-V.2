@@ -61,6 +61,7 @@ import {
   STANDARD_TOILET_PARAMETERS,
   findMatchingSlotItem,
   calculateShiftChecklistStats,
+  ensureCompleteSlotItems,
 } from '../../utils/checklistHelper';
 
 interface ShiftSlotDefinition {
@@ -330,11 +331,13 @@ export const CeklistAreaView: React.FC = () => {
 
   // Hourly slots matching active shift with date and time metadata
   const displayedSlotsWithMeta = useMemo(() => {
+    const category = currentLocation?.category || 'toilet';
     return shiftSlotDefs.map((def) => {
-      const rawSlot = currentDailyChecklist?.hourlySlots.find((s) => s.hour === def.hour);
+      const rawSlot = currentDailyChecklist?.hourlySlots?.find((s) => s.hour === def.hour);
       if (rawSlot) {
         return {
           ...rawSlot,
+          items: ensureCompleteSlotItems(rawSlot.items || [], category, checklistTemplates),
           timeLabel: def.timeLabel,
           dateStr: def.dateStr,
           isNextDay: def.isNextDay,
@@ -347,10 +350,10 @@ export const CeklistAreaView: React.FC = () => {
         dateStr: def.dateStr,
         isNextDay: def.isNextDay,
         status: 'pending' as const,
-        items: [],
+        items: ensureCompleteSlotItems([], category, checklistTemplates),
       };
     });
-  }, [shiftSlotDefs, currentDailyChecklist]);
+  }, [shiftSlotDefs, currentDailyChecklist, currentLocation, checklistTemplates]);
 
   // Stats calculation based on shift hours and checklist items
   const {
