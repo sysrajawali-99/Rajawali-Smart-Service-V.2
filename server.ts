@@ -406,14 +406,15 @@ function scheduleSaveMemoryStore() {
 
 loadMemoryStoreFromDisk();
 
-if (process.env.DATABASE_URL) {
+const rawDbUrl = (process.env.DATABASE_URL || '').trim();
+if (rawDbUrl) {
   try {
     const isLocal =
-      process.env.DATABASE_URL.includes('localhost') ||
-      process.env.DATABASE_URL.includes('127.0.0.1');
+      rawDbUrl.includes('localhost') ||
+      rawDbUrl.includes('127.0.0.1');
 
     pool = new Pool({
-      connectionString: process.env.DATABASE_URL,
+      connectionString: rawDbUrl,
       ssl: isLocal ? false : { rejectUnauthorized: false },
       connectionTimeoutMillis: 3000,
     });
