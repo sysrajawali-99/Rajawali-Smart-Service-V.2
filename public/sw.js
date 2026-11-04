@@ -1,6 +1,6 @@
 // JTI Smart / Smart Cleaning Operations - Progressive Web App Service Worker
 // Versioned cache with current timestamp for reliable cache invalidation
-const CACHE_VERSION = 'jti-smart-v2026-10-04';
+const CACHE_VERSION = 'jti-smart-v2026-11-04-badge';
 const STATIC_CACHE = `jti-static-${CACHE_VERSION}`;
 const ASSET_CACHE = `jti-assets-${CACHE_VERSION}`;
 
@@ -164,15 +164,17 @@ self.addEventListener('fetch', (event) => {
   event.respondWith(fetch(request).catch(() => caches.match(request)));
 });
 
-// WEB PUSH NOTIFICATIONS
+// WEB PUSH NOTIFICATIONS (Tetap aktif & muncul walau aplikasi sedang ditutup)
 self.addEventListener('push', (event) => {
   let data = {
     title: 'Smart Cleaning Operations',
     body: 'Pemberitahuan operasional baru',
     icon: '/icons/icon-192.png',
     badge: '/icons/badge-72.png',
-    tag: 'sco-notification',
+    tag: `sco-${Date.now()}`,
     data: { url: '/' },
+    badgeCount: 1,
+    requireInteraction: true,
   };
 
   try {
@@ -186,26 +188,63 @@ self.addEventListener('push', (event) => {
     }
   }
 
+  // 1. Update Badge pada Ikon Aplikasi di Layar Utama / Taskbar (App Badging API)
+  // Berjalan di background Service Worker walau aplikasi sedang tertutup penuh
+  if ('setAppBadge' in self.navigator) {
+    try {
+      const count =
+        typeof data.badgeCount === 'number' && data.badgeCount > 0
+          ? data.badgeCount
+          : (typeof data.count === 'number' && data.count > 0)
+          ? data.count
+          : 1;
+      self.navigator.setAppBadge(count).catch((err) => {
+        console.warn('[SW Badging] Notice:', err);
+      });
+    } catch (e) {
+      console.warn('[SW Badging] Failed:', e);
+    }
+  }
+
+  // 2. Opsi Notifikasi Pop-Up Persisten
+  // requireInteraction: true membuat pop-up sistem operasi TETAP TERLIHAT di layar sampai diklik/ditutup pengguna
   const notificationOptions = {
     body: data.body,
     icon: data.icon || '/icons/icon-192.png',
     badge: data.badge || '/icons/badge-72.png',
-    tag: data.tag || 'sco-general-notification',
+    tag: data.tag || `sco-${Date.now()}`,
+    requireInteraction: true, // Pop-up tetap bertahan di layar (tidak hilang otomatis)
     renotify: true,
+    silent: false,
+    vibrate: [200, 100, 200, 100, 200], // Pola getar agar terasa saat ponsel di kantong
+    timestamp: Date.now(),
     data: data.data || { url: '/' },
-    vibrate: [100, 50, 100],
     actions: data.actions || [
-      { action: 'open', title: 'Buka Tugas' },
+      { action: 'open', title: 'Buka Aplikasi' },
       { action: 'close', title: 'Tutup' },
     ],
   };
 
-  event.waitUntil(self.registration.showNotification(data.title, notificationOptions));
+  const showNotificationPromise = self.registration.showNotification(data.title, notificationOptions);
+
+  // Broadcast notifikasi ke seluruh window yang sedang aktif jika ada
+  const broadcastPromise = self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
+    clients.forEach((client) => {
+      client.postMessage({ type: 'PUSH_NOTIFICATION_RECEIVED', payload: data });
+    });
+  });
+
+  event.waitUntil(Promise.all([showNotificationPromise, broadcastPromise]));
 });
 
-// Notification Click Handler: Focus existing tab or open URL
+// Notification Click Handler: Buka URL dan Bersihkan Badge
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
+
+  // Bersihkan badge ikon aplikasi saat notifikasi dibuka
+  if ('clearAppBadge' in self.navigator) {
+    self.navigator.clearAppBadge().catch(() => {});
+  }
 
   if (event.action === 'close') {
     return;
@@ -228,6 +267,21 @@ self.addEventListener('notificationclick', (event) => {
       }
     })
   );
+});
+
+// Notification Close Handler: Perbarui atau bersihkan badge saat notifikasi di-dismiss
+self.addEventListener('notificationclose', (event) => {
+  self.registration.getNotifications().then((notifications) => {
+    if (notifications.length === 0) {
+      if ('clearAppBadge' in self.navigator) {
+        self.navigator.clearAppBadge().catch(() => {});
+      }
+    } else {
+      if ('setAppBadge' in self.navigator) {
+        self.navigator.setAppBadge(notifications.length).catch(() => {});
+      }
+    }
+  });
 });
 
 // Background Sync Event (Supported in Chromium browsers)

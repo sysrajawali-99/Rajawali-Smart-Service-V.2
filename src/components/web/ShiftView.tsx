@@ -323,6 +323,8 @@ export const ShiftView: React.FC = () => {
     addCleaner,
     updateCleanerAttendance,
     activeProjectId,
+    activeProject,
+    setActiveTab,
     checklistLocations,
   } = useCleaning();
 
@@ -959,14 +961,26 @@ export const ShiftView: React.FC = () => {
 
       {/* Main Shift Cards with Work Duration & Timing */}
       <div>
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-            <Timer className="w-4 h-4 text-sky-600" />
-            Daftar Master Shift & Durasi Jam Kerja ({shifts.length} Shift)
-          </h3>
-          <span className="text-[11px] text-slate-400">
-            Jam operasional dan durasi kerja diatur mandiri
-          </span>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+              <Timer className="w-4 h-4 text-sky-600" />
+              <span>Daftar Master Shift & Durasi Jam Kerja ({shifts.length} Shift)</span>
+            </h3>
+            {activeProject && (
+              <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-sky-100 text-sky-800 border border-sky-200">
+                Proyek: {activeProject.name}
+              </span>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={() => setActiveTab('pengaturan')}
+            className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-semibold bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200 transition-colors cursor-pointer self-start sm:self-auto shadow-2xs"
+            title="Buka menu Pengaturan & Master Data untuk mengatur shift pada proyek ini"
+          >
+            <span>⚙️ Atur Shift Proyek di Pengaturan →</span>
+          </button>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">

@@ -49,7 +49,7 @@
       "name": "Super Administrator",
       "email": "superadmin@cleaningops.com",
       "username": "superadmin",
-      "password": "$2b$10$m9m8qXF7mLL7OcPOh5XtNOsFr8Nq1thCH5sB61U1RCt2ivfJYEKZ6",
+      "password": "$2b$10$SmskGYWiqsS4YWtj8Nj5KeM8ReGhgn5ASnsT3vdsssWtU2gGWFEwe",
       "role": "super_admin",
       "assignedProjectIds": [
         "proj-1",
@@ -65,91 +65,98 @@
       "name": "Hendra Wijaya (SPV Mandiri)",
       "email": "hendra.spv@cleaningops.com",
       "username": "spv1",
-      "password": "$2b$10$ZaZw69/99GC8ls83M38GbeD7253rC7JX0d8RdjDTbzI6sSyPN9b96",
+      "password": "$2b$10$C1PRnQNDNVZUcbMEF9RQZOx1N1YblZKpc/dh9j/ij8ta491iomica",
       "role": "supervisor",
       "assignedProjectIds": [
         "proj-1"
       ],
       "company_id": "comp-main",
-      "companyId": "comp-main"
+      "companyId": "comp-main",
+      "mustChangePassword": false
     },
     "usr-spv-2": {
       "id": "usr-spv-2",
       "name": "Rian Firman (SPV GKBI)",
       "email": "rian.spv@cleaningops.com",
       "username": "spv2",
-      "password": "$2b$10$YqxvsaCprWasJNP0/eG5CO1Ly6qtHZ0pwMq9USL0PIb.MmwpVwVg6",
+      "password": "$2b$10$SDozzR9mOQ8fwHW.gu8S1O0Ip7UjIyWmdldHCBmZyys.8JjGyFuki",
       "role": "supervisor",
       "assignedProjectIds": [
         "proj-2"
       ],
       "company_id": "comp-main",
-      "companyId": "comp-main"
+      "companyId": "comp-main",
+      "mustChangePassword": false
     },
     "usr-cln-1": {
       "id": "usr-cln-1",
       "name": "Asep Supriyadi (Petugas Mandiri)",
       "email": "asep.cln@cleaningops.com",
       "username": "petugas1",
-      "password": "$2b$10$AZo4BG3vJIs7NNl.feJqiOZk5gLPzuPISjnmhQgEvVLkaPP.VCXiW",
+      "password": "$2b$10$F9lz6/3f8adTmy3cKbrpI.UhuEL2lCb4ZsGVpceODFWoBRXfElxs2",
       "role": "petugas",
       "assignedProjectIds": [
         "proj-1"
       ],
       "company_id": "comp-main",
-      "companyId": "comp-main"
+      "companyId": "comp-main",
+      "mustChangePassword": false
     },
     "usr-cln-2": {
       "id": "usr-cln-2",
       "name": "Joko Prasetyo (Petugas GKBI)",
       "email": "joko.cln@cleaningops.com",
       "username": "petugas2",
-      "password": "$2b$10$PH9lGlqVYsieNvutd1Yo1uXGYpO2V3KezPrdBooVUuqcV81m8CjVW",
+      "password": "$2b$10$5sJ3m9dqxCE/maZXd.ObFOhNeLtGsBEqzGMqKn2axEQjG6JxoBgI.",
       "role": "petugas",
       "assignedProjectIds": [
         "proj-2"
       ],
       "company_id": "comp-main",
-      "companyId": "comp-main"
+      "companyId": "comp-main",
+      "mustChangePassword": false
     },
     "usr-klien": {
       "id": "usr-klien",
       "name": "Bapak Irawan (Building Management Mandiri)",
       "email": "irawan.client@mandiri.co.id",
       "username": "klien1",
-      "password": "$2b$10$AejQIYky3HldVmeeZWARpuU0UrmgnazYkGjKETPL4aUti4UIXxfqK",
+      "password": "$2b$10$wNPqJUAkenuCxRCIwroYGOI6TcLumMjU/NlxtFaKnSHpSBtP.wzkm",
       "role": "klien",
       "assignedProjectIds": [
         "proj-1"
       ],
       "company_id": "comp-main",
-      "companyId": "comp-main"
+      "companyId": "comp-main",
+      "mustChangePassword": false
     },
     "usr-klien-2": {
       "id": "usr-klien-2",
       "name": "Bapak Ir. Hadi Suwarno (Building Management GKBI)",
       "email": "hadi.gkbi@management.com",
       "username": "klien2",
-      "password": "$2b$10$065IY7u/tSQ/HQqHYmXqX.4jerOf6GAT4fOFraoQUU42Lyq.HpHUK",
+      "password": "$2b$10$9Y.AbgRe8UJfp1FEwZDKjezVEWhhC534h6CLT2s2xpx6SP1yMxowy",
       "role": "klien",
       "assignedProjectIds": [
         "proj-2"
       ],
       "company_id": "comp-main",
-      "companyId": "comp-main"
+      "companyId": "comp-main",
+      "mustChangePassword": false
     },
     "usr-spv-3": {
       "id": "usr-spv-3",
       "name": "Capt. Rahmat Hidayat (SPV Soekarno Hatta T3)",
       "email": "rahmat.spv@cleaningops.com",
       "username": "spv3",
-      "password": "$2b$10$krT4hP7uilfroHJ1S3aRyuLRJDE9O9M8MG5/752TEbgrudcrNBiya",
+      "password": "$2b$10$yqxXJbvsLzeul3ml2sbP1.fu9bqLjyU14QGEedO6GDwPHQmXWP8S2",
       "role": "supervisor",
       "assignedProjectIds": [
         "proj-3"
       ],
       "company_id": "comp-main",
-      "companyId": "comp-main"
+      "companyId": "comp-main",
+      "mustChangePassword": false
     }
   },
   "areas": {

@@ -26,13 +26,23 @@ import { LoginPage } from './components/auth/LoginPage';
 import { OverdueAlertBanner } from './components/layout/OverdueAlertBanner';
 import { InstallPrompt } from './components/InstallPrompt';
 import { TestModeBanner } from './components/common/TestModeBanner';
-import { TopNotificationPopup } from './components/common/TopNotificationPopup';
+import { TopNotificationPopup, triggerTopNotification } from './components/common/TopNotificationPopup';
 import { ShieldAlert } from 'lucide-react';
 import { updateDocumentFavicon, updateDocumentTitle, getActiveAppIcon } from './utils/dynamicFavicon';
-
+import { setAppBadgeCount, clearAppBadgeCount } from './utils/appBadge';
 
 const MainLayout: React.FC = () => {
-  const { isAuthenticated, activeTab, userRole, hasAccess, setActiveTab, isInitialLoading, companyProfile } = useCleaning();
+  const {
+    isAuthenticated,
+    activeTab,
+    userRole,
+    hasAccess,
+    setActiveTab,
+    isInitialLoading,
+    companyProfile,
+    tasks,
+    complaints,
+  } = useCleaning();
 
   // Real-time dynamic favicon and browser tab title synchronization
   React.useEffect(() => {
@@ -54,6 +64,45 @@ const MainLayout: React.FC = () => {
     window.addEventListener('pwa-icons-updated', handleIconsUpdated);
     return () => window.removeEventListener('pwa-icons-updated', handleIconsUpdated);
   }, [companyProfile?.logoUrl, companyProfile?.companyName]);
+
+  // Synchronize App Badge (Native PWA icon + Favicon badge + Tab Title prefix)
+  React.useEffect(() => {
+    if (!isAuthenticated) {
+      clearAppBadgeCount();
+      return;
+    }
+    const overdueCount = (tasks || []).filter((t) => t.status === 'overdue').length;
+    const unresolvedComplaints = (complaints || []).filter(
+      (c) => c.status !== 'resolved' && (c as any).status !== 'selesai'
+    ).length;
+    const totalBadges = overdueCount + unresolvedComplaints;
+
+    setAppBadgeCount(totalBadges);
+  }, [isAuthenticated, tasks, complaints]);
+
+  // Listen to background push broadcasts from Service Worker when tab is open
+  React.useEffect(() => {
+    if (typeof window === 'undefined' || !('serviceWorker' in navigator)) return;
+
+    const handleSwMessage = (event: MessageEvent) => {
+      if (event.data?.type === 'PUSH_NOTIFICATION_RECEIVED') {
+        const payload = event.data?.payload;
+        if (payload?.title) {
+          triggerTopNotification({
+            title: payload.title,
+            message: payload.body || 'Pemberitahuan operasional baru diterima.',
+            category: 'new_complaint',
+            targetTab: 'ceklist',
+          });
+        }
+      }
+    };
+
+    navigator.serviceWorker.addEventListener('message', handleSwMessage);
+    return () => {
+      navigator.serviceWorker.removeEventListener('message', handleSwMessage);
+    };
+  }, []);
 
   if (!isAuthenticated) {
     return (

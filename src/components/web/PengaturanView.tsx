@@ -42,9 +42,11 @@ import { AuditTrailModal } from './AuditTrailModal';
 import { AuditLogSection } from './AuditLogSection';
 import { PwaBrandingSection } from './PwaBrandingSection';
 import { NotificationSettingsSection } from './NotificationSettingsSection';
+import { ProjectShiftSettingsSection } from './ProjectShiftSettingsSection';
 
 export type PengaturanSubTab =
   | 'all'
+  | 'project_shifts'
   | 'branding'
   | 'notifications'
   | 'log'
@@ -341,6 +343,19 @@ export const PengaturanView: React.FC = () => {
 
         <button
           type="button"
+          onClick={() => setActiveSubTab('project_shifts')}
+          className={`flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg whitespace-nowrap transition-all cursor-pointer ${
+            activeSubTab === 'project_shifts'
+              ? 'bg-white text-sky-800 shadow-xs ring-1 ring-sky-200'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+          }`}
+        >
+          <Clock className="w-3.5 h-3.5 text-sky-600" />
+          <span>Shift per Proyek</span>
+        </button>
+
+        <button
+          type="button"
           onClick={() => setActiveSubTab('branding')}
           className={`flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg whitespace-nowrap transition-all cursor-pointer ${
             activeSubTab === 'branding'
@@ -451,6 +466,11 @@ export const PengaturanView: React.FC = () => {
           </button>
         )}
       </div>
+
+      {/* SECTION: Pengaturan Shift per Proyek */}
+      {(activeSubTab === 'all' || activeSubTab === 'project_shifts') && (
+        <ProjectShiftSettingsSection />
+      )}
 
       {/* SECTION: Tampilan Aplikasi & PWA (Khusus Super Admin) */}
       {(activeSubTab === 'all' || activeSubTab === 'branding') && isSuperAdmin && (

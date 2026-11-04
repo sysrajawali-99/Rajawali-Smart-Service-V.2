@@ -28,6 +28,7 @@ import {
 import { useCleaning } from '../../context/CleaningContext';
 import { getAuthHeaders } from '../../services/apiService';
 import { triggerTopNotification } from '../common/TopNotificationPopup';
+import { setAppBadgeCount, clearAppBadgeCount } from '../../utils/appBadge';
 
 export const NotificationSettingsSection: React.FC = () => {
   const { currentUser, activeProject } = useCleaning();
@@ -140,8 +141,125 @@ export const NotificationSettingsSection: React.FC = () => {
     }
   };
 
+  const [currentTestBadge, setCurrentTestBadge] = useState(0);
+
+  const handleTestBadge = (count: number) => {
+    setCurrentTestBadge(count);
+    setAppBadgeCount(count);
+  };
+
+  const handleClearBadge = () => {
+    setCurrentTestBadge(0);
+    clearAppBadgeCount();
+  };
+
   return (
     <div className="space-y-6">
+      {/* Persistent Notification & App Icon Badge Feature Card */}
+      <div className="bg-gradient-to-br from-indigo-900 via-sky-900 to-slate-900 rounded-2xl border border-indigo-700/60 p-5 text-white shadow-sm space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-white/10 pb-3">
+          <div className="flex items-center gap-3">
+            <div className="relative">
+              <div className="w-11 h-11 rounded-xl bg-indigo-500/30 border border-indigo-400/40 flex items-center justify-center">
+                <BellRing className="w-5 h-5 text-indigo-300" />
+              </div>
+              {/* Visual simulated badge on icon */}
+              <div className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-rose-500 border-2 border-indigo-900 text-white text-[10px] font-extrabold flex items-center justify-center shadow-xs">
+                {currentTestBadge > 0 ? (currentTestBadge > 9 ? '9+' : currentTestBadge) : '1'}
+              </div>
+            </div>
+            <div>
+              <h4 className="text-sm font-bold flex items-center gap-2">
+                Notifikasi Tetap Muncul & Badge Ikon Saat Aplikasi Ditutup
+                <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] font-semibold border border-emerald-500/30">
+                  Background Active
+                </span>
+              </h4>
+              <p className="text-xs text-sky-200 mt-0.5">
+                Pop-up sistem OS menetap di layar ponsel/laptop dan badge angka merah muncul di ikon aplikasi (Layar Utama & Taskbar).
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleSendTestNotification}
+              disabled={isLoading || !pushStatus.isSubscribed}
+              className="px-3.5 py-2 bg-indigo-500 hover:bg-indigo-400 active:bg-indigo-600 disabled:opacity-50 text-white text-xs font-semibold rounded-xl shadow-xs transition-colors cursor-pointer flex items-center gap-1.5"
+            >
+              <Send className="w-3.5 h-3.5 text-white" />
+              Uji Notifikasi Pop-Up + Badge
+            </button>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+          <div className="p-3 bg-white/5 rounded-xl border border-white/10 space-y-1">
+            <p className="font-semibold text-indigo-200 flex items-center gap-1.5">
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+              Pop-Up Tetap di Layar (OS)
+            </p>
+            <p className="text-[11px] text-slate-300 leading-relaxed">
+              Memakai parameter <code>requireInteraction: true</code> sehingga pop-up notifikasi tidak otomatis menghilang setelah 5 detik, melainkan tetap siaga di layar hingga ditinjau petugas.
+            </p>
+          </div>
+
+          <div className="p-3 bg-white/5 rounded-xl border border-white/10 space-y-1">
+            <p className="font-semibold text-indigo-200 flex items-center gap-1.5">
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+              Badge Ikon Aplikasi (PWA)
+            </p>
+            <p className="text-[11px] text-slate-300 leading-relaxed">
+              Didukung <code>App Badging API</code> (Android, Windows, macOS, iOS 16.4+). Ikon aplikasi di layar utama menampilkan lingkaran badge angka merah saat ada tugas terlewat/komplain.
+            </p>
+          </div>
+
+          <div className="p-3 bg-white/5 rounded-xl border border-white/10 space-y-1">
+            <p className="font-semibold text-indigo-200 flex items-center gap-1.5">
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+              Service Worker Background
+            </p>
+            <p className="text-[11px] text-slate-300 leading-relaxed">
+              Service worker terus siaga menerima sinyal Web Push dari server meskipun peramban atau jendela aplikasi ditutup, memperbarui badge ikon seketika.
+            </p>
+          </div>
+        </div>
+
+        {/* Live Badge Tester Buttons */}
+        <div className="p-3 bg-white/5 rounded-xl border border-white/10 flex flex-wrap items-center justify-between gap-3 text-xs">
+          <div className="flex items-center gap-2">
+            <span className="text-slate-300 text-[11px] font-medium">Uji Badge Ikon di Perangkat Ini:</span>
+            <span className="px-2 py-0.5 rounded-md bg-white/10 font-bold text-sky-200 text-xs">
+              Status Badge: {currentTestBadge > 0 ? `${currentTestBadge} Notifikasi` : 'Kosong / 0'}
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => handleTestBadge(currentTestBadge + 1)}
+              className="px-3 py-1.5 bg-sky-500/20 hover:bg-sky-500/30 text-sky-200 hover:text-white rounded-lg border border-sky-400/30 font-semibold text-xs cursor-pointer transition-colors"
+            >
+              +1 Badge Ikon
+            </button>
+            <button
+              type="button"
+              onClick={() => handleTestBadge(5)}
+              className="px-3 py-1.5 bg-indigo-500/20 hover:bg-indigo-500/30 text-indigo-200 hover:text-white rounded-lg border border-indigo-400/30 font-semibold text-xs cursor-pointer transition-colors"
+            >
+              Setel 5 Badge
+            </button>
+            <button
+              type="button"
+              onClick={handleClearBadge}
+              className="px-3 py-1.5 bg-rose-500/20 hover:bg-rose-500/30 text-rose-200 hover:text-white rounded-lg border border-rose-400/30 font-semibold text-xs cursor-pointer transition-colors"
+            >
+              Hapus Badge
+            </button>
+          </div>
+        </div>
+      </div>
       {/* Top Banner */}
       <div className="p-5 bg-gradient-to-r from-sky-900 via-sky-800 to-slate-900 rounded-2xl border border-sky-700/60 text-white shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div className="flex items-center gap-3">

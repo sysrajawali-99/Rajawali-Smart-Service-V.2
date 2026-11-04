@@ -32,12 +32,11 @@ function registerServiceWorkerSafely() {
     return;
   }
 
-  // Gracefully skip when embedded inside AI Studio iframe preview
+  // Gracefully skip only when embedded inside AI Studio builder iframe preview
   const isInIframe = window.self !== window.top;
-  const isProd = Boolean((import.meta as any).env?.PROD);
 
-  if (!isProd || isInIframe) {
-    // In preview iframe or dev, skip service worker registration
+  if (isInIframe) {
+    // Inside builder editor preview iframe, skip service worker registration
     return;
   }
 

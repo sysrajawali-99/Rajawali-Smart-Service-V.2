@@ -97,6 +97,8 @@ export interface Shift {
   id: string;
   company_id?: string;
   companyId?: string;
+  projectId?: string; // Optional: jika shift dikhususkan untuk 1 proyek tertentu
+  projectIds?: string[]; // Optional: daftar ID proyek yang menerapkan shift ini
   name: string;
   code: string;
   startTime: string; // e.g. "07:00"
@@ -294,6 +296,7 @@ export interface ProjectLocation {
   clientName: string;
   status: 'active' | 'inactive';
   createdAt: string;
+  shiftIds?: string[]; // Daftar ID shift yang aktif / diterapkan di proyek ini
 }
 
 export interface AppUser {
