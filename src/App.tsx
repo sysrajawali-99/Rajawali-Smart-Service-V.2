@@ -26,6 +26,7 @@ import { LoginPage } from './components/auth/LoginPage';
 import { OverdueAlertBanner } from './components/layout/OverdueAlertBanner';
 import { InstallPrompt } from './components/InstallPrompt';
 import { TestModeBanner } from './components/common/TestModeBanner';
+import { TopNotificationPopup } from './components/common/TopNotificationPopup';
 import { ShieldAlert } from 'lucide-react';
 import { updateDocumentFavicon, updateDocumentTitle, getActiveAppIcon } from './utils/dynamicFavicon';
 
@@ -164,6 +165,7 @@ const MainLayout: React.FC = () => {
 
   return (
     <div className="h-screen flex flex-col bg-slate-50 font-sans text-slate-900 antialiased selection:bg-sky-500 selection:text-white overflow-hidden">
+      <TopNotificationPopup />
       <TestModeBanner />
       <Header />
       <OverdueAlertBanner />

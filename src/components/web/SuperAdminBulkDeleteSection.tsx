@@ -50,6 +50,7 @@ export const SuperAdminBulkDeleteSection: React.FC = () => {
   const [scope, setScope] = useState<'active_project' | 'all'>('active_project');
   const [selectedSubmenu, setSelectedSubmenu] = useState<SubmenuDeleteOption | null>(null);
   const [confirmText, setConfirmText] = useState('');
+  const [isDeleting, setIsDeleting] = useState<boolean>(false);
   const [actionResult, setActionResult] = useState<{ count: number; label: string } | null>(null);
 
   const submenus: SubmenuDeleteOption[] = [
@@ -228,17 +229,25 @@ export const SuperAdminBulkDeleteSection: React.FC = () => {
     }
   };
 
-  const handleExecuteDelete = () => {
+  const handleExecuteDelete = async () => {
     if (!selectedSubmenu) return;
 
-    const result = bulkDeleteSubmenuData(selectedSubmenu.key, scope);
-    setActionResult(result);
-    setSelectedSubmenu(null);
-    setConfirmText('');
+    try {
+      setIsDeleting(true);
+      const result = await bulkDeleteSubmenuData(selectedSubmenu.key, scope);
+      setActionResult(result);
+      setSelectedSubmenu(null);
+      setConfirmText('');
 
-    setTimeout(() => {
-      setActionResult(null);
-    }, 6000);
+      setTimeout(() => {
+        setActionResult(null);
+      }, 6000);
+    } catch (err: any) {
+      console.error('[BulkDelete] Error:', err);
+      alert('Gagal menghapus data di server: ' + (err?.message || err));
+    } finally {
+      setIsDeleting(false);
+    }
   };
 
   // If user is not Super Admin, show restricted card
@@ -308,7 +317,7 @@ export const SuperAdminBulkDeleteSection: React.FC = () => {
                 : 'text-slate-600 hover:text-slate-900'
             }`}
           >
-            🏢 Proyek Ini ({activeProject.name})
+            🏢 Proyek Ini ({activeProject?.name || 'Proyek Aktif'})
           </button>
           <button
             type="button"
@@ -330,7 +339,7 @@ export const SuperAdminBulkDeleteSection: React.FC = () => {
           <div className="flex items-center gap-2">
             <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
             <span className="font-semibold">
-              Berhasil menghapus {actionResult.count} data pada sub-menu &quot;{actionResult.label}&quot; ({scope === 'active_project' ? `Proyek ${activeProject.name}` : 'Semua Proyek'}). Log audit telah dicatat.
+              Berhasil menghapus {actionResult.count} data pada sub-menu &quot;{actionResult.label}&quot; ({scope === 'active_project' ? `Proyek ${activeProject?.name || 'Aktif'}` : 'Semua Proyek'}). Log audit dan server telah diperbarui.
             </span>
           </div>
           <button
@@ -350,7 +359,7 @@ export const SuperAdminBulkDeleteSection: React.FC = () => {
           <span className="font-bold">Perhatian Keamanan Data: </span>
           Saat ini filter aktif menghapus data untuk{' '}
           <span className="font-bold underline">
-            {scope === 'active_project' ? `Lokasi Proyek Aktif: "${activeProject.name}"` : 'Seluruh Database Proyek (Global)'}
+            {scope === 'active_project' ? `Lokasi Proyek Aktif: "${activeProject?.name || 'Proyek Aktif'}"` : 'Seluruh Database Proyek (Global)'}
           </span>
           . Tindakan penghapusan bersifat permanen dan tidak dapat dibatalkan (Irreversible).
         </div>
@@ -469,7 +478,7 @@ export const SuperAdminBulkDeleteSection: React.FC = () => {
               <div className="flex items-center justify-between">
                 <span className="font-semibold text-rose-900">Cakupan:</span>
                 <span className="font-bold text-rose-950">
-                  {scope === 'active_project' ? `Hanya Proyek "${activeProject.name}"` : 'Seluruh Proyek (Global)'}
+                  {scope === 'active_project' ? `Hanya Proyek "${activeProject?.name || 'Proyek Aktif'}"` : 'Seluruh Proyek (Global)'}
                 </span>
               </div>
               <div className="flex items-center justify-between">
@@ -489,8 +498,9 @@ export const SuperAdminBulkDeleteSection: React.FC = () => {
                 type="text"
                 value={confirmText}
                 onChange={(e) => setConfirmText(e.target.value)}
+                disabled={isDeleting}
                 placeholder="Ketik HAPUS di sini"
-                className="w-full px-3 py-2 text-xs border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500 font-bold tracking-wider uppercase text-slate-900"
+                className="w-full px-3 py-2 text-xs border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500 font-bold tracking-wider uppercase text-slate-900 disabled:opacity-50"
                 autoFocus
               />
             </div>
@@ -499,18 +509,28 @@ export const SuperAdminBulkDeleteSection: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setSelectedSubmenu(null)}
-                className="px-4 py-2 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-semibold transition-colors cursor-pointer"
+                disabled={isDeleting}
+                className="px-4 py-2 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-semibold transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 Batal
               </button>
               <button
                 type="button"
                 onClick={handleExecuteDelete}
-                disabled={confirmText.trim().toUpperCase() !== 'HAPUS'}
+                disabled={isDeleting || confirmText.trim().toUpperCase() !== 'HAPUS'}
                 className="px-5 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-semibold transition-colors shadow-xs cursor-pointer flex items-center gap-1.5"
               >
-                <Trash2 className="w-3.5 h-3.5" />
-                <span>Ya, Hapus Data Masal Sekarang</span>
+                {isDeleting ? (
+                  <>
+                    <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    <span>Menghapus data di server...</span>
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Ya, Hapus Data Masal Sekarang</span>
+                  </>
+                )}
               </button>
             </div>
           </div>

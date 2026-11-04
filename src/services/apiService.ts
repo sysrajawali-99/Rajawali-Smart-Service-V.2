@@ -61,6 +61,7 @@ export interface RecordChangeEvent<T = any> {
   data?: T;
   isDeleted?: boolean;
   timestamp: string;
+  originSocketId?: string;
 }
 
 export interface BackendStatus {
@@ -342,10 +343,14 @@ export async function sanitizeRecordPhotos<T extends Record<string, any>>(record
  * Fetch all records for a given collection from the backend.
  * Throws an error if the server is unreachable or returns a non-2xx status,
  * so the caller can distinguish between server error vs truly empty collection.
+ * Supports optional since timestamp to fetch only records updated after that time.
  */
-export async function getRecords<T = any>(collection: string): Promise<T[]> {
+export async function getRecords<T = any>(collection: string, since?: string): Promise<T[]> {
   try {
-    const res = await fetch(getApiUrl(`/api/records/${collection}`), {
+    const url = since
+      ? `/api/records/${collection}?since=${encodeURIComponent(since)}`
+      : `/api/records/${collection}`;
+    const res = await fetch(getApiUrl(url), {
       headers: getAuthHeaders(),
     });
     if (!res.ok) {
@@ -365,7 +370,7 @@ export async function getRecords<T = any>(collection: string): Promise<T[]> {
  * Upsert a single record in the collection.
  * Sanitizes base64 photos into URLs, saves to PostgreSQL, and broadcasts via Socket.IO.
  */
-export async function upsertRecord<T extends { id?: string; moduleId?: string }>(
+export async function upsertRecord<T extends { id?: string; moduleId?: string; _rev?: string; _baseRev?: string }>(
   collection: string,
   record: T
 ): Promise<T> {
@@ -373,16 +378,40 @@ export async function upsertRecord<T extends { id?: string; moduleId?: string }>
   const recordId = (sanitized as any).id || (sanitized as any).moduleId || 'main';
   (sanitized as any).id = recordId;
 
+  // Sertakan _baseRev dari record bila ada
+  const baseRev = (record as any)._baseRev || (record as any)._rev;
+  if (baseRev) {
+    (sanitized as any)._baseRev = baseRev;
+  }
+
+  // Kirim header 'x-socket-id' = socket.id (jika ada)
+  const additionalHeaders: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (socket?.id) {
+    additionalHeaders['x-socket-id'] = socket.id;
+  }
+
   const res = await fetch(getApiUrl(`/api/records/${collection}/${recordId}`), {
     method: 'PUT',
-    headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+    headers: getAuthHeaders(additionalHeaders),
     body: JSON.stringify(sanitized),
   });
 
   if (!res.ok) {
+    if (res.status === 409) {
+      const errJson = await res.json().catch(() => ({}));
+      const conflictError: any = new Error(errJson.error || 'Konflik versi data');
+      conflictError.status = 409;
+      conflictError.current = errJson.current;
+      throw conflictError;
+    }
     const errorText = await res.text().catch(() => res.statusText);
     console.error(`[API] Failed to upsert ${collection}/${recordId}:`, errorText);
     throw new Error(`Gagal menyimpan ke server (${collection}/${recordId}): ${errorText}`);
+  }
+
+  const responseJson = await res.json().catch(() => null);
+  if (responseJson?.data) {
+    return responseJson.data as T;
   }
   return sanitized;
 }
@@ -392,9 +421,13 @@ export async function upsertRecord<T extends { id?: string; moduleId?: string }>
  * Deletes from PostgreSQL and broadcasts delete event via Socket.IO.
  */
 export async function deleteRecord(collection: string, id: string): Promise<boolean> {
+  const additionalHeaders: Record<string, string> = {};
+  if (socket?.id) {
+    additionalHeaders['x-socket-id'] = socket.id;
+  }
   const res = await fetch(getApiUrl(`/api/records/${collection}/${id}`), {
     method: 'DELETE',
-    headers: getAuthHeaders(),
+    headers: getAuthHeaders(additionalHeaders),
   });
   if (!res.ok) {
     const errorText = await res.text().catch(() => res.statusText);
@@ -491,12 +524,19 @@ export async function apiUpdateCompany(
 }
 
 /**
- * Subscribes to real-time changes across collections from Socket.IO
+ * Subscribes to real-time changes across collections from Socket.IO.
+ * Automatically ignores self-echo events where originSocketId matches client's socket.id.
  */
 export function onRecordChange(handler: (event: RecordChangeEvent) => void): () => void {
-  socket.on('record:change', handler);
+  const listener = (event: RecordChangeEvent) => {
+    if (event?.originSocketId && socket?.id && event.originSocketId === socket.id) {
+      return;
+    }
+    handler(event);
+  };
+  socket.on('record:change', listener);
   return () => {
-    socket.off('record:change', handler);
+    socket.off('record:change', listener);
   };
 }
 

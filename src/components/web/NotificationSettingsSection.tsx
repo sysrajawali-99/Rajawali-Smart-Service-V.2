@@ -13,6 +13,10 @@ import {
   Info,
   RefreshCw,
   ExternalLink,
+  ClipboardList,
+  MessageSquareWarning,
+  Award,
+  Wrench,
 } from 'lucide-react';
 import {
   checkPushSupport,
@@ -23,6 +27,7 @@ import {
 } from '../../services/pushNotificationService';
 import { useCleaning } from '../../context/CleaningContext';
 import { getAuthHeaders } from '../../services/apiService';
+import { triggerTopNotification } from '../common/TopNotificationPopup';
 
 export const NotificationSettingsSection: React.FC = () => {
   const { currentUser, activeProject } = useCleaning();
@@ -251,6 +256,146 @@ export const NotificationSettingsSection: React.FC = () => {
           </p>
         </div>
       )}
+
+      {/* 5 Operational POP-UP Scenarios Live Tester (Mobile & Web) */}
+      <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs space-y-4">
+        <div className="border-b border-slate-100 pb-3 flex items-start justify-between gap-3">
+          <div>
+            <h4 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-amber-500" />
+              Uji Notifikasi Pop-up Bagian Atas Layar HP (5 Skenario Operasional)
+            </h4>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Klik salah satu tombol di bawah untuk langsung mencoba notifikasi pop-up melayang di bagian atas layar ponsel Anda dengan nada audio dan getaran haptic.
+            </p>
+          </div>
+          <span className="hidden sm:inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200 shrink-0">
+            Live Preview
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+          {/* 1. Jadwal Ceklist Terlewat */}
+          <button
+            type="button"
+            onClick={() =>
+              triggerTopNotification({
+                category: 'checklist_overdue',
+                title: 'Jadwal Ceklist Terlewat (2 Slot)!',
+                message: 'Terdapat 2 slot pemeriksaan di Toilet Utama & Koridor Lt. 2 yang belum diisi melewati batas jam.',
+                targetTab: 'ceklist',
+              })
+            }
+            className="flex items-center gap-2.5 p-3 rounded-xl border border-rose-200 bg-rose-50/70 hover:bg-rose-100/80 text-left transition-all cursor-pointer shadow-2xs group"
+          >
+            <div className="w-8 h-8 rounded-lg bg-rose-600 text-white flex items-center justify-center shrink-0">
+              <ClipboardList className="w-4 h-4" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs font-bold text-rose-950 group-hover:text-rose-900 leading-tight">
+                1. Ceklist Terlewat
+              </p>
+              <p className="text-[10px] text-rose-700/80 truncate">Slot ceklist belum selesai</p>
+            </div>
+          </button>
+
+          {/* 2. Pengingat Batas Waktu */}
+          <button
+            type="button"
+            onClick={() =>
+              triggerTopNotification({
+                category: 'deadline_reminder',
+                title: 'Pengingat Batas Waktu!',
+                message: 'Tugas di Lobby Utama & Receptionist tinggal 15 menit lagi sebelum batas waktu! Segera selesaikan tugas Anda.',
+                targetTab: 'activity',
+              })
+            }
+            className="flex items-center gap-2.5 p-3 rounded-xl border border-amber-200 bg-amber-50/70 hover:bg-amber-100/80 text-left transition-all cursor-pointer shadow-2xs group"
+          >
+            <div className="w-8 h-8 rounded-lg bg-amber-500 text-white flex items-center justify-center shrink-0">
+              <Clock className="w-4 h-4" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs font-bold text-amber-950 group-hover:text-amber-900 leading-tight">
+                2. Pengingat Batas Waktu!
+              </p>
+              <p className="text-[10px] text-amber-700/80 truncate">Mendekati jam deadline</p>
+            </div>
+          </button>
+
+          {/* 3. Komplain Baru Diterima */}
+          <button
+            type="button"
+            onClick={() =>
+              triggerTopNotification({
+                category: 'new_complaint',
+                title: 'Komplain Baru Diterima!',
+                message: 'Ibu Sarah (Tenant Lt. 4): "Tumpahan air di depan pintu lift basah dan licin, mohon segera ditangani".',
+                targetTab: 'complaint',
+              })
+            }
+            className="flex items-center gap-2.5 p-3 rounded-xl border border-rose-300 bg-rose-100/70 hover:bg-rose-200/80 text-left transition-all cursor-pointer shadow-2xs group"
+          >
+            <div className="w-8 h-8 rounded-lg bg-rose-600 text-white flex items-center justify-center shrink-0 animate-pulse">
+              <MessageSquareWarning className="w-4 h-4" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs font-bold text-rose-950 group-hover:text-rose-900 leading-tight">
+                3. Komplain Baru Diterima!
+              </p>
+              <p className="text-[10px] text-rose-700/80 truncate">Keluhan prioritas dari klien</p>
+            </div>
+          </button>
+
+          {/* 4. Inspeksi QC Disetujui */}
+          <button
+            type="button"
+            onClick={() =>
+              triggerTopNotification({
+                category: 'qc_approved',
+                title: 'Inspeksi QC Disetujui!',
+                message: 'Inspeksi mutu kebersihan di Area Toilet Lt. 3 dinyatakan lolos dengan nilai 95/100 oleh Auditor QC Hendra Wijaya.',
+                targetTab: 'inspeksi',
+              })
+            }
+            className="flex items-center gap-2.5 p-3 rounded-xl border border-emerald-200 bg-emerald-50/70 hover:bg-emerald-100/80 text-left transition-all cursor-pointer shadow-2xs group"
+          >
+            <div className="w-8 h-8 rounded-lg bg-emerald-600 text-white flex items-center justify-center shrink-0">
+              <Award className="w-4 h-4" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs font-bold text-emerald-950 group-hover:text-emerald-900 leading-tight">
+                4. Inspeksi QC Disetujui
+              </p>
+              <p className="text-[10px] text-emerald-700/80 truncate">Audit kebersihan disetujui</p>
+            </div>
+          </button>
+
+          {/* 5. Laporan Kerusakan */}
+          <button
+            type="button"
+            onClick={() =>
+              triggerTopNotification({
+                category: 'damage_report',
+                title: 'Laporan Kerusakan: DMG-2026-004',
+                message: 'Budi Santoso melaporkan kerusakan kran air patah dan bocor di Pantry Staff Lt. 2 (Prioritas: TINGGI).',
+                targetTab: 'kerusakan',
+              })
+            }
+            className="flex items-center gap-2.5 p-3 rounded-xl border border-indigo-200 bg-indigo-50/70 hover:bg-indigo-100/80 text-left transition-all cursor-pointer shadow-2xs group sm:col-span-2 lg:col-span-1"
+          >
+            <div className="w-8 h-8 rounded-lg bg-indigo-600 text-white flex items-center justify-center shrink-0">
+              <Wrench className="w-4 h-4" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs font-bold text-indigo-950 group-hover:text-indigo-900 leading-tight">
+                5. Laporan Kerusakan
+              </p>
+              <p className="text-[10px] text-indigo-700/80 truncate">Tiket sarana rusak</p>
+            </div>
+          </button>
+        </div>
+      </div>
 
       {/* Notification Categories Configuration */}
       <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs space-y-4">

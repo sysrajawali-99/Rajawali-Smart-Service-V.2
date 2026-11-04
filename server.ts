@@ -363,7 +363,41 @@ io.on('connection', (socket) => {
 let pool: pg.Pool | null = null;
 let useMemoryFallback = false;
 const memoryStore = new Map<string, Map<string, any>>();
+const memoryStoreUpdatedAt = new Map<string, Map<string, string>>();
 const MEMORY_STORE_FILE = path.resolve(process.cwd(), 'data', 'app_records_store.json');
+
+function setRecordUpdatedAt(collection: string, id: string, isoTimestamp: string) {
+  if (!memoryStoreUpdatedAt.has(collection)) {
+    memoryStoreUpdatedAt.set(collection, new Map());
+  }
+  memoryStoreUpdatedAt.get(collection)!.set(id, isoTimestamp);
+}
+
+function getRecordUpdatedAt(collection: string, id: string): string {
+  const ts = memoryStoreUpdatedAt.get(collection)?.get(id);
+  if (ts) return ts;
+  const rec = memoryStore.get(collection)?.get(id);
+  if (rec) {
+    if (rec.updatedAt && !isNaN(new Date(rec.updatedAt).getTime())) {
+      const parsed = new Date(rec.updatedAt).toISOString();
+      setRecordUpdatedAt(collection, id, parsed);
+      return parsed;
+    }
+    if (rec.updated_at && !isNaN(new Date(rec.updated_at).getTime())) {
+      const parsed = new Date(rec.updated_at).toISOString();
+      setRecordUpdatedAt(collection, id, parsed);
+      return parsed;
+    }
+    if (rec.createdAt && !isNaN(new Date(rec.createdAt).getTime())) {
+      const parsed = new Date(rec.createdAt).toISOString();
+      setRecordUpdatedAt(collection, id, parsed);
+      return parsed;
+    }
+  }
+  const defaultTs = '2026-01-01T00:00:00.000Z';
+  setRecordUpdatedAt(collection, id, defaultTs);
+  return defaultTs;
+}
 
 function loadMemoryStoreFromDisk() {
   try {
@@ -374,6 +408,14 @@ function loadMemoryStoreFromDisk() {
         const colMap = new Map<string, any>();
         for (const [id, val] of Object.entries(obj[col])) {
           colMap.set(id, val);
+          const v = val as any;
+          if (v?.updatedAt && !isNaN(new Date(v.updatedAt).getTime())) {
+            setRecordUpdatedAt(col, id, new Date(v.updatedAt).toISOString());
+          } else if (v?.updated_at && !isNaN(new Date(v.updated_at).getTime())) {
+            setRecordUpdatedAt(col, id, new Date(v.updated_at).toISOString());
+          } else if (v?.createdAt && !isNaN(new Date(v.createdAt).getTime())) {
+            setRecordUpdatedAt(col, id, new Date(v.createdAt).toISOString());
+          }
         }
         memoryStore.set(col, colMap);
       }
@@ -543,54 +585,105 @@ async function getUsersList(): Promise<any[]> {
 async function getDbRecord(collection: string, id: string): Promise<any | null> {
   if (!useMemoryFallback && pool) {
     try {
-      const res = await pool.query('SELECT data FROM records WHERE collection = $1 AND id = $2', [collection, id]);
-      return res.rows[0]?.data || null;
+      const res = await pool.query('SELECT data, updated_at FROM records WHERE collection = $1 AND id = $2', [collection, id]);
+      if (res.rows.length > 0) {
+        const row = res.rows[0];
+        const rev = row.updated_at ? new Date(row.updated_at).toISOString() : new Date().toISOString();
+        return { ...row.data, _rev: rev };
+      }
+      return null;
     } catch {
       return null;
     }
   }
-  return memoryStore.get(collection)?.get(id) || null;
+  const data = memoryStore.get(collection)?.get(id);
+  if (!data) return null;
+  const rev = getRecordUpdatedAt(collection, id);
+  return { ...data, _rev: rev };
 }
 
-async function getAllDbRecords(collection: string): Promise<any[]> {
+async function getAllDbRecords(collection: string, since?: string): Promise<any[]> {
+  const sinceTime = since && !isNaN(new Date(since).getTime()) ? new Date(since).toISOString() : null;
+
   if (!useMemoryFallback && pool) {
     try {
-      const res = await pool.query('SELECT data FROM records WHERE collection = $1 ORDER BY updated_at ASC', [collection]);
-      return res.rows.map((r) => r.data);
-    } catch {
-      return [];
+      let query = 'SELECT data, updated_at FROM records WHERE collection = $1';
+      const params: any[] = [collection];
+      if (sinceTime) {
+        query += ' AND updated_at > $2';
+        params.push(sinceTime);
+      }
+      query += ' ORDER BY updated_at ASC';
+
+      const res = await pool.query(query, params);
+      return res.rows.map((r) => ({
+        ...r.data,
+        _rev: r.updated_at ? new Date(r.updated_at).toISOString() : new Date().toISOString(),
+      }));
+    } catch (err) {
+      console.warn(`[getAllDbRecords] Postgres query notice for ${collection}:`, err);
     }
   }
+
   const colMap = memoryStore.get(collection);
-  return colMap ? Array.from(colMap.values()) : [];
+  if (!colMap) return [];
+  const items: any[] = [];
+  const filterTimestamp = sinceTime ? new Date(sinceTime).getTime() : null;
+
+  for (const [id, val] of colMap.entries()) {
+    const rev = getRecordUpdatedAt(collection, id);
+    if (filterTimestamp !== null) {
+      const itemTime = new Date(rev).getTime();
+      if (itemTime <= filterTimestamp) {
+        continue;
+      }
+    }
+    items.push({
+      ...val,
+      _rev: rev,
+    });
+  }
+  return items;
 }
 
-async function upsertDbRecord(collection: string, id: string, data: any): Promise<void> {
+async function upsertDbRecord(collection: string, id: string, data: any): Promise<string> {
   data.id = id;
+  const nowIso = new Date().toISOString();
+  let savedRev = nowIso;
+
   // Always update memory store cache immediately for instant lookups & reliability
   if (!memoryStore.has(collection)) {
     memoryStore.set(collection, new Map());
   }
   memoryStore.get(collection)!.set(id, data);
+  setRecordUpdatedAt(collection, id, nowIso);
 
   if (!useMemoryFallback && pool) {
     try {
-      await pool.query(
+      const res = await pool.query(
         `INSERT INTO records (collection, id, data, updated_at)
          VALUES ($1, $2, $3, NOW())
          ON CONFLICT (collection, id)
-         DO UPDATE SET data = EXCLUDED.data, updated_at = NOW()`,
+         DO UPDATE SET data = EXCLUDED.data, updated_at = NOW()
+         RETURNING updated_at`,
         [collection, id, JSON.stringify(data)]
       );
+      if (res.rows.length > 0 && res.rows[0].updated_at) {
+        savedRev = new Date(res.rows[0].updated_at).toISOString();
+        setRecordUpdatedAt(collection, id, savedRev);
+      }
     } catch (e) {
       console.warn(`[upsertDbRecord] Postgres write failed, using memory cache fallback:`, e);
     }
   }
+
+  return savedRev;
 }
 
 async function deleteDbRecord(collection: string, id: string): Promise<void> {
   // Always update memory store cache immediately
   memoryStore.get(collection)?.delete(id);
+  memoryStoreUpdatedAt.get(collection)?.delete(id);
 
   if (!useMemoryFallback && pool) {
     try {
@@ -1034,11 +1127,12 @@ app.get('/api/status', async (_req: Request, res: Response) => {
 // 2. GET /api/records/:collection -> semua data satu koleksi (Difilter per company_id sesi)
 app.get('/api/records/:collection', async (req: Request, res: Response) => {
   const { collection } = req.params;
+  const since = typeof req.query.since === 'string' && req.query.since.trim() ? req.query.since.trim() : undefined;
   const sessionCompanyId = resolveSessionCompanyId(req);
   const isSuper = isSessionSuperAdmin(req);
 
   try {
-    let items = await getAllDbRecords(collection);
+    let items = await getAllDbRecords(collection, since);
 
     // Centralized Tenant Isolation Filtering (Requirement 2 & 5)
     if (!isSuper) {
@@ -1213,23 +1307,30 @@ app.post('/api/records/:collection', async (req: Request, res: Response) => {
     data.companyId = sessionCompanyId;
   }
 
+  // Buang _baseRev/_rev dari data sebelum disimpan
+  delete data._baseRev;
+  delete data._rev;
+
   try {
-    await upsertDbRecord(collection, id, data);
+    const savedRev = await upsertDbRecord(collection, id, data);
     scheduleSaveMemoryStore();
+
+    const originSocketId = ((req.headers['x-socket-id'] || req.headers['x-socketid']) as string) || undefined;
 
     const payload = {
       action: 'upsert' as const,
       collection,
       id,
-      data,
+      data: { ...data, _rev: savedRev },
       company_id: data.company_id,
       timestamp: new Date().toISOString(),
+      originSocketId,
     };
 
     emitTenantRecordChange('record:change', payload);
     emitTenantRecordChange('record:upsert', payload);
 
-    return res.status(201).json({ success: true, collection, id, data });
+    return res.status(201).json({ success: true, collection, id, data: { ...data, _rev: savedRev } });
   } catch (err: any) {
     console.error(`[POST /api/records/${collection}] Error:`, err);
     return res.status(500).json({ error: 'Gagal membuat data baru', details: err?.message });
@@ -1270,6 +1371,23 @@ app.put('/api/records/:collection/:id', async (req: Request, res: Response) => {
       }
     }
   }
+
+  // Requirement 2: Optimistic locking bila body membawa _baseRev
+  const baseRev = data._baseRev;
+  if (baseRev && existing && existing._rev) {
+    const existingTime = new Date(existing._rev).getTime();
+    const baseTime = new Date(baseRev).getTime();
+    if (!isNaN(existingTime) && !isNaN(baseTime) && existingTime > baseTime) {
+      return res.status(409).json({
+        error: 'Konflik versi: Data telah diperbarui oleh perangkat lain.',
+        current: existing,
+      });
+    }
+  }
+
+  // Buang _baseRev/_rev dari data sebelum disimpan
+  delete data._baseRev;
+  delete data._rev;
 
   // Task 4.2 & 4.3: Menolak menurunkan Super Admin terakhir dan validasi eskalasi hak
   if (collection === 'users') {
@@ -1320,27 +1438,29 @@ app.put('/api/records/:collection/:id', async (req: Request, res: Response) => {
   data.id = id;
 
   try {
-    await upsertDbRecord(collection, id, data);
+    const savedRev = await upsertDbRecord(collection, id, data);
     scheduleSaveMemoryStore();
 
     if (collection === 'companies' && data.status && existing && data.status !== existing.status) {
       io.emit('company:status_changed', { id, status: data.status, company: data });
     }
 
+    const originSocketId = ((req.headers['x-socket-id'] || req.headers['x-socketid']) as string) || undefined;
+
     // Broadcast to connected clients via Socket.IO
     const payload = {
       action: 'upsert' as const,
       collection,
       id,
-      data,
+      data: { ...data, _rev: savedRev },
       company_id: data.company_id,
       timestamp: new Date().toISOString(),
+      originSocketId,
     };
 
     emitTenantRecordChange('record:change', payload);
-    emitTenantRecordChange('record:upsert', payload);
 
-    return res.json({ success: true, collection, id, data });
+    return res.json({ success: true, collection, id, data: { ...data, _rev: savedRev } });
   } catch (err: any) {
     console.error(`[PUT /api/records/${collection}/${id}] Error:`, err);
     return res.status(500).json({ error: 'Gagal menyimpan data', details: err?.message });
@@ -1400,6 +1520,8 @@ app.delete('/api/records/:collection/:id', async (req: Request, res: Response) =
     await deleteDbRecord(collection, id);
     scheduleSaveMemoryStore();
 
+    const originSocketId = ((req.headers['x-socket-id'] || req.headers['x-socketid']) as string) || undefined;
+
     // Broadcast delete event to connected clients with tenant isolation
     const payload = {
       action: 'delete' as const,
@@ -1408,6 +1530,7 @@ app.delete('/api/records/:collection/:id', async (req: Request, res: Response) =
       company_id: existing.company_id || existing.companyId || sessionCompanyId,
       isDeleted: true,
       timestamp: new Date().toISOString(),
+      originSocketId,
     };
 
     emitTenantRecordChange('record:change', payload);

@@ -91,12 +91,14 @@ import {
   setAuthToken,
 } from '../services/apiService';
 import {
+  offlineDb,
   cacheOfflineData,
   saveChecklistToOutbox,
   clearCachedDataOnLogout,
 } from '../services/offlineDb';
 import { syncService } from '../services/syncService';
 import { autoSyncPwaIconsFromLogo, PwaIconItem } from '../utils/pwaIconGenerator';
+import { triggerTopNotification } from '../components/common/TopNotificationPopup';
 
 interface CleaningContextType {
   userRole: UserRole;
@@ -402,7 +404,7 @@ interface CleaningContextType {
   bulkDeleteSubmenuData: (
     submenuKey: string,
     scope: 'active_project' | 'all'
-  ) => { count: number; label: string };
+  ) => Promise<{ count: number; label: string }>;
 
   // Verifikasi / Approval Berjenjang Controller
   verifyTaskApproval: (
@@ -979,15 +981,106 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const [isInitialLoading, setIsInitialLoading] = useState<boolean>(true);
 
-  // Refs for daily_checklists synchronization (Point A, B, C, D)
+  // Refs for synchronization and delta pulls (Tahap C)
   const initialSyncDone = useRef<boolean>(false);
   const checklistSnapshotRef = useRef<Map<string, string>>(new Map());
   const dirtyChecklistIdsRef = useRef<Set<string>>(new Set());
   const dailyChecklistsRef = useRef<DailyAreaChecklist[]>(dailyChecklists);
+  const lastPullAtRef = useRef<Record<string, string>>({});
+  const lastDisconnectTimeRef = useRef<number | null>(null);
 
   useEffect(() => {
     dailyChecklistsRef.current = dailyChecklists;
   }, [dailyChecklists]);
+
+  // Floating brief toast notification for conflicts
+  const showToast = (message: string) => {
+    if (typeof document === 'undefined') return;
+    let container = document.getElementById('sco-toast-container');
+    if (!container) {
+      container = document.createElement('div');
+      container.id = 'sco-toast-container';
+      container.className = 'fixed bottom-5 right-5 z-[9999] flex flex-col gap-2 pointer-events-none';
+      document.body.appendChild(container);
+    }
+    const toast = document.createElement('div');
+    toast.className = 'bg-slate-900/95 text-white text-xs font-semibold px-4 py-2.5 rounded-xl shadow-xl border border-slate-700 backdrop-blur-sm pointer-events-auto flex items-center gap-2';
+    toast.textContent = message;
+    container.appendChild(toast);
+    setTimeout(() => {
+      toast.style.opacity = '0';
+      toast.style.transition = 'opacity 300ms ease';
+      setTimeout(() => toast.remove(), 300);
+    }, 3000);
+  };
+
+  // Helper upsert with 409 conflict resolution: merge current from server with local changes, retry once
+  const upsertWithConflictResolution = async <T extends { id?: string; moduleId?: string; _rev?: string; _baseRev?: string }>(
+    collection: string,
+    localItem: T,
+    stateSetter?: React.Dispatch<React.SetStateAction<any>>
+  ): Promise<T> => {
+    try {
+      return await upsertRecord(collection, localItem);
+    } catch (err: any) {
+      if (err?.status === 409 && err.current) {
+        const serverCurrent = err.current;
+        // Gabungkan current dari server dengan perubahan lokal (field lokal menang, sisanya dari server)
+        const merged: T = {
+          ...serverCurrent,
+          ...localItem,
+          _baseRev: serverCurrent._rev,
+        };
+        if (stateSetter) {
+          stateSetter((prev: any[]) => {
+            if (!Array.isArray(prev)) return prev;
+            const id = (merged as any).id || (merged as any).moduleId;
+            const idx = prev.findIndex((item) => ((item as any).id || (item as any).moduleId) === id);
+            if (idx >= 0) {
+              const next = [...prev];
+              next[idx] = merged;
+              return next;
+            }
+            return [...prev, merged];
+          });
+        }
+        showToast('Data diperbarui perangkat lain');
+        return await upsertRecord(collection, merged);
+      }
+      throw err;
+    }
+  };
+
+  // Helper to merge delta items by id (ganti bila id sama, tambah bila baru)
+  const mergeCollectionById = <T extends { id?: string; moduleId?: string }>(
+    prev: T[],
+    incoming: T[]
+  ): T[] => {
+    if (!incoming || incoming.length === 0) return prev;
+    const incomingMap = new Map<string, T>();
+    for (const item of incoming) {
+      const id = (item as any).id || (item as any).moduleId;
+      if (id) incomingMap.set(id, item);
+    }
+    const updated = prev.map((item) => {
+      const id = (item as any).id || (item as any).moduleId;
+      if (id && incomingMap.has(id)) {
+        const inItem = incomingMap.get(id)!;
+        incomingMap.delete(id);
+        return { ...item, ...inItem };
+      }
+      return item;
+    });
+    return [...updated, ...Array.from(incomingMap.values())];
+  };
+
+  const applyDeltaCollection = <T extends { id?: string; moduleId?: string }>(
+    remoteItems: T[],
+    setter: React.Dispatch<React.SetStateAction<T[]>>
+  ) => {
+    if (!remoteItems || remoteItems.length === 0) return;
+    setter((prev) => mergeCollectionById(prev, remoteItems));
+  };
 
   // Helper to load remote collection or seed once if empty on server
   const loadOrSeedCollection = async <T extends { id?: string; moduleId?: string }>(
@@ -1011,10 +1104,30 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
   };
 
-  // Pull all collections from backend (auto-pull on load & reconnect)
-  const pullAllDataFromServer = async () => {
+  // Pull all collections from backend (full pull on initial load / 10m interval / long reconnect, delta otherwise)
+  const pullAllDataFromServer = async (forceFullPull = false) => {
+    const isFullPull = !initialSyncDone.current || forceFullPull;
     try {
       setSupabaseStatus((prev) => ({ ...prev, status: 'SYNCING' }));
+
+      const pullCol = async <T = any>(
+        col: string
+      ): Promise<T[]> => {
+        const since = isFullPull ? undefined : lastPullAtRef.current[col];
+        const items = await getRecords<T>(col, since);
+        if (items && items.length > 0) {
+          const revs = items.map((it: any) => it._rev).filter(Boolean);
+          if (revs.length > 0) {
+            const maxRev = revs.reduce((a, b) => (new Date(a) > new Date(b) ? a : b));
+            const currentLast = lastPullAtRef.current[col];
+            if (!currentLast || new Date(maxRev) > new Date(currentLast)) {
+              lastPullAtRef.current[col] = maxRev;
+            }
+          }
+        }
+        return items;
+      };
+
       const [
         remoteProjects,
         remoteUsers,
@@ -1041,100 +1154,165 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         remoteKpi,
         remoteCompanies,
       ] = await Promise.all([
-        getRecords<ProjectLocation>(COLLECTIONS.PROJECTS),
-        getRecords<AppUser>(COLLECTIONS.USERS),
-        getRecords<RoleModulePermission>(COLLECTIONS.RBAC_PERMISSIONS),
-        getRecords<Area>(COLLECTIONS.AREAS),
-        getRecords<Cleaner>(COLLECTIONS.CLEANERS),
-        getRecords<Shift>(COLLECTIONS.SHIFTS),
-        getRecords<CleaningSchedule>(COLLECTIONS.SCHEDULES),
-        getRecords<ChecklistLocation>(COLLECTIONS.CHECKLIST_LOCATIONS),
-        getRecords<ChecklistTemplateItem>(COLLECTIONS.CHECKLIST_TEMPLATES),
-        getRecords<DailyAreaChecklist>(COLLECTIONS.DAILY_CHECKLISTS),
-        getRecords<CleaningTask>(COLLECTIONS.TASKS),
-        getRecords<QCInspection>(COLLECTIONS.INSPECTIONS),
-        getRecords<Complaint>(COLLECTIONS.COMPLAINTS),
-        getRecords<FacilityDamageReport>(COLLECTIONS.DAMAGE_REPORTS),
-        getRecords<SpecialJobItem>(COLLECTIONS.SPECIAL_JOBS),
-        getRecords<MasterCleaningProgramItem>(COLLECTIONS.MASTER_PROGRAMS),
-        getRecords<EmployeeTurnoverRecord>(COLLECTIONS.EMPLOYEE_TURNOVERS),
-        getRecords<KlienChecklistItem>(COLLECTIONS.KLIEN_CHECKLIST_ITEMS),
-        getRecords<KlienChecklistInspection>(COLLECTIONS.KLIEN_CHECKLIST_INSPECTIONS),
-        getRecords<AppNotification>(COLLECTIONS.NOTIFICATIONS),
-        getRecords<AuditLogEntry>(COLLECTIONS.AUDIT_LOGS),
-        getRecords<CompanyProfile>(COLLECTIONS.COMPANY_PROFILE),
-        getRecords<DashboardKpiVisibilityConfig>(COLLECTIONS.KPI_CONFIG),
-        getRecords<Company>(COLLECTIONS.COMPANIES),
+        pullCol<ProjectLocation>(COLLECTIONS.PROJECTS),
+        pullCol<AppUser>(COLLECTIONS.USERS),
+        pullCol<RoleModulePermission>(COLLECTIONS.RBAC_PERMISSIONS),
+        pullCol<Area>(COLLECTIONS.AREAS),
+        pullCol<Cleaner>(COLLECTIONS.CLEANERS),
+        pullCol<Shift>(COLLECTIONS.SHIFTS),
+        pullCol<CleaningSchedule>(COLLECTIONS.SCHEDULES),
+        pullCol<ChecklistLocation>(COLLECTIONS.CHECKLIST_LOCATIONS),
+        pullCol<ChecklistTemplateItem>(COLLECTIONS.CHECKLIST_TEMPLATES),
+        pullCol<DailyAreaChecklist>(COLLECTIONS.DAILY_CHECKLISTS),
+        pullCol<CleaningTask>(COLLECTIONS.TASKS),
+        pullCol<QCInspection>(COLLECTIONS.INSPECTIONS),
+        pullCol<Complaint>(COLLECTIONS.COMPLAINTS),
+        pullCol<FacilityDamageReport>(COLLECTIONS.DAMAGE_REPORTS),
+        pullCol<SpecialJobItem>(COLLECTIONS.SPECIAL_JOBS),
+        pullCol<MasterCleaningProgramItem>(COLLECTIONS.MASTER_PROGRAMS),
+        pullCol<EmployeeTurnoverRecord>(COLLECTIONS.EMPLOYEE_TURNOVERS),
+        pullCol<KlienChecklistItem>(COLLECTIONS.KLIEN_CHECKLIST_ITEMS),
+        pullCol<KlienChecklistInspection>(COLLECTIONS.KLIEN_CHECKLIST_INSPECTIONS),
+        pullCol<AppNotification>(COLLECTIONS.NOTIFICATIONS),
+        pullCol<AuditLogEntry>(COLLECTIONS.AUDIT_LOGS),
+        pullCol<CompanyProfile>(COLLECTIONS.COMPANY_PROFILE),
+        pullCol<DashboardKpiVisibilityConfig>(COLLECTIONS.KPI_CONFIG),
+        pullCol<Company>(COLLECTIONS.COMPANIES),
       ]);
 
-      if (remoteCompanies && remoteCompanies.length > 0) {
-        setCompanies(remoteCompanies);
-      }
+      if (isFullPull) {
+        if (remoteCompanies && remoteCompanies.length > 0) {
+          setCompanies(remoteCompanies);
+        }
 
-      await Promise.all([
-        loadOrSeedCollection(COLLECTIONS.PROJECTS, remoteProjects, INITIAL_PROJECTS, setProjects),
-        loadOrSeedCollection(COLLECTIONS.USERS, remoteUsers, INITIAL_USERS, setUsers),
-        loadOrSeedCollection(COLLECTIONS.RBAC_PERMISSIONS, remoteRbac, DEFAULT_RBAC_PERMISSIONS, setRbacPermissions),
-        loadOrSeedCollection(COLLECTIONS.AREAS, remoteAreas, INITIAL_AREAS, setAreas),
-        loadOrSeedCollection(COLLECTIONS.CLEANERS, remoteCleaners, INITIAL_CLEANERS, setCleaners),
-        loadOrSeedCollection(COLLECTIONS.SHIFTS, remoteShifts, INITIAL_SHIFTS, setShifts),
-        loadOrSeedCollection(COLLECTIONS.SCHEDULES, remoteSchedules, INITIAL_SCHEDULES, setSchedules),
-        loadOrSeedCollection(COLLECTIONS.CHECKLIST_LOCATIONS, remoteChecklistLocs, INITIAL_CHECKLIST_LOCATIONS, setChecklistLocations),
-        loadOrSeedCollection(COLLECTIONS.CHECKLIST_TEMPLATES, remoteChecklistTpls, INITIAL_CHECKLIST_TEMPLATES, setChecklistTemplates),
-        loadOrSeedCollection(COLLECTIONS.TASKS, remoteTasks, INITIAL_TASKS, setTasks),
-        loadOrSeedCollection(COLLECTIONS.INSPECTIONS, remoteInspections, INITIAL_INSPECTIONS, setInspections),
-        loadOrSeedCollection(COLLECTIONS.COMPLAINTS, remoteComplaints, INITIAL_COMPLAINTS, setComplaints),
-        loadOrSeedCollection(COLLECTIONS.DAMAGE_REPORTS, remoteDamage, INITIAL_DAMAGE_REPORTS, setDamageReports),
-        loadOrSeedCollection(COLLECTIONS.SPECIAL_JOBS, remoteSpecial, INITIAL_SPECIAL_JOBS, setSpecialJobs),
-        loadOrSeedCollection(COLLECTIONS.MASTER_PROGRAMS, remoteMcp, INITIAL_MASTER_PROGRAMS, setMasterPrograms),
-        loadOrSeedCollection(COLLECTIONS.EMPLOYEE_TURNOVERS, remoteTurnovers, INITIAL_EMPLOYEE_TURNOVERS, setEmployeeTurnovers),
-        loadOrSeedCollection(COLLECTIONS.KLIEN_CHECKLIST_ITEMS, remoteKlienItems, INITIAL_KLIEN_CHECKLIST_ITEMS, setKlienChecklistItems),
-        loadOrSeedCollection(COLLECTIONS.KLIEN_CHECKLIST_INSPECTIONS, remoteKlienInspections, INITIAL_KLIEN_CHECKLIST_INSPECTIONS, setKlienChecklistInspections),
-        loadOrSeedCollection(COLLECTIONS.NOTIFICATIONS, remoteNotifs, INITIAL_NOTIFICATIONS, setNotifications),
-        loadOrSeedCollection(COLLECTIONS.AUDIT_LOGS, remoteAuditLogs.map(normalizeAuditLog), INITIAL_AUDIT_LOGS.map(normalizeAuditLog), setAuditLogs),
-      ]);
+        await Promise.all([
+          loadOrSeedCollection(COLLECTIONS.PROJECTS, remoteProjects, INITIAL_PROJECTS, setProjects),
+          loadOrSeedCollection(COLLECTIONS.USERS, remoteUsers, INITIAL_USERS, setUsers),
+          loadOrSeedCollection(COLLECTIONS.RBAC_PERMISSIONS, remoteRbac, DEFAULT_RBAC_PERMISSIONS, setRbacPermissions),
+          loadOrSeedCollection(COLLECTIONS.AREAS, remoteAreas, INITIAL_AREAS, setAreas),
+          loadOrSeedCollection(COLLECTIONS.CLEANERS, remoteCleaners, INITIAL_CLEANERS, setCleaners),
+          loadOrSeedCollection(COLLECTIONS.SHIFTS, remoteShifts, INITIAL_SHIFTS, setShifts),
+          loadOrSeedCollection(COLLECTIONS.SCHEDULES, remoteSchedules, INITIAL_SCHEDULES, setSchedules),
+          loadOrSeedCollection(COLLECTIONS.CHECKLIST_LOCATIONS, remoteChecklistLocs, INITIAL_CHECKLIST_LOCATIONS, setChecklistLocations),
+          loadOrSeedCollection(COLLECTIONS.CHECKLIST_TEMPLATES, remoteChecklistTpls, INITIAL_CHECKLIST_TEMPLATES, setChecklistTemplates),
+          loadOrSeedCollection(COLLECTIONS.TASKS, remoteTasks, INITIAL_TASKS, setTasks),
+          loadOrSeedCollection(COLLECTIONS.INSPECTIONS, remoteInspections, INITIAL_INSPECTIONS, setInspections),
+          loadOrSeedCollection(COLLECTIONS.COMPLAINTS, remoteComplaints, INITIAL_COMPLAINTS, setComplaints),
+          loadOrSeedCollection(COLLECTIONS.DAMAGE_REPORTS, remoteDamage, INITIAL_DAMAGE_REPORTS, setDamageReports),
+          loadOrSeedCollection(COLLECTIONS.SPECIAL_JOBS, remoteSpecial, INITIAL_SPECIAL_JOBS, setSpecialJobs),
+          loadOrSeedCollection(COLLECTIONS.MASTER_PROGRAMS, remoteMcp, INITIAL_MASTER_PROGRAMS, setMasterPrograms),
+          loadOrSeedCollection(COLLECTIONS.EMPLOYEE_TURNOVERS, remoteTurnovers, INITIAL_EMPLOYEE_TURNOVERS, setEmployeeTurnovers),
+          loadOrSeedCollection(COLLECTIONS.KLIEN_CHECKLIST_ITEMS, remoteKlienItems, INITIAL_KLIEN_CHECKLIST_ITEMS, setKlienChecklistItems),
+          loadOrSeedCollection(COLLECTIONS.KLIEN_CHECKLIST_INSPECTIONS, remoteKlienInspections, INITIAL_KLIEN_CHECKLIST_INSPECTIONS, setKlienChecklistInspections),
+          loadOrSeedCollection(COLLECTIONS.NOTIFICATIONS, remoteNotifs, INITIAL_NOTIFICATIONS, setNotifications),
+          loadOrSeedCollection(COLLECTIONS.AUDIT_LOGS, remoteAuditLogs.map(normalizeAuditLog), INITIAL_AUDIT_LOGS.map(normalizeAuditLog), setAuditLogs),
+        ]);
 
-      // Daily Checklists:
-      if (remoteDailyChecklists.length > 0) {
-        const serverMap = new Map(remoteDailyChecklists.map((c) => [c.id, c]));
-        setDailyChecklists((prevLocal) => {
-          const merged: DailyAreaChecklist[] = [];
-          if (!initialSyncDone.current) {
-            merged.push(...remoteDailyChecklists);
-            for (const loc of prevLocal) {
-              if (!serverMap.has(loc.id)) merged.push(loc);
-            }
-          } else {
-            for (const rem of remoteDailyChecklists) {
-              if (dirtyChecklistIdsRef.current.has(rem.id)) {
-                const dirty = prevLocal.find((d) => d.id === rem.id);
-                if (dirty) {
-                  merged.push(dirty);
-                  continue;
-                }
+        // Daily Checklists full pull
+        if (remoteDailyChecklists.length > 0) {
+          const serverMap = new Map(remoteDailyChecklists.map((c) => [c.id, c]));
+          setDailyChecklists((prevLocal) => {
+            const merged: DailyAreaChecklist[] = [];
+            if (!initialSyncDone.current) {
+              merged.push(...remoteDailyChecklists);
+              for (const loc of prevLocal) {
+                if (!serverMap.has(loc.id)) merged.push(loc);
               }
-              merged.push(rem);
+            } else {
+              for (const rem of remoteDailyChecklists) {
+                if (dirtyChecklistIdsRef.current.has(rem.id)) {
+                  const dirty = prevLocal.find((d) => d.id === rem.id);
+                  if (dirty) {
+                    merged.push(dirty);
+                    continue;
+                  }
+                }
+                merged.push(rem);
+              }
+              for (const loc of prevLocal) {
+                if (!serverMap.has(loc.id)) merged.push(loc);
+              }
             }
-            for (const loc of prevLocal) {
-              if (!serverMap.has(loc.id)) merged.push(loc);
+            for (const item of merged) {
+              if (!dirtyChecklistIdsRef.current.has(item.id)) {
+                checklistSnapshotRef.current.set(item.id, JSON.stringify(item));
+              }
             }
+            return merged;
+          });
+        } else if (INITIAL_DAILY_CHECKLISTS && INITIAL_DAILY_CHECKLISTS.length > 0) {
+          console.debug(`[Seed] Koleksi 'daily_checklists' kosong di server. Menyemai data awal...`);
+          setDailyChecklists(INITIAL_DAILY_CHECKLISTS);
+          for (const item of INITIAL_DAILY_CHECKLISTS) {
+            checklistSnapshotRef.current.set(item.id, JSON.stringify(item));
+            upsertRecord(COLLECTIONS.DAILY_CHECKLISTS, item).catch(() => {});
           }
-          for (const item of merged) {
-            if (!dirtyChecklistIdsRef.current.has(item.id)) {
-              checklistSnapshotRef.current.set(item.id, JSON.stringify(item));
+        }
+        initialSyncDone.current = true;
+      } else {
+        // Delta pull: Gabungkan per id (ganti bila id sama, tambah bila baru)
+        applyDeltaCollection(remoteCompanies, setCompanies);
+        applyDeltaCollection(remoteProjects, setProjects);
+        applyDeltaCollection(remoteUsers, setUsers);
+        applyDeltaCollection(remoteRbac, setRbacPermissions);
+        applyDeltaCollection(remoteAreas, setAreas);
+        applyDeltaCollection(remoteCleaners, setCleaners);
+        applyDeltaCollection(remoteShifts, setShifts);
+        applyDeltaCollection(remoteSchedules, setSchedules);
+        applyDeltaCollection(remoteChecklistLocs, setChecklistLocations);
+        applyDeltaCollection(remoteChecklistTpls, setChecklistTemplates);
+        applyDeltaCollection(remoteTasks, setTasks);
+        applyDeltaCollection(remoteInspections, setInspections);
+        applyDeltaCollection(remoteComplaints, setComplaints);
+        applyDeltaCollection(remoteDamage, setDamageReports);
+        applyDeltaCollection(remoteSpecial, setSpecialJobs);
+        applyDeltaCollection(remoteMcp, setMasterPrograms);
+        applyDeltaCollection(remoteTurnovers, setEmployeeTurnovers);
+        applyDeltaCollection(remoteKlienItems, setKlienChecklistItems);
+        applyDeltaCollection(remoteKlienInspections, setKlienChecklistInspections);
+        applyDeltaCollection(remoteNotifs, setNotifications);
+        if (remoteAuditLogs.length > 0) {
+          applyDeltaCollection(remoteAuditLogs.map(normalizeAuditLog), setAuditLogs);
+        }
+
+        // Daily Checklists delta: pertahankan hourlySlots merge
+        if (remoteDailyChecklists.length > 0) {
+          const incomingMap = new Map(remoteDailyChecklists.map((c) => [c.id, c]));
+          setDailyChecklists((prevLocal) => {
+            const updated = prevLocal.map((localDoc) => {
+              if (!incomingMap.has(localDoc.id)) return localDoc;
+              if (dirtyChecklistIdsRef.current.has(localDoc.id)) return localDoc;
+              const inDoc = incomingMap.get(localDoc.id)!;
+              incomingMap.delete(localDoc.id);
+
+              const mergedSlots = (inDoc.hourlySlots || []).map((inSlot) => {
+                const localSlot = localDoc.hourlySlots?.find((ls) => ls.hour === inSlot.hour);
+                if (!localSlot) return inSlot;
+                const inHasItems = Array.isArray(inSlot.items) && inSlot.items.length > 0;
+                const localHasItems = Array.isArray(localSlot.items) && localSlot.items.length > 0;
+                if (!inHasItems && localHasItems) {
+                  return { ...inSlot, items: localSlot.items, status: localSlot.status };
+                }
+                return inSlot;
+              });
+
+              const mergedDoc: DailyAreaChecklist = {
+                ...localDoc,
+                ...inDoc,
+                hourlySlots: mergedSlots.length > 0 ? mergedSlots : inDoc.hourlySlots || localDoc.hourlySlots,
+              };
+              checklistSnapshotRef.current.set(localDoc.id, JSON.stringify(mergedDoc));
+              return mergedDoc;
+            });
+
+            for (const newDoc of incomingMap.values()) {
+              checklistSnapshotRef.current.set(newDoc.id, JSON.stringify(newDoc));
+              updated.push(newDoc);
             }
-          }
-          return merged;
-        });
-      } else if (INITIAL_DAILY_CHECKLISTS && INITIAL_DAILY_CHECKLISTS.length > 0) {
-        console.debug(`[Seed] Koleksi 'daily_checklists' kosong di server. Menyemai data awal...`);
-        setDailyChecklists(INITIAL_DAILY_CHECKLISTS);
-        for (const item of INITIAL_DAILY_CHECKLISTS) {
-          checklistSnapshotRef.current.set(item.id, JSON.stringify(item));
-          upsertRecord(COLLECTIONS.DAILY_CHECKLISTS, item).catch(() => {});
+            return updated;
+          });
         }
       }
-      initialSyncDone.current = true;
 
       // Company profile & KPI config:
       if (remoteProfile.length > 0) {
@@ -1142,7 +1320,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         try {
           localStorage.setItem('jti_company_profile', JSON.stringify(remoteProfile[0]));
         } catch {}
-      } else {
+      } else if (isFullPull) {
         try {
           const saved = localStorage.getItem('jti_company_profile');
           if (saved) {
@@ -1162,7 +1340,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         try {
           localStorage.setItem('jti_kpi_config', JSON.stringify(remoteKpi[0]));
         } catch {}
-      } else {
+      } else if (isFullPull) {
         try {
           const saved = localStorage.getItem('jti_kpi_config');
           if (saved) {
@@ -1186,13 +1364,15 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       setIsInitialLoading(false);
 
       // Cache operational data in Dexie IndexedDB for instant offline availability
-      cacheOfflineData({
-        templates: remoteChecklistTpls?.length ? remoteChecklistTpls : INITIAL_CHECKLIST_TEMPLATES,
-        areas: remoteAreas?.length ? remoteAreas : INITIAL_AREAS,
-        locations: remoteChecklistLocs?.length ? remoteChecklistLocs : INITIAL_CHECKLIST_LOCATIONS,
-        checklists: remoteDailyChecklists?.length ? remoteDailyChecklists : INITIAL_DAILY_CHECKLISTS,
-        tasks: remoteTasks?.length ? remoteTasks : INITIAL_TASKS,
-      }).catch(() => {});
+      if (isFullPull) {
+        cacheOfflineData({
+          templates: remoteChecklistTpls?.length ? remoteChecklistTpls : INITIAL_CHECKLIST_TEMPLATES,
+          areas: remoteAreas?.length ? remoteAreas : INITIAL_AREAS,
+          locations: remoteChecklistLocs?.length ? remoteChecklistLocs : INITIAL_CHECKLIST_LOCATIONS,
+          checklists: remoteDailyChecklists?.length ? remoteDailyChecklists : INITIAL_DAILY_CHECKLISTS,
+          tasks: remoteTasks?.length ? remoteTasks : INITIAL_TASKS,
+        }).catch(() => {});
+      }
 
       // Auto-trigger sync of any pending outbox items from earlier offline session
       syncService.triggerSync().catch(() => {});
@@ -1256,11 +1436,10 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
     const timer = setTimeout(async () => {
       for (const checklist of changedChecklists) {
-        const itemJson = JSON.stringify(checklist);
         console.debug('[Sync] Mengirim update daily_checklist ke server:', checklist.id);
         try {
-          await upsertRecord(COLLECTIONS.DAILY_CHECKLISTS, checklist);
-          checklistSnapshotRef.current.set(checklist.id, itemJson);
+          const saved = await upsertWithConflictResolution(COLLECTIONS.DAILY_CHECKLISTS, checklist, setDailyChecklists);
+          checklistSnapshotRef.current.set(checklist.id, JSON.stringify(saved || checklist));
           dirtyChecklistIdsRef.current.delete(checklist.id);
         } catch (err) {
           console.warn('[Sync] Gagal upsert daily_checklist ke server:', checklist.id, err);
@@ -1275,26 +1454,33 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   useEffect(() => {
     let isMounted = true;
 
-    // 1. Initial Auto-pull on app load
-    pullAllDataFromServer();
+    // 1. Initial Full pull on app load
+    pullAllDataFromServer(true);
 
-    // 2. Auto-pull every time Socket.IO reconnects
+    // 2. Pull saat Socket.IO reconnect: jika terputus > 2 menit pull PENUH, singkat cukup delta pull
     const unsubscribeReconnect = onServerReconnect(async () => {
       if (!isMounted) return;
+      const now = Date.now();
+      const disconnectDuration = lastDisconnectTimeRef.current ? now - lastDisconnectTimeRef.current : 0;
+      lastDisconnectTimeRef.current = null;
+
       setSupabaseStatus((prev) => ({
         ...prev,
         status: 'CONNECTED',
         lastSyncedAt: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB',
       }));
-      await pullAllDataFromServer();
+
+      const isLongDisconnect = disconnectDuration > 2 * 60 * 1000;
+      await pullAllDataFromServer(isLongDisconnect);
+
       if (dirtyChecklistIdsRef.current.size > 0) {
         for (const dirtyId of Array.from(dirtyChecklistIdsRef.current)) {
           const item = dailyChecklistsRef.current.find((c) => c.id === dirtyId);
           if (item) {
             console.debug('[Sync] Mencoba kirim ulang daily_checklist saat reconnect:', dirtyId);
             try {
-              await upsertRecord(COLLECTIONS.DAILY_CHECKLISTS, item);
-              checklistSnapshotRef.current.set(item.id, JSON.stringify(item));
+              const saved = await upsertWithConflictResolution(COLLECTIONS.DAILY_CHECKLISTS, item, setDailyChecklists);
+              checklistSnapshotRef.current.set(item.id, JSON.stringify(saved || item));
               dirtyChecklistIdsRef.current.delete(item.id);
             } catch (err) {
               console.warn('[Sync] Gagal kirim ulang saat reconnect:', dirtyId, err);
@@ -1304,23 +1490,34 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       }
     });
 
-    // 3. Auto-pull when tab becomes active again
+    // 3. Auto-pull when tab becomes active again / on focus: delta pull saja
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
-        console.debug('[Sync] Tab aktif kembali, menyinkronkan data...');
-        pullAllDataFromServer();
+        console.debug('[Sync] Tab aktif kembali, delta pull data...');
+        pullAllDataFromServer(false);
       }
     };
     const handleWindowFocus = () => {
-      pullAllDataFromServer();
+      pullAllDataFromServer(false);
     };
     document.addEventListener('visibilitychange', handleVisibilityChange);
     window.addEventListener('focus', handleWindowFocus);
 
-    // 4. Periodic backup pull every 30 seconds
+    // 4. Periodic backup pull every 120 seconds: hanya jalan bila document.visibilityState==='visible' dan socket.connected===false
     const backupInterval = setInterval(() => {
-      pullAllDataFromServer();
-    }, 30000);
+      if (document.visibilityState === 'visible' && !socket.connected) {
+        console.debug('[Sync] Socket offline & tab aktif, menjalankan backup delta pull 120s...');
+        pullAllDataFromServer(false);
+      }
+    }, 120000);
+
+    // 5. Pull PENUH (replace) setiap 10 menit saat tab aktif untuk deteksi data terhapus
+    const fullPullInterval = setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        console.debug('[Sync] Menjalankan full pull periodik 10 menit...');
+        pullAllDataFromServer(true);
+      }
+    }, 10 * 60 * 1000);
 
     // 5. Real-time updates without page refresh via Socket.IO
     const unsubscribeChanges = onRecordChange((evt) => {
@@ -1554,6 +1751,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
     const onSocketDisconnect = () => {
       if (!isMounted) return;
+      lastDisconnectTimeRef.current = Date.now();
       setSupabaseStatus((prev) => ({ ...prev, status: 'DISCONNECTED' }));
     };
 
@@ -1567,6 +1765,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('focus', handleWindowFocus);
       clearInterval(backupInterval);
+      clearInterval(fullPullInterval);
     };
   }, []);
 
@@ -1672,6 +1871,17 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     };
     setNotifications((prev) => [notif, ...prev]);
     upsertRecord(COLLECTIONS.NOTIFICATIONS, notif).catch(() => {});
+
+    if (action === 'approved') {
+      triggerTopNotification({
+        category: 'qc_approved',
+        title: 'Inspeksi QC Disetujui!',
+        message: `Laporan pengerjaan "${affectedTask?.areaName || 'Area'}" telah diverifikasi & DISETUJUI oleh Controller ${verifierName}.`,
+        targetTab: 'inspeksi',
+        metaId: taskId,
+        projectName: activeProject?.name,
+      });
+    }
 
     // Catat Audit Trail
     addAuditLog({
@@ -3559,6 +3769,15 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       } catch {
         // ignore
       }
+
+      triggerTopNotification({
+        category: 'qc_approved',
+        title: 'Inspeksi QC Disetujui!',
+        message: `Inspeksi mutu di ${resolvedAreaName} berhasil disetujui auditor QC (Skor ${payload.score}/100)`,
+        targetTab: 'inspeksi',
+        metaId: newInspection.id,
+        projectName: activeProject?.name,
+      });
     }
   };
 
@@ -3630,6 +3849,15 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       complaintId: newTicket.id,
     };
     setNotifications((prev) => [notif, ...prev]);
+
+    triggerTopNotification({
+      category: 'new_complaint',
+      title: 'Komplain Baru Diterima!',
+      message: `${payload.reporterName}: "${payload.description}" di ${resolvedAreaName}`,
+      targetTab: userRole === 'klien' ? 'klien-keluhan' : 'complaint',
+      metaId: newTicket.id,
+      projectName: activeProject?.name,
+    });
   };
 
   const startHandlingComplaint = (complaintId: string) => {
@@ -3939,6 +4167,15 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       projectId: report.projectId || safeActiveProjectId,
     };
     setNotifications((prev) => [notif, ...prev]);
+
+    triggerTopNotification({
+      category: 'damage_report',
+      title: `Laporan Kerusakan: ${ticketNo}`,
+      message: `${report.reporterName} melaporkan kerusakan "${report.itemName}" di ${report.locationName}`,
+      targetTab: userRole === 'klien' ? 'klien-kerusakan' : 'kerusakan',
+      metaId: newReport.id,
+      projectName: activeProject?.name,
+    });
   };
 
   const updateDamageReport = (id: string, updates: Partial<FacilityDamageReport>) => {
@@ -4229,6 +4466,15 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     };
     setNotifications((prev) => [notif, ...prev]);
     upsertRecord(COLLECTIONS.NOTIFICATIONS, notif).catch(() => {});
+
+    triggerTopNotification({
+      category: 'deadline_reminder',
+      title: 'Pengingat Batas Waktu!',
+      message: 'Tugas di Lobby Utama & Receptionist tinggal 15 menit lagi sebelum batas waktu! Segera selesaikan tugas Anda.',
+      targetTab: 'activity',
+      metaId: notif.id,
+      projectName: activeProject?.name,
+    });
   };
 
   const resetToInitialData = () => {
@@ -4255,218 +4501,353 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   // Hapus Data Masal per Sub Menu (Khusus Super Admin)
-  const bulkDeleteSubmenuData = (
+  const bulkDeleteSubmenuData = async (
     submenuKey: string,
     scope: 'active_project' | 'all'
-  ): { count: number; label: string } => {
+  ): Promise<{ count: number; label: string }> => {
     let deletedCount = 0;
     let label = '';
     const targetProjId = activeProject?.id || 'proj-1';
 
+    const deleteBatch = async (col: string, ids: string[]) => {
+      if (!ids || ids.length === 0) return;
+      await Promise.allSettled(ids.map((id) => deleteRecord(col, id)));
+    };
+
+    const upsertBatch = async (col: string, items: any[]) => {
+      if (!items || items.length === 0) return;
+      await Promise.allSettled(items.map((it) => upsertRecord(col, it)));
+    };
+
     switch (submenuKey) {
       case 'all_operational': {
         label = 'Seluruh Data Operasional & Aktivitas';
-        if (scope === 'active_project') {
-          const cCount = dailyChecklists.filter((d) => d.projectId === targetProjId).length;
-          const aCount = areas.filter((a) => !a.projectId || a.projectId === targetProjId).length;
-          const tCount = tasks.filter((t) => !t.projectId || t.projectId === targetProjId).length;
-          const iCount = inspections.filter((i) => !i.projectId || i.projectId === targetProjId).length;
-          const dCount = damageReports.filter((d) => !d.projectId || d.projectId === targetProjId).length;
-          const compCount = complaints.filter((c) => !c.projectId || c.projectId === targetProjId).length;
-          const mCount = masterPrograms.filter((m) => m.projectId === targetProjId).length;
-          deletedCount = cCount + aCount + tCount + iCount + dCount + compCount + mCount;
-          setDailyChecklists((prev) => prev.filter((d) => d.projectId !== targetProjId));
-          setAreas((prev) => prev.filter((a) => a.projectId && a.projectId !== targetProjId));
-          setTasks((prev) => prev.filter((t) => t.projectId && t.projectId !== targetProjId));
-          setInspections((prev) => prev.filter((i) => i.projectId && i.projectId !== targetProjId));
-          setDamageReports((prev) => prev.filter((d) => d.projectId && d.projectId !== targetProjId));
-          setComplaints((prev) => prev.filter((c) => c.projectId && c.projectId !== targetProjId));
-          setMasterPrograms((prev) => prev.filter((m) => m.projectId !== targetProjId));
-        } else {
-          deletedCount =
-            dailyChecklists.length +
-            areas.length +
-            tasks.length +
-            inspections.length +
-            damageReports.length +
-            complaints.length +
-            masterPrograms.length;
+        const isMatch = (itemProjId?: string) =>
+          scope === 'all' || !itemProjId || itemProjId === targetProjId;
+
+        const matchedChecklists = dailyChecklists.filter((d) => scope === 'all' || d.projectId === targetProjId);
+        const matchedAreas = areas.filter((a) => isMatch(a.projectId));
+        const matchedLocations = checklistLocations.filter((l) => isMatch(l.projectId));
+        const matchedTasks = tasks.filter((t) => isMatch(t.projectId));
+        const matchedInspections = inspections.filter((i) => isMatch(i.projectId));
+        const matchedDamage = damageReports.filter((d) => isMatch(d.projectId));
+        const matchedComplaints = complaints.filter((c) => isMatch(c.projectId));
+        const matchedMcp = masterPrograms.filter((m) => scope === 'all' || m.projectId === targetProjId);
+
+        const chkIds = matchedChecklists.map((d) => d.id);
+        const areaIds = matchedAreas.map((a) => a.id);
+        const locIds = matchedLocations.map((l) => l.id);
+        const taskIds = matchedTasks.map((t) => t.id);
+        const inspIds = matchedInspections.map((i) => i.id);
+        const damIds = matchedDamage.map((d) => d.id);
+        const compIds = matchedComplaints.map((c) => c.id);
+        const mcpIds = matchedMcp.map((m) => m.id);
+
+        deletedCount =
+          chkIds.length +
+          areaIds.length +
+          locIds.length +
+          taskIds.length +
+          inspIds.length +
+          damIds.length +
+          compIds.length +
+          mcpIds.length;
+
+        // 1. Update React state
+        if (scope === 'all') {
           setDailyChecklists([]);
           setAreas([]);
+          setChecklistLocations([]);
           setTasks([]);
           setInspections([]);
           setDamageReports([]);
           setComplaints([]);
           setMasterPrograms([]);
+        } else {
+          setDailyChecklists((prev) => prev.filter((d) => d.projectId !== targetProjId));
+          setAreas((prev) => prev.filter((a) => a.projectId && a.projectId !== targetProjId));
+          setChecklistLocations((prev) => prev.filter((l) => l.projectId && l.projectId !== targetProjId));
+          setTasks((prev) => prev.filter((t) => t.projectId && t.projectId !== targetProjId));
+          setInspections((prev) => prev.filter((i) => i.projectId && i.projectId !== targetProjId));
+          setDamageReports((prev) => prev.filter((d) => d.projectId && d.projectId !== targetProjId));
+          setComplaints((prev) => prev.filter((c) => c.projectId && c.projectId !== targetProjId));
+          setMasterPrograms((prev) => prev.filter((m) => m.projectId !== targetProjId));
         }
+
+        // 2. Clear snapshot & dirty refs
+        for (const id of chkIds) {
+          checklistSnapshotRef.current.delete(id);
+          dirtyChecklistIdsRef.current.delete(id);
+        }
+
+        // 3. Clean Dexie offline cache
+        try {
+          if (chkIds.length > 0) await offlineDb.dailyChecklists.bulkDelete(chkIds);
+          if (areaIds.length > 0) await offlineDb.areas.bulkDelete(areaIds);
+          if (locIds.length > 0) await offlineDb.checklistLocations.bulkDelete(locIds);
+          if (taskIds.length > 0) await offlineDb.tasks.bulkDelete(taskIds);
+        } catch {}
+
+        // 4. Delete on server in parallel
+        await Promise.allSettled([
+          deleteBatch(COLLECTIONS.DAILY_CHECKLISTS, chkIds),
+          deleteBatch(COLLECTIONS.AREAS, areaIds),
+          deleteBatch(COLLECTIONS.CHECKLIST_LOCATIONS, locIds),
+          deleteBatch(COLLECTIONS.TASKS, taskIds),
+          deleteBatch(COLLECTIONS.INSPECTIONS, inspIds),
+          deleteBatch(COLLECTIONS.DAMAGE_REPORTS, damIds),
+          deleteBatch(COLLECTIONS.COMPLAINTS, compIds),
+          deleteBatch(COLLECTIONS.MASTER_PROGRAMS, mcpIds),
+        ]);
         break;
       }
       case 'ceklist': {
         label = 'Ceklist Area (24 Jam)';
-        if (scope === 'active_project') {
-          const matched = dailyChecklists.filter((d) => d.projectId === targetProjId);
-          deletedCount = matched.length;
-          setDailyChecklists((prev) => prev.filter((d) => d.projectId !== targetProjId));
-        } else {
-          deletedCount = dailyChecklists.length;
-          setDailyChecklists([]);
+        const matched = dailyChecklists.filter((d) => scope === 'all' || d.projectId === targetProjId);
+        const ids = matched.map((d) => d.id);
+        deletedCount = ids.length;
+
+        setDailyChecklists((prev) => (scope === 'all' ? [] : prev.filter((d) => d.projectId !== targetProjId)));
+
+        for (const id of ids) {
+          checklistSnapshotRef.current.delete(id);
+          dirtyChecklistIdsRef.current.delete(id);
         }
+
+        try {
+          if (ids.length > 0) await offlineDb.dailyChecklists.bulkDelete(ids);
+        } catch {}
+
+        await deleteBatch(COLLECTIONS.DAILY_CHECKLISTS, ids);
         break;
       }
       case 'area': {
-        label = 'Master Area Cleaning';
-        if (scope === 'active_project') {
-          const matched = areas.filter((a) => !a.projectId || a.projectId === targetProjId);
-          deletedCount = matched.length;
-          setAreas((prev) => prev.filter((a) => a.projectId && a.projectId !== targetProjId));
-        } else {
-          deletedCount = areas.length;
+        label = 'Master Area & Titik Lokasi Ceklist';
+        const isMatch = (itemProjId?: string) =>
+          scope === 'all' || !itemProjId || itemProjId === targetProjId;
+
+        const matchedAreas = areas.filter((a) => isMatch(a.projectId));
+        const matchedLocs = checklistLocations.filter((l) => isMatch(l.projectId));
+        const areaIds = matchedAreas.map((a) => a.id);
+        const locIds = matchedLocs.map((l) => l.id);
+        deletedCount = areaIds.length + locIds.length;
+
+        if (scope === 'all') {
           setAreas([]);
+          setChecklistLocations([]);
+        } else {
+          setAreas((prev) => prev.filter((a) => a.projectId && a.projectId !== targetProjId));
+          setChecklistLocations((prev) => prev.filter((l) => l.projectId && l.projectId !== targetProjId));
         }
+
+        try {
+          if (areaIds.length > 0) await offlineDb.areas.bulkDelete(areaIds);
+          if (locIds.length > 0) await offlineDb.checklistLocations.bulkDelete(locIds);
+        } catch {}
+
+        await Promise.allSettled([
+          deleteBatch(COLLECTIONS.AREAS, areaIds),
+          deleteBatch(COLLECTIONS.CHECKLIST_LOCATIONS, locIds),
+        ]);
         break;
       }
       case 'activity': {
         label = 'Cleaning Activity & Riwayat Tugas';
-        if (scope === 'active_project') {
-          const matched = tasks.filter((t) => !t.projectId || t.projectId === targetProjId);
-          deletedCount = matched.length;
-          setTasks((prev) => prev.filter((t) => t.projectId && t.projectId !== targetProjId));
-        } else {
-          deletedCount = tasks.length;
-          setTasks([]);
-        }
-        break;
-      }
-      case 'inspeksi': {
-        label = 'Inspeksi & QC Control';
-        if (scope === 'active_project') {
-          const matched = inspections.filter((i) => !i.projectId || i.projectId === targetProjId);
-          deletedCount = matched.length;
-          setInspections((prev) => prev.filter((i) => i.projectId && i.projectId !== targetProjId));
-        } else {
-          deletedCount = inspections.length;
-          setInspections([]);
-        }
-        break;
-      }
-      case 'petugas': {
-        label = 'Data Petugas Lapangan';
-        if (scope === 'active_project') {
-          const matched = cleaners.filter((c) => !c.projectId || c.projectId === targetProjId);
-          deletedCount = matched.length;
-          setCleaners((prev) => prev.filter((c) => c.projectId && c.projectId !== targetProjId));
-        } else {
-          deletedCount = cleaners.length;
-          setCleaners([]);
-        }
-        break;
-      }
-      case 'petugas_presensi': {
-        label = 'Riwayat Presensi Petugas (1-31)';
-        deletedCount = cleaners.length;
-        setCleaners((prev) =>
-          prev.map((c) => ({
-            ...c,
-            attendance: {},
-            attendanceByMonth: {},
-            tasksCompletedToday: 0,
-            isClockedIn: false,
-            clockInTime: undefined,
-          }))
+        const matched = tasks.filter((t) => scope === 'all' || !t.projectId || t.projectId === targetProjId);
+        const ids = matched.map((t) => t.id);
+        deletedCount = ids.length;
+
+        setTasks((prev) =>
+          scope === 'all' ? [] : prev.filter((t) => t.projectId && t.projectId !== targetProjId)
         );
-        break;
-      }
-      case 'shift': {
-        label = 'Shift & Plotingan Kerja';
-        deletedCount = shifts.length;
-        setShifts([]);
-        break;
-      }
-      case 'jadwal': {
-        label = 'Jadwal Cleaning';
-        if (scope === 'active_project') {
-          const matched = schedules.filter((s) => !s.projectId || s.projectId === targetProjId);
-          deletedCount = matched.length;
-          setSchedules((prev) => prev.filter((s) => s.projectId && s.projectId !== targetProjId));
-        } else {
-          deletedCount = schedules.length;
-          setSchedules([]);
-        }
-        break;
-      }
-      case 'kerusakan': {
-        label = 'Laporan Kerusakan Fasilitas';
-        if (scope === 'active_project') {
-          const matched = damageReports.filter((d) => !d.projectId || d.projectId === targetProjId);
-          deletedCount = matched.length;
-          setDamageReports((prev) => prev.filter((d) => d.projectId && d.projectId !== targetProjId));
-        } else {
-          deletedCount = damageReports.length;
-          setDamageReports([]);
-        }
+
+        try {
+          if (ids.length > 0) await offlineDb.tasks.bulkDelete(ids);
+        } catch {}
+
+        await deleteBatch(COLLECTIONS.TASKS, ids);
         break;
       }
       case 'daily-activity': {
-        label = 'Daily Activity Reports';
-        if (scope === 'active_project') {
-          const matched = tasks.filter(
-            (t) => (!t.projectId || t.projectId === targetProjId) && t.status === 'completed'
-          );
-          deletedCount = matched.length;
-          setTasks((prev) =>
-            prev.filter(
-              (t) => !((!t.projectId || t.projectId === targetProjId) && t.status === 'completed')
-            )
-          );
-        } else {
-          const matched = tasks.filter((t) => t.status === 'completed');
-          deletedCount = matched.length;
-          setTasks((prev) => prev.filter((t) => t.status !== 'completed'));
-        }
+        label = 'Riwayat Tugas Harian Selesai';
+        const matched = tasks.filter(
+          (t) => (scope === 'all' || !t.projectId || t.projectId === targetProjId) && t.status === 'completed'
+        );
+        const ids = matched.map((t) => t.id);
+        deletedCount = ids.length;
+
+        setTasks((prev) =>
+          prev.filter((t) => {
+            if (scope === 'all') return t.status !== 'completed';
+            return !((!t.projectId || t.projectId === targetProjId) && t.status === 'completed');
+          })
+        );
+
+        try {
+          if (ids.length > 0) await offlineDb.tasks.bulkDelete(ids);
+        } catch {}
+
+        await deleteBatch(COLLECTIONS.TASKS, ids);
         break;
       }
       case 'monthly-activity': {
         label = 'Arsip Pekerjaan Laporan Bulanan';
-        const matched = tasks.filter((t) => t.exportedToMonthlyReport);
-        deletedCount = matched.length;
-        setTasks((prev) =>
-          prev.map((t) => ({
-            ...t,
-            exportedToMonthlyReport: false,
-            monthlyOrderNo: undefined,
-            monthlyReportExportDate: undefined,
-          }))
+        const matched = tasks.filter(
+          (t) => t.exportedToMonthlyReport && (scope === 'all' || !t.projectId || t.projectId === targetProjId)
         );
+        const updatedTasks = matched.map((t) => ({
+          ...t,
+          exportedToMonthlyReport: false,
+          monthlyOrderNo: undefined,
+          monthlyReportExportDate: undefined,
+        }));
+        const idsSet = new Set(matched.map((t) => t.id));
+        deletedCount = matched.length;
+
+        setTasks((prev) =>
+          prev.map((t) =>
+            idsSet.has(t.id)
+              ? {
+                  ...t,
+                  exportedToMonthlyReport: false,
+                  monthlyOrderNo: undefined,
+                  monthlyReportExportDate: undefined,
+                }
+              : t
+          )
+        );
+
+        await upsertBatch(COLLECTIONS.TASKS, updatedTasks);
         break;
       }
       case 'master-program': {
         label = 'Master Cleaning Program (MCP)';
-        if (scope === 'active_project') {
-          const matched = masterPrograms.filter((m) => m.projectId === targetProjId);
-          deletedCount = matched.length;
-          setMasterPrograms((prev) => prev.filter((m) => m.projectId !== targetProjId));
-        } else {
-          deletedCount = masterPrograms.length;
-          setMasterPrograms([]);
-        }
+        const matched = masterPrograms.filter((m) => scope === 'all' || m.projectId === targetProjId);
+        const ids = matched.map((m) => m.id);
+        deletedCount = ids.length;
+
+        setMasterPrograms((prev) =>
+          scope === 'all' ? [] : prev.filter((m) => m.projectId !== targetProjId)
+        );
+
+        await deleteBatch(COLLECTIONS.MASTER_PROGRAMS, ids);
+        break;
+      }
+      case 'inspeksi': {
+        label = 'Inspeksi & QC Control';
+        const matched = inspections.filter((i) => scope === 'all' || !i.projectId || i.projectId === targetProjId);
+        const ids = matched.map((i) => i.id);
+        deletedCount = ids.length;
+
+        setInspections((prev) =>
+          scope === 'all' ? [] : prev.filter((i) => i.projectId && i.projectId !== targetProjId)
+        );
+
+        await deleteBatch(COLLECTIONS.INSPECTIONS, ids);
+        break;
+      }
+      case 'kerusakan': {
+        label = 'Laporan Kerusakan Fasilitas';
+        const matched = damageReports.filter((d) => scope === 'all' || !d.projectId || d.projectId === targetProjId);
+        const ids = matched.map((d) => d.id);
+        deletedCount = ids.length;
+
+        setDamageReports((prev) =>
+          scope === 'all' ? [] : prev.filter((d) => d.projectId && d.projectId !== targetProjId)
+        );
+
+        await deleteBatch(COLLECTIONS.DAMAGE_REPORTS, ids);
         break;
       }
       case 'complaint': {
         label = 'Laporan Komplain & Tiket';
-        if (scope === 'active_project') {
-          const matched = complaints.filter((c) => !c.projectId || c.projectId === targetProjId);
-          deletedCount = matched.length;
-          setComplaints((prev) => prev.filter((c) => c.projectId && c.projectId !== targetProjId));
-        } else {
-          deletedCount = complaints.length;
-          setComplaints([]);
-        }
+        const matched = complaints.filter((c) => scope === 'all' || !c.projectId || c.projectId === targetProjId);
+        const ids = matched.map((c) => c.id);
+        deletedCount = ids.length;
+
+        setComplaints((prev) =>
+          scope === 'all' ? [] : prev.filter((c) => c.projectId && c.projectId !== targetProjId)
+        );
+
+        await deleteBatch(COLLECTIONS.COMPLAINTS, ids);
+        break;
+      }
+      case 'petugas_presensi': {
+        label = 'Riwayat Presensi Petugas (1-31)';
+        const matched = cleaners.filter((c) => scope === 'all' || !c.projectId || c.projectId === targetProjId);
+        const updatedCleaners = matched.map((c) => ({
+          ...c,
+          attendance: {},
+          attendanceByMonth: {},
+          tasksCompletedToday: 0,
+          isClockedIn: false,
+          clockInTime: undefined,
+        }));
+        const idsSet = new Set(matched.map((c) => c.id));
+        deletedCount = matched.length;
+
+        setCleaners((prev) =>
+          prev.map((c) =>
+            idsSet.has(c.id)
+              ? {
+                  ...c,
+                  attendance: {},
+                  attendanceByMonth: {},
+                  tasksCompletedToday: 0,
+                  isClockedIn: false,
+                  clockInTime: undefined,
+                }
+              : c
+          )
+        );
+
+        await upsertBatch(COLLECTIONS.CLEANERS, updatedCleaners);
+        break;
+      }
+      case 'petugas': {
+        label = 'Data Petugas Lapangan';
+        const matched = cleaners.filter((c) => scope === 'all' || !c.projectId || c.projectId === targetProjId);
+        const ids = matched.map((c) => c.id);
+        deletedCount = ids.length;
+
+        setCleaners((prev) =>
+          scope === 'all' ? [] : prev.filter((c) => c.projectId && c.projectId !== targetProjId)
+        );
+
+        await deleteBatch(COLLECTIONS.CLEANERS, ids);
+        break;
+      }
+      case 'shift': {
+        label = 'Shift & Plotingan Kerja';
+        const ids = shifts.map((s) => s.id);
+        deletedCount = ids.length;
+
+        setShifts([]);
+
+        await deleteBatch(COLLECTIONS.SHIFTS, ids);
+        break;
+      }
+      case 'jadwal': {
+        label = 'Jadwal Cleaning';
+        const matched = schedules.filter((s) => scope === 'all' || !s.projectId || s.projectId === targetProjId);
+        const ids = matched.map((s) => s.id);
+        deletedCount = ids.length;
+
+        setSchedules((prev) =>
+          scope === 'all' ? [] : prev.filter((s) => s.projectId && s.projectId !== targetProjId)
+        );
+
+        await deleteBatch(COLLECTIONS.SCHEDULES, ids);
         break;
       }
       case 'notifikasi': {
         label = 'Notifikasi Sistem';
-        deletedCount = notifications.length;
+        const ids = notifications.map((n) => n.id);
+        deletedCount = ids.length;
+
         setNotifications([]);
+
+        await deleteBatch(COLLECTIONS.NOTIFICATIONS, ids);
         break;
       }
       default:
