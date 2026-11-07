@@ -75,7 +75,7 @@ export function findMatchingSlotItem(
 
 /**
  * Cycle through checklist status:
- * '-' (not_checked) -> 'B' (clean) -> 'K' (dirty) -> 'R' (broken) -> '-' (not_checked)
+ * '-' (not_checked) -> 'B' (clean) -> 'K' (dirty) -> 'R' (broken) -> 'T' (available) -> '-' (not_checked)
  */
 export function getNextChecklistStatus(currentStatus?: HourlyCheckItemStatus | string): HourlyCheckItemStatus {
   const code = toBKRCode(currentStatus);
@@ -85,6 +85,8 @@ export function getNextChecklistStatus(currentStatus?: HourlyCheckItemStatus | s
     case 'K':
       return 'broken'; // 'R'
     case 'R':
+      return 'available'; // 'T'
+    case 'T':
       return 'not_checked'; // '-'
     case '-':
     default:
@@ -151,6 +153,7 @@ export interface ShiftChecklistStats {
   issueSlots: number;
   pendingSlots: number;
   cleanItemsCount: number;
+  availableItemsCount: number;
   dirtyFindingsCount: number;
   brokenItemsCount: number;
   checkedItemsCount: number;
@@ -160,7 +163,7 @@ export interface ShiftChecklistStats {
 /**
  * Calculate shift checklist statistics based on total hours in shift and items checked per hour.
  * - dirtyFindingsCount: how many times a dirty ('K') item finding occurred in the shift
- * - cleanlinessRate: average percentage of clean ('B') items across total shift hours × checklist items
+ * - cleanlinessRate: average percentage of clean ('B') and available ('T') items across total shift hours × checklist items
  */
 export function calculateShiftChecklistStats(
   slots: Array<{
@@ -177,12 +180,14 @@ export function calculateShiftChecklistStats(
   let issueSlots = 0;
   let pendingSlots = 0;
   let cleanItemsCount = 0;
+  let availableItemsCount = 0;
   let dirtyFindingsCount = 0;
   let brokenItemsCount = 0;
   let checkedItemsCount = 0;
 
   slots.forEach((slot) => {
     let slotCleanCount = 0;
+    let slotAvailableCount = 0;
     let slotDirtyCount = 0;
     let slotBrokenCount = 0;
     let slotCheckedCount = 0;
@@ -209,6 +214,11 @@ export function calculateShiftChecklistStats(
           checkedItemsCount++;
           slotBrokenCount++;
           slotCheckedCount++;
+        } else if (code === 'T') {
+          availableItemsCount++;
+          checkedItemsCount++;
+          slotAvailableCount++;
+          slotCheckedCount++;
         }
       });
     } else {
@@ -229,6 +239,11 @@ export function calculateShiftChecklistStats(
           checkedItemsCount++;
           slotBrokenCount++;
           slotCheckedCount++;
+        } else if (code === 'T') {
+          availableItemsCount++;
+          checkedItemsCount++;
+          slotAvailableCount++;
+          slotCheckedCount++;
         }
       });
     }
@@ -236,7 +251,7 @@ export function calculateShiftChecklistStats(
     if (slotDirtyCount > 0 || slotBrokenCount > 0 || slot.status === 'has_issue') {
       issueSlots++;
     } else if (
-      (itemsPerSlot > 0 && slotCleanCount === itemsPerSlot) ||
+      (itemsPerSlot > 0 && (slotCleanCount + slotAvailableCount) === itemsPerSlot) ||
       slot.status === 'clean'
     ) {
       cleanSlots++;
@@ -246,7 +261,7 @@ export function calculateShiftChecklistStats(
   });
 
   const cleanlinessRate =
-    totalShiftItems > 0 ? Math.round((cleanItemsCount / totalShiftItems) * 100) : 0;
+    totalShiftItems > 0 ? Math.round(((cleanItemsCount + availableItemsCount) / totalShiftItems) * 100) : 0;
 
   return {
     totalSlots,
@@ -256,6 +271,7 @@ export function calculateShiftChecklistStats(
     issueSlots,
     pendingSlots,
     cleanItemsCount,
+    availableItemsCount,
     dirtyFindingsCount,
     brokenItemsCount,
     checkedItemsCount,

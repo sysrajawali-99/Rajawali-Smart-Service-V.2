@@ -234,6 +234,7 @@ export const KlienChecklistSection: React.FC = () => {
   const {
     totalSlots,
     cleanSlots,
+    availableItemsCount,
     dirtyFindingsCount,
     cleanlinessRate,
   } = useMemo(
@@ -396,8 +397,8 @@ export const KlienChecklistSection: React.FC = () => {
         </div>
       </div>
 
-      {/* 4 KPI STAT CARDS DARI MENU CEKLIST KEBERSIHAN AREA */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      {/* 5 KPI STAT CARDS DARI MENU CEKLIST KEBERSIHAN AREA */}
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
         <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-xs flex items-center justify-between">
           <div>
             <span className="text-[11px] text-slate-400 font-semibold block">
@@ -422,10 +423,22 @@ export const KlienChecklistSection: React.FC = () => {
           </span>
         </div>
 
+        <div className="bg-white p-3.5 rounded-xl border border-cyan-100 shadow-xs flex items-center justify-between">
+          <div>
+            <span className="text-[11px] text-cyan-600 font-semibold block">
+              Status Tersedia (T)
+            </span>
+            <span className="text-lg font-bold text-cyan-700">{availableItemsCount} Item</span>
+          </div>
+          <span className="w-7 h-7 rounded-lg bg-cyan-100 text-cyan-800 font-black flex items-center justify-center text-xs shrink-0">
+            T
+          </span>
+        </div>
+
         <div className="bg-white p-3.5 rounded-xl border border-rose-100 shadow-xs flex items-center justify-between">
           <div>
             <span className="text-[11px] text-rose-600 font-semibold block">
-              Temuan Kotor (K)
+              Temuan Kotor / Kosong (K)
             </span>
             <span className="text-lg font-bold text-rose-700">{dirtyFindingsCount} Kali</span>
           </div>
@@ -434,7 +447,7 @@ export const KlienChecklistSection: React.FC = () => {
           </span>
         </div>
 
-        <div className="bg-white p-3.5 rounded-xl border border-sky-100 shadow-xs flex items-center justify-between">
+        <div className="bg-white p-3.5 rounded-xl border border-sky-100 shadow-xs flex items-center justify-between col-span-2 sm:col-span-1">
           <div>
             <span className="text-[11px] text-sky-600 font-semibold block">
               Tingkat Kebersihan
@@ -532,6 +545,10 @@ export const KlienChecklistSection: React.FC = () => {
                               <span className="w-6 h-6 rounded-md bg-amber-100 text-amber-900 border border-amber-300 font-black text-[11px] flex items-center justify-center">
                                 R
                               </span>
+                            ) : currentVal === 'T' ? (
+                              <span className="w-6 h-6 rounded-md bg-cyan-100 text-cyan-900 border border-cyan-300 font-black text-[11px] flex items-center justify-center">
+                                T
+                              </span>
                             ) : (
                               <span className="w-6 h-6 rounded-md bg-slate-50 text-slate-300 border border-dashed border-slate-200 font-bold text-[11px] flex items-center justify-center">
                                 -
@@ -559,8 +576,8 @@ export const KlienChecklistSection: React.FC = () => {
             </table>
           </div>
 
-          {/* Keterangan Kode B / K / R */}
-          <div className="flex items-center flex-nowrap gap-2 sm:gap-4 text-[11px] sm:text-xs text-slate-600 pt-1 whitespace-nowrap">
+          {/* Keterangan Kode B / K / R / T */}
+          <div className="flex items-center flex-wrap gap-2 sm:gap-4 text-[11px] sm:text-xs text-slate-600 pt-1">
             <span className="font-bold text-slate-700 shrink-0">Keterangan Status:</span>
             <span className="inline-flex items-center gap-1 sm:gap-1.5 shrink-0">
               <span className="w-4 h-4 sm:w-5 sm:h-5 rounded bg-emerald-100 text-emerald-800 border border-emerald-300 font-black text-[10px] sm:text-[11px] flex items-center justify-center">
@@ -572,13 +589,19 @@ export const KlienChecklistSection: React.FC = () => {
               <span className="w-4 h-4 sm:w-5 sm:h-5 rounded bg-rose-100 text-rose-800 border border-rose-300 font-black text-[10px] sm:text-[11px] flex items-center justify-center">
                 K
               </span>
-              <span>Kotor</span>
+              <span>Kotor / Kosong</span>
             </span>
             <span className="inline-flex items-center gap-1 sm:gap-1.5 shrink-0">
               <span className="w-4 h-4 sm:w-5 sm:h-5 rounded bg-amber-100 text-amber-800 border border-amber-300 font-black text-[10px] sm:text-[11px] flex items-center justify-center">
                 R
               </span>
               <span>Rusak</span>
+            </span>
+            <span className="inline-flex items-center gap-1 sm:gap-1.5 shrink-0">
+              <span className="w-4 h-4 sm:w-5 sm:h-5 rounded bg-cyan-100 text-cyan-800 border border-cyan-300 font-black text-[10px] sm:text-[11px] flex items-center justify-center">
+                T
+              </span>
+              <span>Tersedia</span>
             </span>
           </div>
         </div>

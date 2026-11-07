@@ -368,7 +368,7 @@ export interface ChecklistTemplateItem {
 }
 
 
-export type HourlyCheckItemStatus = 'clean' | 'issue' | 'not_checked' | 'dirty' | 'broken';
+export type HourlyCheckItemStatus = 'clean' | 'issue' | 'not_checked' | 'dirty' | 'broken' | 'available' | 'tersedia';
 
 export interface HourlyCheckItemEntry {
   itemId: string;

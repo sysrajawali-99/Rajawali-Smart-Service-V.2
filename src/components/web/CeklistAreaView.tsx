@@ -359,6 +359,7 @@ export const CeklistAreaView: React.FC = () => {
   const {
     totalSlots,
     cleanSlots,
+    availableItemsCount,
     dirtyFindingsCount,
     cleanlinessRate,
   } = useMemo(
@@ -747,7 +748,7 @@ export const CeklistAreaView: React.FC = () => {
       </div>
 
       {/* Quick KPI Stat Chips */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
         <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-xs flex items-center justify-between">
           <div>
             <span className="text-[11px] text-slate-400 font-semibold block">Total Slot Ditampilkan</span>
@@ -766,9 +767,19 @@ export const CeklistAreaView: React.FC = () => {
           </span>
         </div>
 
+        <div className="bg-white p-3 rounded-xl border border-cyan-100 shadow-xs flex items-center justify-between">
+          <div>
+            <span className="text-[11px] text-cyan-600 font-semibold block">Status Tersedia (T)</span>
+            <span className="text-lg font-bold text-cyan-700">{availableItemsCount} Item</span>
+          </div>
+          <span className="w-7 h-7 rounded-lg bg-cyan-100 text-cyan-800 font-black flex items-center justify-center text-xs">
+            T
+          </span>
+        </div>
+
         <div className="bg-white p-3 rounded-xl border border-rose-100 shadow-xs flex items-center justify-between">
           <div>
-            <span className="text-[11px] text-rose-600 font-semibold block">Temuan Kotor (K)</span>
+            <span className="text-[11px] text-rose-600 font-semibold block">Temuan Kotor / Kosong (K)</span>
             <span className="text-lg font-bold text-rose-700">{dirtyFindingsCount} Kali</span>
           </div>
           <span className="w-7 h-7 rounded-lg bg-rose-100 text-rose-800 font-black flex items-center justify-center text-xs">
@@ -776,7 +787,7 @@ export const CeklistAreaView: React.FC = () => {
           </span>
         </div>
 
-        <div className="bg-white p-3 rounded-xl border border-sky-100 shadow-xs flex items-center justify-between">
+        <div className="bg-white p-3 rounded-xl border border-sky-100 shadow-xs flex items-center justify-between col-span-2 sm:col-span-1">
           <div>
             <span className="text-[11px] text-sky-600 font-semibold block">Tingkat Kebersihan</span>
             <span className="text-lg font-bold text-sky-800">{cleanlinessRate}%</span>
@@ -991,6 +1002,10 @@ export const CeklistAreaView: React.FC = () => {
                                 <span className="w-7 h-7 rounded-md bg-amber-100 text-amber-900 border border-amber-400 font-black text-xs flex items-center justify-center shadow-xs">
                                   R
                                 </span>
+                              ) : currentVal === 'T' ? (
+                                <span className="w-7 h-7 rounded-md bg-cyan-100 text-cyan-900 border border-cyan-400 font-black text-xs flex items-center justify-center shadow-xs">
+                                  T
+                                </span>
                               ) : (
                                 <span className="w-7 h-7 rounded-md bg-slate-50 text-slate-300 hover:text-slate-600 hover:bg-slate-200/70 border border-dashed border-slate-300 font-bold text-xs flex items-center justify-center transition-colors">
                                   -
@@ -1067,7 +1082,7 @@ export const CeklistAreaView: React.FC = () => {
                   <span className="w-5 h-5 rounded bg-rose-100 text-rose-800 border border-rose-300 font-black text-xs flex items-center justify-center">
                     K
                   </span>
-                  <span>: Kotor</span>
+                  <span>: Kotor / Kosong</span>
                 </div>
                 <div className="flex items-center gap-3">
                   <span className="w-5 h-5 rounded bg-amber-100 text-amber-800 border border-amber-300 font-black text-xs flex items-center justify-center">
@@ -1075,17 +1090,17 @@ export const CeklistAreaView: React.FC = () => {
                   </span>
                   <span>: Rusak</span>
                 </div>
+                <div className="flex items-center gap-3">
+                  <span className="w-5 h-5 rounded bg-cyan-100 text-cyan-800 border border-cyan-300 font-black text-xs flex items-center justify-center">
+                    T
+                  </span>
+                  <span>: Tersedia</span>
+                </div>
               </div>
             </div>
 
-            {/* SIGNATURE SECTION (PETUGAS PELAKSANA & PENGAWAS RS / SUPERVISOR) */}
-            <div className="flex items-center gap-8 sm:gap-14 text-center text-xs text-slate-800">
-              <div>
-                <p className="text-slate-600 mb-12 font-medium">Petugas Pelaksana Kebersihan:</p>
-                <p className="font-bold text-slate-900 underline">( Asep Supriyadi )</p>
-                <p className="text-[10px] text-slate-500">Cleaning Service Staff</p>
-              </div>
-
+            {/* SIGNATURE SECTION (PENGAWAS RS / SUPERVISOR) */}
+            <div className="flex items-center text-center text-xs text-slate-800">
               <div>
                 <p className="text-slate-600 mb-12 font-medium">Pengawas / Supervisor Area:</p>
                 <p className="font-bold text-slate-900 underline">( Hendra Wijaya )</p>
@@ -1139,6 +1154,9 @@ export const CeklistAreaView: React.FC = () => {
                 (it) => it.status === 'issue' || it.status === 'dirty'
               ).length;
               const brokenCount = slot.items.filter((it) => it.status === 'broken').length;
+              const availableCount = slot.items.filter(
+                (it) => it.status === 'available' || it.status === 'tersedia'
+              ).length;
 
               return (
                 <div
@@ -1196,7 +1214,7 @@ export const CeklistAreaView: React.FC = () => {
                         </p>
 
                         {/* Quick counts chips */}
-                        <div className="flex items-center gap-1.5 mt-1.5">
+                        <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
                           <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
                             {cleanCount} B
                           </span>
@@ -1208,6 +1226,11 @@ export const CeklistAreaView: React.FC = () => {
                           {brokenCount > 0 && (
                             <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
                               {brokenCount} R
+                            </span>
+                          )}
+                          {availableCount > 0 && (
+                            <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-cyan-50 text-cyan-700 border border-cyan-200">
+                              {availableCount} T
                             </span>
                           )}
                         </div>
@@ -1275,21 +1298,25 @@ export const CeklistAreaView: React.FC = () => {
                                     ? 'bg-rose-100 text-rose-800'
                                     : item.status === 'broken'
                                     ? 'bg-amber-100 text-amber-800'
+                                    : item.status === 'available' || item.status === 'tersedia'
+                                    ? 'bg-cyan-100 text-cyan-800'
                                     : 'bg-slate-100 text-slate-600'
                                 }`}
                               >
                                 {item.status === 'clean'
                                   ? 'Bersih'
                                   : item.status === 'issue' || item.status === 'dirty'
-                                  ? 'Kotor'
+                                  ? 'Kotor / Kosong'
                                   : item.status === 'broken'
                                   ? 'Rusak'
+                                  : item.status === 'available' || item.status === 'tersedia'
+                                  ? 'Tersedia'
                                   : 'Belum'}
                               </span>
                             </div>
 
-                            {/* Touch-Friendly Buttons Grid (min 44px touch ergonomics) */}
-                            <div className="grid grid-cols-4 gap-1.5 pt-1">
+                            {/* Touch-Friendly Buttons Grid: B, K, R, T, - */}
+                            <div className="grid grid-cols-5 gap-1.5 pt-1">
                               <button
                                 type="button"
                                 onClick={() =>
@@ -1300,6 +1327,7 @@ export const CeklistAreaView: React.FC = () => {
                                     'clean'
                                   )
                                 }
+                                title="B : Bersih"
                                 className={`h-10 rounded-xl font-black text-xs flex items-center justify-center transition-all ${
                                   item.status === 'clean'
                                     ? 'bg-emerald-600 text-white shadow-sm scale-102 ring-2 ring-emerald-300'
@@ -1315,10 +1343,11 @@ export const CeklistAreaView: React.FC = () => {
                                     currentDailyChecklist!.id,
                                     slot.hour,
                                     item.itemId,
-                                    'issue',
-                                    'Ditemukan kotor'
+                                    'dirty',
+                                    'Kotor / Kosong'
                                   )
                                 }
+                                title="K : Kotor / Kosong"
                                 className={`h-10 rounded-xl font-black text-xs flex items-center justify-center transition-all ${
                                   item.status === 'issue' || item.status === 'dirty'
                                     ? 'bg-rose-600 text-white shadow-sm scale-102 ring-2 ring-rose-300'
@@ -1338,6 +1367,7 @@ export const CeklistAreaView: React.FC = () => {
                                     'Ditemukan rusak'
                                   )
                                 }
+                                title="R : Rusak"
                                 className={`h-10 rounded-xl font-black text-xs flex items-center justify-center transition-all ${
                                   item.status === 'broken'
                                     ? 'bg-amber-600 text-white shadow-sm scale-102 ring-2 ring-amber-300'
@@ -1353,9 +1383,30 @@ export const CeklistAreaView: React.FC = () => {
                                     currentDailyChecklist!.id,
                                     slot.hour,
                                     item.itemId,
+                                    'available',
+                                    'Tersedia'
+                                  )
+                                }
+                                title="T : Tersedia"
+                                className={`h-10 rounded-xl font-black text-xs flex items-center justify-center transition-all ${
+                                  item.status === 'available' || item.status === 'tersedia'
+                                    ? 'bg-cyan-600 text-white shadow-sm scale-102 ring-2 ring-cyan-300'
+                                    : 'bg-slate-100 text-slate-700 hover:bg-cyan-50 hover:text-cyan-700'
+                                }`}
+                              >
+                                T
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  updateHourlySlotItem(
+                                    currentDailyChecklist!.id,
+                                    slot.hour,
+                                    item.itemId,
                                     'not_checked'
                                   )
                                 }
+                                title="Reset / Belum Diperiksa"
                                 className={`h-10 rounded-xl font-black text-xs flex items-center justify-center transition-all ${
                                   item.status === 'not_checked'
                                     ? 'bg-slate-500 text-white shadow-sm'

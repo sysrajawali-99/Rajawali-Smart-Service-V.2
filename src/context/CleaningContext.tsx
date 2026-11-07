@@ -2747,7 +2747,9 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         const hasIssue = updatedItems.some(
           (i) => i.status === 'issue' || i.status === 'dirty' || i.status === 'broken'
         );
-        const allClean = updatedItems.length > 0 && updatedItems.every((i) => i.status === 'clean');
+        const allClean =
+          updatedItems.length > 0 &&
+          updatedItems.every((i) => i.status === 'clean' || i.status === 'available' || i.status === 'tersedia');
         const slotStatus: 'clean' | 'has_issue' | 'pending' = hasIssue ? 'has_issue' : allClean ? 'clean' : 'pending';
 
         return {
@@ -2875,7 +2877,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         const currentItems = ensureCompleteSlotItems(slot.items || [], category, checklistTemplates);
         const updatedItems = currentItems.map((item) => ({ ...item, status }));
         const slotStatus: 'clean' | 'has_issue' | 'pending' =
-          status === 'clean'
+          status === 'clean' || status === 'available' || status === 'tersedia'
             ? 'clean'
             : status === 'issue' || status === 'dirty' || status === 'broken'
             ? 'has_issue'

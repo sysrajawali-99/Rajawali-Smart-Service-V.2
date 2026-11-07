@@ -179,13 +179,14 @@ export const drawKopSurat = (
   return lineY + 3; // Next Y coordinate
 };
 
-// Convert status to B / K / R code
-export const toBKRCode = (status?: string): 'B' | 'K' | 'R' | '-' => {
+// Convert status to B / K / R / T code
+export const toBKRCode = (status?: string): 'B' | 'K' | 'R' | 'T' | '-' => {
   if (!status) return '-';
   const s = status.toLowerCase();
   if (s === 'b' || s === 'clean') return 'B';
   if (s === 'k' || s === 'issue' || s === 'dirty' || s === 'has_issue') return 'K';
   if (s === 'r' || s === 'broken' || s === 'rusak') return 'R';
+  if (s === 't' || s === 'available' || s === 'tersedia') return 'T';
   return '-';
 };
 
@@ -409,8 +410,9 @@ export const exportChecklistToPDF = (options: ExportChecklistPDFOptions): void =
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(7.5);
   doc.text('B  :  Bersih', marginX + 12, finalY + 10);
-  doc.text('K  :  Kotor', marginX + 12, finalY + 14);
+  doc.text('K  :  Kotor / Kosong', marginX + 12, finalY + 14);
   doc.text('R  :  Rusak', marginX + 12, finalY + 18);
+  doc.text('T  :  Tersedia', marginX + 12, finalY + 22);
 
   // 7. SIGNATURE BLOCKS ON BOTTOM RIGHT
   const sigY = finalY + 6;
@@ -429,7 +431,7 @@ export const exportChecklistToPDF = (options: ExportChecklistPDFOptions): void =
   });
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(6.5);
-  doc.text(`Petugas Area: ${project.managerName || 'Supervisor CS'}`, sigX + 35, sigY + 25.5, {
+  doc.text(`Pengawas / Supervisor: ${project.managerName || 'Supervisor CS'}`, sigX + 35, sigY + 25.5, {
     align: 'center',
   });
 
