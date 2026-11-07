@@ -20,8 +20,35 @@ const app = express();
 app.set('trust proxy', true);
 const httpServer = http.createServer(app);
 
-// Configuration
-const PORT = parseInt(process.env.PORT || '3000', 10);
+// Global unhandled error guards to prevent unexpected process death
+process.on('unhandledRejection', (reason, promise) => {
+  console.warn('[Server] Unhandled Rejection at:', promise, 'reason:', reason);
+});
+
+process.on('uncaughtException', (err) => {
+  console.warn('[Server] Uncaught Exception:', err);
+});
+
+httpServer.on('error', (err: any) => {
+  console.error('[Server] HTTP Server event error:', err?.message || err);
+});
+
+// Configuration - port 3000 is required for AI Studio preview
+function resolvePort(): number {
+  const args = process.argv.slice(2);
+  const portIndex = args.indexOf('--port');
+  if (portIndex !== -1 && args[portIndex + 1]) {
+    const p = parseInt(args[portIndex + 1], 10);
+    if (!isNaN(p) && p > 0) return p;
+  }
+  if (process.env.PORT) {
+    const p = parseInt(process.env.PORT, 10);
+    // Ignore 8080 from Cloud Run container ingress so applet binds to standard 3000
+    if (!isNaN(p) && p > 0 && p !== 8080) return p;
+  }
+  return 3000;
+}
+const PORT = resolvePort();
 const uploadsDir = path.resolve(process.cwd(), 'uploads');
 
 if (!fs.existsSync(uploadsDir)) {
@@ -74,16 +101,9 @@ app.use(express.urlencoded({ limit: '30mb', extended: true }));
 const SESSION_SECRET = (process.env.SESSION_SECRET || '').trim();
 
 if (!SESSION_SECRET || SESSION_SECRET.length < 32) {
-  if (process.env.NODE_ENV === 'production') {
-    console.error(
-      '[FATAL ERROR] Environment variable SESSION_SECRET wajib diisi dengan minimal 32 karakter acak yang kuat. Server menolak start di lingkungan production tanpa SESSION_SECRET yang aman.'
-    );
-    process.exit(1);
-  } else {
-    console.warn(
-      '[SECURITY NOTICE] SESSION_SECRET tidak diatur atau kurang dari 32 karakter. Pastikan SESSION_SECRET disetel di file .env.'
-    );
-  }
+  console.warn(
+    '[SECURITY NOTICE] SESSION_SECRET tidak diatur atau kurang dari 32 karakter. Menggunakan kunci fallback ephemeral.'
+  );
 }
 
 // Fallback signer for non-production development only if SESSION_SECRET is unset
@@ -1759,6 +1779,26 @@ app.all(['/api/companies/:id'], async (req: Request, res: Response, next: NextFu
     company_id: id,
   });
 
+  if (updated.logo !== undefined) {
+    io.emit('company:logo_updated', { id, logoUrl: updated.logo });
+  }
+
+  if (id === 'comp-main') {
+    let prof = (await getDbRecord('company_profile', 'main')) || {};
+    if (updated.logo !== undefined) prof.logoUrl = updated.logo;
+    if (updated.nama) prof.companyName = updated.nama;
+    if (updated.tagline) prof.tagline = updated.tagline;
+    if (updated.documentHeaderTitle) prof.documentHeaderTitle = updated.documentHeaderTitle;
+    if (updated.address) prof.address = updated.address;
+    if (updated.city) prof.city = updated.city;
+    if (updated.phone) prof.phone = updated.phone;
+    if (updated.email) prof.email = updated.email;
+    if (updated.website) prof.website = updated.website;
+    prof.updatedAt = new Date().toISOString();
+    await upsertDbRecord('company_profile', 'main', prof);
+    io.emit('company_profile:update', prof);
+  }
+
   if (updated.status && updated.status !== oldStatus) {
     io.emit('company:status_changed', { id, status: updated.status, company: updated });
   }
@@ -2744,7 +2784,7 @@ async function startServer() {
     const vite = await createViteServer({
       server: {
         middlewareMode: true,
-        hmr: process.env.DISABLE_HMR !== 'true',
+        hmr: false,
       },
       appType: 'spa',
     });

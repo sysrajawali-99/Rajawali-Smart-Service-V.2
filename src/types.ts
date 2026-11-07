@@ -17,6 +17,13 @@ export interface Company {
   status: CompanyStatus;
   createdAt: string;
   updatedAt?: string;
+  tagline?: string;
+  documentHeaderTitle?: string;
+  address?: string;
+  city?: string;
+  phone?: string;
+  email?: string;
+  website?: string;
 }
 
 export type ViewMode = 'split' | 'web' | 'mobile';

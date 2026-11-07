@@ -397,7 +397,7 @@ interface CleaningContextType {
 
   // Pengaturan Data Perusahaan & Kop Surat Dokumen PDF
   companyProfile: CompanyProfile;
-  updateCompanyProfile: (updates: Partial<CompanyProfile>) => void;
+  updateCompanyProfile: (updates: Partial<CompanyProfile>, targetCompanyId?: string) => void;
   resetCompanyProfile: () => void;
   isPwaIconsRegenerating: boolean;
   regeneratePwaIcons: (customLogo?: string) => Promise<PwaIconItem[]>;
@@ -555,7 +555,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     return DEFAULT_COMPANY_PROFILE;
   });
 
-  const updateCompanyProfile = (updates: Partial<CompanyProfile>) => {
+  const updateCompanyProfile = (updates: Partial<CompanyProfile>, targetCompanyId?: string) => {
     setCompanyProfile((prev) => {
       const updated = { ...prev, ...updates };
       try {
@@ -566,6 +566,29 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       );
       return updated;
     });
+
+    const compId = targetCompanyId || 'comp-main';
+    if (compId) {
+      setCompanies((prev) =>
+        prev.map((c) =>
+          c.id === compId
+            ? {
+                ...c,
+                logo: updates.logoUrl !== undefined ? updates.logoUrl : c.logo,
+                nama: updates.companyName !== undefined ? updates.companyName : c.nama,
+                tagline: updates.tagline !== undefined ? updates.tagline : c.tagline,
+                documentHeaderTitle: updates.documentHeaderTitle !== undefined ? updates.documentHeaderTitle : c.documentHeaderTitle,
+                address: updates.address !== undefined ? updates.address : c.address,
+                city: updates.city !== undefined ? updates.city : c.city,
+                phone: updates.phone !== undefined ? updates.phone : c.phone,
+                email: updates.email !== undefined ? updates.email : c.email,
+                website: updates.website !== undefined ? updates.website : c.website,
+                updatedAt: new Date().toISOString(),
+              }
+            : c
+        )
+      );
+    }
   };
 
   const resetCompanyProfile = () => {
@@ -891,14 +914,30 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         companyName: currentCompany.nama || companyProfile.companyName,
         logoUrl: currentCompany.logo || (currentCompany as any).logoUrl || companyProfile.logoUrl,
         address: (currentCompany as any).address || (currentCompany as any).alamat || companyProfile.address,
+        city: (currentCompany as any).city || companyProfile.city,
         phone: (currentCompany as any).phone || (currentCompany as any).telepon || companyProfile.phone,
         email: (currentCompany as any).email || companyProfile.email,
         website: (currentCompany as any).website || companyProfile.website,
         tagline: (currentCompany as any).tagline || companyProfile.tagline,
+        documentHeaderTitle: (currentCompany as any).documentHeaderTitle || companyProfile.documentHeaderTitle,
       };
     }
     return companyProfile;
   }, [currentCompany, companyProfile]);
+
+  // Synchronize document favicon, tab title, and PWA icon event whenever effective company profile changes
+  useEffect(() => {
+    if (effectiveCompanyProfile?.logoUrl) {
+      window.dispatchEvent(
+        new CustomEvent('pwa-icons-updated', {
+          detail: {
+            icon: effectiveCompanyProfile.logoUrl,
+            name: effectiveCompanyProfile.companyName,
+          },
+        })
+      );
+    }
+  }, [effectiveCompanyProfile?.logoUrl, effectiveCompanyProfile?.companyName]);
 
   // User restriction:
   // Super Admin ('admin' or 'super_admin') can view all projects.
@@ -1741,6 +1780,17 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
               localStorage.setItem('jti_company_profile', JSON.stringify(data));
             } catch {}
             break;
+          case COLLECTIONS.COMPANIES:
+            setCompanies((prev) => {
+              const idx = prev.findIndex((c) => c.id === id);
+              if (idx >= 0) {
+                const next = [...prev];
+                next[idx] = { ...next[idx], ...data };
+                return next;
+              }
+              return [data, ...prev];
+            });
+            break;
           case COLLECTIONS.KPI_CONFIG:
             setKpiConfig(data);
             try {
@@ -1750,6 +1800,37 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         }
       }
     });
+
+    const onCompanyLogoUpdated = (payload: { id: string; logoUrl: string }) => {
+      if (!isMounted || !payload?.id) return;
+      setCompanies((prev) =>
+        prev.map((c) => (c.id === payload.id ? { ...c, logo: payload.logoUrl } : c))
+      );
+      if (payload.id === 'comp-main' || payload.id === userCompanyId) {
+        setCompanyProfile((prev) => ({ ...prev, logoUrl: payload.logoUrl }));
+        try {
+          const saved = localStorage.getItem('jti_company_profile');
+          if (saved) {
+            const parsed = JSON.parse(saved);
+            localStorage.setItem('jti_company_profile', JSON.stringify({ ...parsed, logoUrl: payload.logoUrl }));
+          }
+        } catch {}
+        window.dispatchEvent(
+          new CustomEvent('pwa-icons-updated', { detail: { icon: payload.logoUrl } })
+        );
+      }
+    };
+
+    const onCompanyProfileUpdated = (prof: any) => {
+      if (!isMounted || !prof) return;
+      setCompanyProfile(prof);
+      try {
+        localStorage.setItem('jti_company_profile', JSON.stringify(prof));
+      } catch {}
+    };
+
+    socket.on('company:logo_updated', onCompanyLogoUpdated);
+    socket.on('company_profile:update', onCompanyProfileUpdated);
 
     const onSocketDisconnect = () => {
       if (!isMounted) return;
@@ -1763,6 +1844,8 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       isMounted = false;
       unsubscribeReconnect();
       unsubscribeChanges();
+      socket.off('company:logo_updated', onCompanyLogoUpdated);
+      socket.off('company_profile:update', onCompanyProfileUpdated);
       socket.off('disconnect', onSocketDisconnect);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('focus', handleWindowFocus);
