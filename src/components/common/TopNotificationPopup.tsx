@@ -127,9 +127,22 @@ export const TopNotificationPopup: React.FC = () => {
 
   const handleOpenPopupAction = (popup: TopPopupItem) => {
     removePopup(popup.id);
+    if (userRole === 'klien') {
+      if (popup.category === 'new_complaint') {
+        acknowledgeComplaintNotifications();
+        setActiveTab('klien-keluhan');
+      } else if (popup.category === 'damage_report') {
+        setActiveTab('klien-kerusakan');
+      } else if (popup.category === 'checklist_overdue' || popup.targetTab?.includes('ceklist')) {
+        setActiveTab('klien-checklist');
+      } else {
+        setActiveTab('klien-mode');
+      }
+      return;
+    }
     if (popup.category === 'new_complaint') {
       acknowledgeComplaintNotifications();
-      const target = userRole === 'klien' || activeTab.startsWith('klien-') ? 'klien-keluhan' : 'complaint';
+      const target = activeTab.startsWith('klien-') ? 'klien-keluhan' : 'complaint';
       setActiveTab(target);
     } else {
       setActiveTab(popup.targetTab);
@@ -321,17 +334,24 @@ const TopPopupCard: React.FC<{
 
     const timer = setInterval(() => {
       setProgress((prev) => {
-        if (prev <= step) {
+        const next = prev - step;
+        if (next <= 0) {
           clearInterval(timer);
-          onClose();
           return 0;
         }
-        return prev - step;
+        return next;
       });
     }, interval);
 
     return () => clearInterval(timer);
-  }, [isPaused, onClose]);
+  }, [isPaused]);
+
+  // Trigger onClose safely outside of render / state updater
+  useEffect(() => {
+    if (progress <= 0) {
+      onClose();
+    }
+  }, [progress, onClose]);
 
   const config = getCategoryConfig(popup.category);
   const IconComponent = config.icon;

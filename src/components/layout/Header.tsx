@@ -43,6 +43,7 @@ export const Header: React.FC = () => {
     logout,
     supabaseStatus,
     companyProfile,
+    hasAccess,
   } = useCleaning();
 
   const [showNotifDropdown, setShowNotifDropdown] = useState(false);
@@ -387,28 +388,30 @@ export const Header: React.FC = () => {
             </div>
           )}
 
-          {/* Database VPS & Realtime Status Button (Desktop only lg:; hidden on mobile & tablet, available inside bell) */}
-          <button
-            onClick={() => setShowSupabaseModal(true)}
-            className={`hidden lg:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-semibold transition-colors cursor-pointer shadow-2xs ${
-              supabaseStatus.isConfigured && (supabaseStatus.status === 'CONNECTED' || supabaseStatus.status === 'SUBSCRIBED')
-                ? 'bg-emerald-50 border-emerald-200 text-emerald-700 hover:bg-emerald-100'
-                : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
-            }`}
-            title="Status Database PostgreSQL & Realtime Socket.IO"
-          >
-            <Database className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-            <span className="text-[11px]">
-              Database VPS
-            </span>
-            <span
-              className={`w-2 h-2 rounded-full shrink-0 ${
+          {/* Database VPS & Realtime Status Button (Hanya Super Admin & Admin) */}
+          {(userRole === 'admin' || userRole === 'super_admin') && (
+            <button
+              onClick={() => setShowSupabaseModal(true)}
+              className={`hidden lg:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-semibold transition-colors cursor-pointer shadow-2xs ${
                 supabaseStatus.isConfigured && (supabaseStatus.status === 'CONNECTED' || supabaseStatus.status === 'SUBSCRIBED')
-                  ? 'bg-emerald-500 animate-pulse'
-                  : 'bg-amber-400'
+                  ? 'bg-emerald-50 border-emerald-200 text-emerald-700 hover:bg-emerald-100'
+                  : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
               }`}
-            />
-          </button>
+              title="Status Database PostgreSQL & Realtime Socket.IO"
+            >
+              <Database className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+              <span className="text-[11px]">
+                Database VPS
+              </span>
+              <span
+                className={`w-2 h-2 rounded-full shrink-0 ${
+                  supabaseStatus.isConfigured && (supabaseStatus.status === 'CONNECTED' || supabaseStatus.status === 'SUBSCRIBED')
+                    ? 'bg-emerald-500 animate-pulse'
+                    : 'bg-amber-400'
+                }`}
+              />
+            </button>
+          )}
 
           {/* Direct Logout Button for all users (Desktop only lg:; hidden on mobile & tablet, available inside bell) */}
           <button
@@ -500,29 +503,31 @@ export const Header: React.FC = () => {
                   )}
 
                   {/* Database VPS & Logout Row */}
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      onClick={() => {
-                        setShowNotifDropdown(false);
-                        setShowSupabaseModal(true);
-                      }}
-                      className={`flex items-center justify-center gap-1.5 px-2.5 py-2 rounded-lg border text-xs font-semibold transition-colors cursor-pointer shadow-2xs ${
-                        supabaseStatus.isConfigured && (supabaseStatus.status === 'CONNECTED' || supabaseStatus.status === 'SUBSCRIBED')
-                          ? 'bg-emerald-50 border-emerald-200 text-emerald-800 hover:bg-emerald-100'
-                          : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100'
-                      }`}
-                      title="Status Database PostgreSQL & Realtime Socket.IO"
-                    >
-                      <Database className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                      <span className="truncate">Database VPS</span>
-                      <span
-                        className={`w-2 h-2 rounded-full shrink-0 ${
+                  <div className={`grid ${userRole === 'admin' || userRole === 'super_admin' ? 'grid-cols-2' : 'grid-cols-1'} gap-2`}>
+                    {(userRole === 'admin' || userRole === 'super_admin') && (
+                      <button
+                        onClick={() => {
+                          setShowNotifDropdown(false);
+                          setShowSupabaseModal(true);
+                        }}
+                        className={`flex items-center justify-center gap-1.5 px-2.5 py-2 rounded-lg border text-xs font-semibold transition-colors cursor-pointer shadow-2xs ${
                           supabaseStatus.isConfigured && (supabaseStatus.status === 'CONNECTED' || supabaseStatus.status === 'SUBSCRIBED')
-                            ? 'bg-emerald-500 animate-pulse'
-                            : 'bg-amber-400'
+                            ? 'bg-emerald-50 border-emerald-200 text-emerald-800 hover:bg-emerald-100'
+                            : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100'
                         }`}
-                      />
-                    </button>
+                        title="Status Database PostgreSQL & Realtime Socket.IO"
+                      >
+                        <Database className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                        <span className="truncate">Database VPS</span>
+                        <span
+                          className={`w-2 h-2 rounded-full shrink-0 ${
+                            supabaseStatus.isConfigured && (supabaseStatus.status === 'CONNECTED' || supabaseStatus.status === 'SUBSCRIBED')
+                              ? 'bg-emerald-500 animate-pulse'
+                              : 'bg-amber-400'
+                          }`}
+                        />
+                      </button>
+                    )}
 
                     <button
                       id="mobile-header-logout-button"
@@ -550,25 +555,29 @@ export const Header: React.FC = () => {
                     </span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => {
-                        setShowNotifDropdown(false);
-                        setActiveTab('pengaturan');
-                      }}
-                      className="text-[11px] text-sky-600 hover:text-sky-800 font-medium hover:underline flex items-center gap-1 cursor-pointer"
-                      title="Buka Pengaturan Web Push"
-                    >
-                      <Bell className="w-3 h-3 text-sky-500" />
-                      <span>Atur Push</span>
-                    </button>
-                    <button
-                      onClick={triggerDeadlinePushNotification}
-                      className="text-[11px] text-amber-600 hover:text-amber-800 font-medium hover:underline flex items-center gap-1 cursor-pointer"
-                      title="Tes Push Notifikasi Deadline"
-                    >
-                      <Clock className="w-3 h-3" />
-                      <span>Tes Alarm</span>
-                    </button>
+                    {hasAccess(userRole, 'pengaturan') && (
+                      <button
+                        onClick={() => {
+                          setShowNotifDropdown(false);
+                          setActiveTab('pengaturan');
+                        }}
+                        className="text-[11px] text-sky-600 hover:text-sky-800 font-medium hover:underline flex items-center gap-1 cursor-pointer"
+                        title="Buka Pengaturan Web Push"
+                      >
+                        <Bell className="w-3 h-3 text-sky-500" />
+                        <span>Atur Push</span>
+                      </button>
+                    )}
+                    {(userRole === 'admin' || userRole === 'super_admin' || userRole === 'supervisor') && (
+                      <button
+                        onClick={triggerDeadlinePushNotification}
+                        className="text-[11px] text-amber-600 hover:text-amber-800 font-medium hover:underline flex items-center gap-1 cursor-pointer"
+                        title="Tes Push Notifikasi Deadline"
+                      >
+                        <Clock className="w-3 h-3" />
+                        <span>Tes Alarm</span>
+                      </button>
+                    )}
                     {notifications.length > 0 && (
                       <button
                         onClick={clearAllNotifications}

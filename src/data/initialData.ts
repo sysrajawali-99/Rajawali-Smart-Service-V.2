@@ -304,7 +304,7 @@ export const DEFAULT_RBAC_PERMISSIONS: RoleModulePermission[] = [
     admin: true,
     supervisor: true,
     petugas: true,
-    klien: true,
+    klien: false,
   },
   {
     moduleId: 'ceklist',
@@ -313,7 +313,7 @@ export const DEFAULT_RBAC_PERMISSIONS: RoleModulePermission[] = [
     admin: true,
     supervisor: true,
     petugas: true,
-    klien: true,
+    klien: false,
   },
   {
     moduleId: 'area',
@@ -331,7 +331,7 @@ export const DEFAULT_RBAC_PERMISSIONS: RoleModulePermission[] = [
     admin: true,
     supervisor: true,
     petugas: true,
-    klien: true,
+    klien: false,
   },
   {
     moduleId: 'inspeksi',
@@ -349,7 +349,7 @@ export const DEFAULT_RBAC_PERMISSIONS: RoleModulePermission[] = [
     admin: true,
     supervisor: true,
     petugas: false,
-    klien: true,
+    klien: false,
   },
   {
     moduleId: 'petugas',
@@ -385,7 +385,7 @@ export const DEFAULT_RBAC_PERMISSIONS: RoleModulePermission[] = [
     admin: true,
     supervisor: true,
     petugas: true,
-    klien: true,
+    klien: false,
   },
   {
     moduleId: 'proyek',
@@ -403,7 +403,7 @@ export const DEFAULT_RBAC_PERMISSIONS: RoleModulePermission[] = [
     admin: true,
     supervisor: true,
     petugas: true,
-    klien: true,
+    klien: false,
   },
   {
     moduleId: 'weekly-activity',
@@ -412,7 +412,7 @@ export const DEFAULT_RBAC_PERMISSIONS: RoleModulePermission[] = [
     admin: true,
     supervisor: true,
     petugas: false,
-    klien: true,
+    klien: false,
   },
   {
     moduleId: 'monthly-activity',
@@ -421,7 +421,7 @@ export const DEFAULT_RBAC_PERMISSIONS: RoleModulePermission[] = [
     admin: true,
     supervisor: true,
     petugas: false,
-    klien: true,
+    klien: false,
   },
   {
     moduleId: 'special-job',
@@ -430,7 +430,7 @@ export const DEFAULT_RBAC_PERMISSIONS: RoleModulePermission[] = [
     admin: true,
     supervisor: true,
     petugas: true,
-    klien: true,
+    klien: false,
   },
   {
     moduleId: 'master-program',
@@ -439,7 +439,7 @@ export const DEFAULT_RBAC_PERMISSIONS: RoleModulePermission[] = [
     admin: true,
     supervisor: true,
     petugas: false,
-    klien: true,
+    klien: false,
   },
   {
     moduleId: 'complaint',
@@ -448,7 +448,7 @@ export const DEFAULT_RBAC_PERMISSIONS: RoleModulePermission[] = [
     admin: true,
     supervisor: true,
     petugas: true,
-    klien: true,
+    klien: false,
   },
   {
     moduleId: 'klien-mode',

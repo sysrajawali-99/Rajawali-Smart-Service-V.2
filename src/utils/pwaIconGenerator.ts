@@ -5,6 +5,7 @@
  */
 
 import { updateDocumentFavicon, updateDocumentTitle } from './dynamicFavicon';
+import { getFullUploadUrl, getAuthToken } from '../services/apiService';
 
 export interface PwaIconItem {
   id: string;
@@ -152,14 +153,34 @@ export const PWA_ICON_CONFIGS: IconVariantConfig[] = [
 ];
 
 /**
- * Loads an image from a data URL or image URL
+ * Loads an image from a data URL or image URL with fallback and full upload URL resolution
  */
-function loadImage(src: string): Promise<HTMLImageElement> {
+function loadImage(rawSrc: string): Promise<HTMLImageElement> {
+  const src = getFullUploadUrl(rawSrc) || rawSrc;
   return new Promise((resolve, reject) => {
     const img = new Image();
-    img.crossOrigin = 'anonymous';
+    if (src.startsWith('http://') || src.startsWith('https://')) {
+      try {
+        const parsed = new URL(src);
+        if (typeof window !== 'undefined' && parsed.origin !== window.location.origin) {
+          img.crossOrigin = 'anonymous';
+        }
+      } catch {
+        img.crossOrigin = 'anonymous';
+      }
+    }
     img.onload = () => resolve(img);
-    img.onerror = (err) => reject(new Error('Gagal memuat gambar sumber'));
+    img.onerror = () => {
+      // If crossOrigin was set and failed, try once without crossOrigin (for same-origin or non-CORS proxies)
+      if (img.crossOrigin && !src.startsWith('data:')) {
+        const retryImg = new Image();
+        retryImg.onload = () => resolve(retryImg);
+        retryImg.onerror = () => reject(new Error(`Gagal memuat gambar sumber (${src.slice(0, 80)})`));
+        retryImg.src = src;
+        return;
+      }
+      reject(new Error(`Gagal memuat gambar sumber (${src.slice(0, 80)})`));
+    };
     img.src = src;
   });
 }
@@ -292,13 +313,18 @@ export async function autoSyncPwaIconsFromLogo(
   // Kasus 2: Logo memiliki URL / base64 valid -> Generate ke-11 varian ikon
   try {
     const cleanLogoUrl = logoUrl.trim();
-    const generatedList = await generateAllPwaIcons(cleanLogoUrl, themeColor);
+    const resolvedUrl = getFullUploadUrl(cleanLogoUrl) || cleanLogoUrl;
+    const generatedList = await generateAllPwaIcons(resolvedUrl, themeColor);
 
-    // Kirim ke endpoint backend agar ditulis langsung ke public/icons/ dan root favicon
+    // Kirim ke endpoint backend agar ditulis langsung ke public/icons/ dan root favicon jika terotentikasi
     try {
+      const token = getAuthToken();
       await fetch('/api/pwa/update-icons', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
         body: JSON.stringify({ icons: generatedList }),
       });
     } catch (serverErr) {
@@ -342,7 +368,28 @@ export async function autoSyncPwaIconsFromLogo(
 
     return updatedIcons;
   } catch (err: any) {
-    console.error('[autoSyncPwaIconsFromLogo] Gagal meregenerasi ikon PWA:', err);
-    throw err;
+    console.warn('[autoSyncPwaIconsFromLogo] Sumber logo tidak dapat dimuat atau tidak tersedia, fallback ke ikon default PWA:', err?.message || err);
+    // Graceful fallback ke default PWA icons tanpa melempar fatal uncaught error
+    try {
+      localStorage.setItem('jti_pwa_icons', JSON.stringify(DEFAULT_PWA_ICONS));
+    } catch {}
+
+    updateDocumentFavicon('/icons/favicon-32.png');
+    if (appName) {
+      updateDocumentTitle(appName);
+    }
+
+    window.dispatchEvent(
+      new CustomEvent('pwa-icons-updated', {
+        detail: {
+          icon: '/icons/favicon-32.png',
+          name: appName,
+          icons: DEFAULT_PWA_ICONS,
+          isReset: true,
+        },
+      })
+    );
+
+    return DEFAULT_PWA_ICONS;
   }
 }

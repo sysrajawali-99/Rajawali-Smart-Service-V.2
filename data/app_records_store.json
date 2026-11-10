@@ -839,7 +839,7 @@
     "activity": {
       "id": "activity",
       "admin": true,
-      "klien": true,
+      "klien": false,
       "petugas": true,
       "category": "Inspeksi Report",
       "moduleId": "activity",
@@ -852,7 +852,7 @@
     "ceklist": {
       "id": "ceklist",
       "admin": true,
-      "klien": true,
+      "klien": false,
       "petugas": true,
       "category": "Inspeksi Report",
       "moduleId": "ceklist",
@@ -865,7 +865,7 @@
     "report": {
       "id": "report",
       "admin": true,
-      "klien": true,
+      "klien": false,
       "petugas": false,
       "category": "Inspeksi Report",
       "moduleId": "report",
@@ -878,7 +878,7 @@
     "daily-activity": {
       "id": "daily-activity",
       "admin": true,
-      "klien": true,
+      "klien": false,
       "petugas": true,
       "category": "Activity Report",
       "moduleId": "daily-activity",
@@ -891,7 +891,7 @@
     "monthly-activity": {
       "id": "monthly-activity",
       "admin": true,
-      "klien": true,
+      "klien": false,
       "petugas": false,
       "category": "Activity Report",
       "moduleId": "monthly-activity",
@@ -904,7 +904,7 @@
     "special-job": {
       "id": "special-job",
       "admin": true,
-      "klien": true,
+      "klien": false,
       "petugas": true,
       "category": "Activity Report",
       "moduleId": "special-job",
@@ -917,7 +917,7 @@
     "master-program": {
       "id": "master-program",
       "admin": true,
-      "klien": true,
+      "klien": false,
       "petugas": false,
       "category": "Activity Report",
       "moduleId": "master-program",
@@ -930,7 +930,7 @@
     "complaint": {
       "id": "complaint",
       "admin": true,
-      "klien": true,
+      "klien": false,
       "petugas": true,
       "category": "Activity Report",
       "moduleId": "complaint",
@@ -995,7 +995,7 @@
     "weekly-activity": {
       "id": "weekly-activity",
       "admin": true,
-      "klien": true,
+      "klien": false,
       "petugas": false,
       "category": "Activity Report",
       "moduleId": "weekly-activity",
@@ -1047,7 +1047,7 @@
     "kerusakan": {
       "id": "kerusakan",
       "admin": true,
-      "klien": true,
+      "klien": false,
       "petugas": true,
       "category": "Operational Report",
       "moduleId": "kerusakan",
@@ -17477,7 +17477,7 @@
       "email": "jti@joerizgroup.com",
       "phone": "",
       "address": "Ruko Grandmall Bekasi- RK 06",
-      "logoUrl": "/uploads/photo-1791113703284-615964745.png",
+      "logoUrl": "",
       "tagline": "Cleaning Operations & Facility Management System",
       "website": "www.joeriz.com",
       "companyId": "comp-main",

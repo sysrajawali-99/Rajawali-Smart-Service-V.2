@@ -104,6 +104,13 @@ const MainLayout: React.FC = () => {
     };
   }, []);
 
+  // Proteksi Khusus Peran Klien: Klien HANYA bisa membuka KLIEN MODE & sub-menunya
+  React.useEffect(() => {
+    if (isAuthenticated && userRole === 'klien' && activeTab !== 'klien-mode' && !activeTab.startsWith('klien-')) {
+      setActiveTab('klien-mode');
+    }
+  }, [isAuthenticated, userRole, activeTab, setActiveTab]);
+
   if (!isAuthenticated) {
     return (
       <div className="h-screen flex flex-col overflow-hidden">
@@ -144,10 +151,10 @@ const MainLayout: React.FC = () => {
           </p>
           <button
             type="button"
-            onClick={() => setActiveTab('dashboard')}
+            onClick={() => setActiveTab(userRole === 'klien' ? 'klien-mode' : 'dashboard')}
             className="px-5 py-2.5 bg-sky-600 hover:bg-sky-700 text-white text-sm font-medium rounded-xl shadow-sm transition-colors cursor-pointer"
           >
-            Kembali ke Dashboard
+            Kembali ke {userRole === 'klien' ? 'Portal Klien Mode' : 'Dashboard'}
           </button>
         </div>
       );
@@ -208,7 +215,7 @@ const MainLayout: React.FC = () => {
       case 'pengaturan':
         return <PengaturanView />;
       default:
-        return <DashboardView />;
+        return userRole === 'klien' ? <KlienModeView initialSubTab="manpower" /> : <DashboardView />;
     }
   };
 

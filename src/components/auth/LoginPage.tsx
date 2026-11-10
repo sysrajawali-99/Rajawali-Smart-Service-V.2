@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useCleaning } from '../../context/CleaningContext';
+import { getFullUploadUrl } from '../../services/apiService';
 import {
   Sparkles,
   Lock,
@@ -61,10 +62,13 @@ export const LoginPage: React.FC = () => {
           {companyProfile?.logoUrl ? (
             <div className="inline-flex items-center justify-center p-2 rounded-2xl bg-white/10 backdrop-blur-md border border-white/20 shadow-xl shadow-sky-500/15 mb-3.5 transition-transform hover:scale-105">
               <img
-                src={companyProfile.logoUrl}
+                src={getFullUploadUrl(companyProfile.logoUrl)}
                 alt={companyProfile.companyName || 'Company Logo'}
                 className="w-14 h-14 object-contain rounded-xl"
                 referrerPolicy="no-referrer"
+                onError={(e) => {
+                  (e.currentTarget as HTMLElement).style.display = 'none';
+                }}
               />
             </div>
           ) : (

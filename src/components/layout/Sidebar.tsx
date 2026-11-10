@@ -232,7 +232,9 @@ export const Sidebar: React.FC = () => {
 
   // Accordion state: only expanded groups show their sub-menus
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>(() => {
-    const initial: Record<string, boolean> = {};
+    const initial: Record<string, boolean> = {
+      'klien-mode-group': true,
+    };
     menuGroups.forEach((g) => {
       // Expand the group that contains the current active tab
       if (g.items.some((item) => item.id === activeTab)) {
@@ -244,12 +246,15 @@ export const Sidebar: React.FC = () => {
 
   // Automatically expand group when activeTab changes (e.g. from dashboard click)
   useEffect(() => {
+    if (userRole === 'klien') {
+      setExpandedGroups((prev) => ({ ...prev, 'klien-mode-group': true }));
+    }
     menuGroups.forEach((g) => {
       if (g.items.some((item) => item.id === activeTab)) {
         setExpandedGroups((prev) => ({ ...prev, [g.id]: true }));
       }
     });
-  }, [activeTab]);
+  }, [activeTab, userRole]);
 
   const toggleGroup = (groupId: string) => {
     setExpandedGroups((prev) => ({
@@ -309,36 +314,71 @@ export const Sidebar: React.FC = () => {
 
         {/* Navigation List */}
         <nav className="p-3 flex-1 space-y-2">
-          {/* Main Dashboard Link */}
-          <div>
-            <button
-              id="sidebar-nav-dashboard"
-              onClick={() => handleNavClick('dashboard')}
-              className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
-                activeTab === 'dashboard'
-                  ? 'bg-sky-600 text-white shadow-sm shadow-sky-200'
-                  : 'text-slate-700 hover:bg-slate-100'
-              }`}
-            >
-              <div className="flex items-center gap-2.5 min-w-0">
-                <LayoutDashboard
-                  className={`w-4 h-4 shrink-0 ${
-                    activeTab === 'dashboard' ? 'text-white' : 'text-slate-500'
-                  }`}
-                />
-                <span className="truncate font-bold">Dashboard Utama</span>
-              </div>
-              <span
-                className={`text-[10px] px-1.5 py-0.5 rounded-md ${
+          {/* Main Dashboard Link - Hanya jika role diizinkan (tertutup untuk klien) */}
+          {canAccessDashboard && (
+            <div>
+              <button
+                id="sidebar-nav-dashboard"
+                onClick={() => handleNavClick('dashboard')}
+                className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
                   activeTab === 'dashboard'
-                    ? 'bg-white/20 text-white'
-                    : 'bg-slate-100 text-slate-500'
+                    ? 'bg-sky-600 text-white shadow-sm shadow-sky-200'
+                    : 'text-slate-700 hover:bg-slate-100'
                 }`}
               >
-                Ringkasan
-              </span>
-            </button>
-          </div>
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <LayoutDashboard
+                    className={`w-4 h-4 shrink-0 ${
+                      activeTab === 'dashboard' ? 'text-white' : 'text-slate-500'
+                    }`}
+                  />
+                  <span className="truncate font-bold">Dashboard Utama</span>
+                </div>
+                <span
+                  className={`text-[10px] px-1.5 py-0.5 rounded-md ${
+                    activeTab === 'dashboard'
+                      ? 'bg-white/20 text-white'
+                      : 'bg-slate-100 text-slate-500'
+                  }`}
+                >
+                  Ringkasan
+                </span>
+              </button>
+            </div>
+          )}
+
+          {/* Portal Klien Mode Link Khusus untuk Role Klien */}
+          {userRole === 'klien' && (
+            <div>
+              <button
+                id="sidebar-nav-klien-mode"
+                onClick={() => handleNavClick('klien-mode')}
+                className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                  activeTab === 'klien-mode'
+                    ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-200'
+                    : 'text-indigo-900 bg-indigo-50/70 hover:bg-indigo-100/80 border border-indigo-200/60'
+                }`}
+              >
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <Building2
+                    className={`w-4 h-4 shrink-0 ${
+                      activeTab === 'klien-mode' ? 'text-white' : 'text-indigo-600'
+                    }`}
+                  />
+                  <span className="truncate font-bold">Portal Klien Mode</span>
+                </div>
+                <span
+                  className={`text-[9px] font-bold px-1.5 py-0.5 rounded-md uppercase tracking-wider ${
+                    activeTab === 'klien-mode'
+                      ? 'bg-white/20 text-white'
+                      : 'bg-indigo-200/80 text-indigo-800'
+                  }`}
+                >
+                  KLIEN
+                </span>
+              </button>
+            </div>
+          )}
 
           {/* Super Admin: Manajemen Multi-Perusahaan */}
           {userRole === 'super_admin' && (

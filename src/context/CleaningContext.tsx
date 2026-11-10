@@ -2131,7 +2131,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         localStorage.setItem('sco_role', apiRes.user.role);
 
         if (apiRes.user.role === 'klien') {
-          setActiveTab('klien-manpower');
+          setActiveTab('klien-mode');
         } else {
           setActiveTab('dashboard');
         }
@@ -2206,7 +2206,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     apiLogin({ identifier: cleanId, password: cleanPass }).catch(() => {});
 
     if (matchedUser.role === 'klien') {
-      setActiveTab('klien-manpower');
+      setActiveTab('klien-mode');
     } else {
       setActiveTab('dashboard');
     }
@@ -2235,7 +2235,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         localStorage.setItem('sco_role', apiRes.user.role);
 
         if (apiRes.user.role === 'klien') {
-          setActiveTab('klien-manpower');
+          setActiveTab('klien-mode');
         } else {
           setActiveTab('dashboard');
         }
@@ -2271,7 +2271,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     });
 
     if (matchedUser.role === 'klien') {
-      setActiveTab('klien-manpower');
+      setActiveTab('klien-mode');
     } else {
       setActiveTab('dashboard');
     }
@@ -2321,6 +2321,10 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     // Menu manajemen perusahaan HANYA untuk super_admin
     if (moduleId === 'perusahaan' || moduleId === 'companies') {
       return role === 'super_admin';
+    }
+    // Peruntukan Klien: HANYA bisa membuka KLIEN MODE (dan sub-tab klien), seluruh menu lainnya ditutup
+    if (role === 'klien') {
+      return moduleId === 'klien-mode' || moduleId.startsWith('klien-');
     }
     if (role === 'admin' || role === 'super_admin' || role === 'admin_perusahaan') return true;
     const perm = rbacPermissions.find((p) => p.moduleId === moduleId);
