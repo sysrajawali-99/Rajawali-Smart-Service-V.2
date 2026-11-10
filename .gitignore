@@ -9,3 +9,6 @@ coverage/
 data/backup-*
 data/backup*
 data/*.backup.json
+uploads/*
+!uploads/.gitkeep
+!uploads/**/.gitkeep

@@ -32,6 +32,7 @@ import {
   ArrowRight,
   History,
   Smartphone,
+  Server,
 } from 'lucide-react';
 import { useCleaning } from '../../context/CleaningContext';
 import { ChecklistLocationCategory, DashboardKpiVisibilityConfig, ChecklistTemplateItem } from '../../types';
@@ -43,9 +44,11 @@ import { AuditLogSection } from './AuditLogSection';
 import { PwaBrandingSection } from './PwaBrandingSection';
 import { NotificationSettingsSection } from './NotificationSettingsSection';
 import { ProjectShiftSettingsSection } from './ProjectShiftSettingsSection';
+import { LiveSyncSection } from './LiveSyncSection';
 
 export type PengaturanSubTab =
   | 'all'
+  | 'live_sync'
   | 'project_shifts'
   | 'branding'
   | 'notifications'
@@ -343,6 +346,19 @@ export const PengaturanView: React.FC = () => {
 
         <button
           type="button"
+          onClick={() => setActiveSubTab('live_sync')}
+          className={`flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg whitespace-nowrap transition-all cursor-pointer ${
+            activeSubTab === 'live_sync'
+              ? 'bg-white text-sky-800 shadow-xs ring-1 ring-sky-200'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+          }`}
+        >
+          <Server className="w-3.5 h-3.5 text-sky-600" />
+          <span>Tarik Data Live VPS</span>
+        </button>
+
+        <button
+          type="button"
           onClick={() => setActiveSubTab('project_shifts')}
           className={`flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg whitespace-nowrap transition-all cursor-pointer ${
             activeSubTab === 'project_shifts'
@@ -466,6 +482,11 @@ export const PengaturanView: React.FC = () => {
           </button>
         )}
       </div>
+
+      {/* SECTION: Sinkronisasi Data Real-Time VPS */}
+      {(activeSubTab === 'all' || activeSubTab === 'live_sync') && (
+        <LiveSyncSection />
+      )}
 
       {/* SECTION: Pengaturan Shift per Proyek */}
       {(activeSubTab === 'all' || activeSubTab === 'project_shifts') && (

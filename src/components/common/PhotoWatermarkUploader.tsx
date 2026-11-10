@@ -30,7 +30,7 @@ export const PhotoWatermarkUploader: React.FC<PhotoWatermarkUploaderProps> = ({
   stage,
   currentPhoto,
   onPhotoAccepted,
-  areaName = 'Menara Mandiri Lt. 2',
+  areaName = 'Blok M Square',
   cleanerName = 'Petugas Lapangan',
 }) => {
   const [isAnalyzing, setIsAnalyzing] = useState(false);

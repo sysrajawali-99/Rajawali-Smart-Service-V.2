@@ -11,6 +11,7 @@ import dotenv from 'dotenv';
 import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
 import { INITIAL_USERS } from './src/data/initialData';
+import { syncFromLiveServer } from './scripts/sync-from-live';
 
 dotenv.config();
 
@@ -1118,6 +1119,31 @@ app.get('/api/status', async (_req: Request, res: Response) => {
     socketClients: io.engine.clientsCount,
     timestamp: new Date().toISOString(),
   });
+});
+
+// Endpoint Sinkronisasi Real-Time dari Server VPS Live (Metode 1)
+app.post('/api/sync/live-vps', async (_req: Request, res: Response) => {
+  try {
+    const result = await syncFromLiveServer();
+    loadMemoryStoreFromDisk();
+    io.emit('backend:status', {
+      connected: true,
+      timestamp: new Date().toISOString(),
+      action: 'live-sync-complete',
+    });
+    return res.json({
+      success: true,
+      message: 'Data live berhasil disinkronkan dari https://jtismart.rtisystem.my.id',
+      summary: result.summary,
+      primaryProjectId: result.primaryProjectId,
+    });
+  } catch (err: any) {
+    console.error('[Sync API Error]:', err);
+    return res.status(500).json({
+      success: false,
+      error: err?.message || 'Gagal menyinkronkan data dari server live',
+    });
+  }
 });
 
 // 2. GET /api/records/:collection -> semua data satu koleksi (Difilter per company_id sesi)

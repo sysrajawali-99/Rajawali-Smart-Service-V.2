@@ -644,12 +644,12 @@ export const LaporanReportView: React.FC = () => {
             </div>
             <div>
               <p className="text-slate-500 mb-14">Diverifikasi & Disetujui:</p>
-              <p className="font-bold text-slate-900">Bambang Suryo, S.T.</p>
+              <p className="font-bold text-slate-900">{activeProject?.managerName || 'Building Facility Manager'}</p>
               <p className="text-[10px] text-slate-400">Building Facility Manager</p>
             </div>
             <div>
               <p className="text-slate-500 mb-14">Perwakilan Klien / Tenant:</p>
-              <p className="font-bold text-slate-900">PT Mandiri Capital Indonesia</p>
+              <p className="font-bold text-slate-900">{activeProject?.clientName || 'Pihak Pengelola Gedung'}</p>
               <p className="text-[10px] text-slate-400">Pihak Pengelola Gedung</p>
             </div>
           </div>
@@ -665,7 +665,7 @@ export const LaporanReportView: React.FC = () => {
                 Ringkasan Eksekutif & KPI Kinerja Site
               </h3>
               <p className="text-xs text-slate-500">
-                Site: Menara Mandiri Tower A • Periode: {getMonthLabel(selectedMonth)}
+                Site: {activeProject?.name || 'Blok M Square'} • Periode: {getMonthLabel(selectedMonth)}
               </p>
             </div>
             <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200">

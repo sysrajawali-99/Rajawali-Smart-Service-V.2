@@ -123,6 +123,8 @@ interface CleaningContextType {
     lastSyncedAt: string | null;
   };
   syncToSupabase: () => Promise<void>;
+  pullAllDataFromServer: (forceFullPull?: boolean) => Promise<void>;
+  syncFromLiveVps: () => Promise<{ success: boolean; message: string; summary?: any }>;
   isInitialLoading: boolean;
 
   // Connection & Offline Queue
@@ -886,7 +888,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const [activeProjectId, setActiveProjectIdState] = useState<string>(() => {
     const saved = localStorage.getItem('sco_active_project_id');
-    return saved || 'proj-1';
+    return saved || 'proj-1793818532678';
   });
 
   // 3. Users & Project Assignments
@@ -952,7 +954,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const safeActiveProjectId =
     allowedProjects.some((p) => p.id === activeProjectId)
       ? activeProjectId
-      : allowedProjects[0]?.id || (isAdminOrSuper ? projects[0]?.id || 'proj-1' : '');
+      : allowedProjects[0]?.id || (isAdminOrSuper ? projects[0]?.id || 'proj-1793818532678' : '');
 
   const setActiveProjectId = (id: string) => {
     // Only allow setting if admin OR if id is in allowedProjects
@@ -4994,9 +4996,32 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     return { count: deletedCount, label };
   };
 
+  const syncFromLiveVps = async (): Promise<{ success: boolean; message: string; summary?: any }> => {
+    try {
+      const res = await fetch('/api/sync/live-vps', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Gagal menyinkronkan data live');
+      }
+      await pullAllDataFromServer(true);
+      if (data.primaryProjectId) {
+        setActiveProjectIdState(data.primaryProjectId);
+        localStorage.setItem('sco_active_project_id', data.primaryProjectId);
+      }
+      return { success: true, message: data.message, summary: data.summary };
+    } catch (err: any) {
+      return { success: false, message: err?.message || 'Koneksi ke endpoint sinkronisasi gagal' };
+    }
+  };
+
   return (
     <CleaningContext.Provider
       value={{
+        pullAllDataFromServer,
+        syncFromLiveVps,
         companyProfile: effectiveCompanyProfile,
         currentCompany,
         updateCompanyProfile,

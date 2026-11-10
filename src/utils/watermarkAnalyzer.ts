@@ -35,7 +35,7 @@ export async function analyzePhotoWatermark(
           return resolve({
             isValid: true,
             detectedDate: match[0],
-            detectedLocation: 'Menara Mandiri Tower A',
+            detectedLocation: 'Blok M Square',
             confidence: 0.98,
           });
         }
@@ -51,7 +51,7 @@ export async function analyzePhotoWatermark(
           return resolve({
             isValid: true,
             detectedDate: match[0],
-            detectedLocation: 'Menara Mandiri Tower A',
+            detectedLocation: 'Blok M Square',
             confidence: 0.95,
           });
         }
@@ -67,7 +67,7 @@ export async function analyzePhotoWatermark(
         return resolve({
           isValid: true,
           detectedDate: todayStr,
-          detectedLocation: 'Menara Mandiri Tower A',
+          detectedLocation: 'Blok M Square',
           confidence: 0.96,
         });
       }
@@ -81,7 +81,7 @@ export async function analyzePhotoWatermark(
           return resolve({
             isValid: true,
             detectedDate: match[0],
-            detectedLocation: 'Menara Mandiri Tower A',
+            detectedLocation: 'Blok M Square',
             confidence: 0.92,
           });
         }
@@ -173,7 +173,7 @@ export async function analyzePhotoWatermark(
           return resolve({
             isValid: true,
             detectedDate: today,
-            detectedLocation: 'Menara Mandiri Tower A',
+            detectedLocation: 'Blok M Square',
             confidence: 0.9,
           });
         }
@@ -273,7 +273,7 @@ export async function createWatermarkedPhoto(
       // Baris 2: Lokasi & Site
       ctx.font = `bold ${Math.max(12, Math.floor(canvas.width * 0.02))}px sans-serif`;
       ctx.fillStyle = '#ffffff';
-      const locText = options?.location || 'Menara Mandiri Tower A - Lantai 2 (Zona Barat)';
+      const locText = options?.location || 'Blok M Square - Area Operasional';
       ctx.fillText(`📍 LOKASI: ${locText}`, paddingX, currentY);
 
       currentY += Math.max(16, Math.floor(canvas.width * 0.024));
