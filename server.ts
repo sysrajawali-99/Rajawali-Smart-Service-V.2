@@ -34,21 +34,7 @@ httpServer.on('error', (err: any) => {
 });
 
 // Configuration - port 3000 is required for AI Studio preview
-function resolvePort(): number {
-  const args = process.argv.slice(2);
-  const portIndex = args.indexOf('--port');
-  if (portIndex !== -1 && args[portIndex + 1]) {
-    const p = parseInt(args[portIndex + 1], 10);
-    if (!isNaN(p) && p > 0) return p;
-  }
-  if (process.env.PORT) {
-    const p = parseInt(process.env.PORT, 10);
-    // Ignore 8080 from Cloud Run container ingress so applet binds to standard 3000
-    if (!isNaN(p) && p > 0 && p !== 8080) return p;
-  }
-  return 3000;
-}
-const PORT = resolvePort();
+const PORT = 3000;
 const uploadsDir = path.resolve(process.cwd(), 'uploads');
 
 if (!fs.existsSync(uploadsDir)) {
