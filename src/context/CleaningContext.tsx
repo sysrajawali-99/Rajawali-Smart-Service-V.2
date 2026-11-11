@@ -1834,6 +1834,13 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     socket.on('company:logo_updated', onCompanyLogoUpdated);
     socket.on('company_profile:update', onCompanyProfileUpdated);
 
+    const onUnauthorized = (data: any) => {
+      console.warn('[Socket.IO] Koneksi soket ditolak (sesi tidak valid atau kedaluwarsa):', data?.message);
+      logout();
+    };
+
+    socket.on('auth:unauthorized', onUnauthorized);
+
     const onSocketDisconnect = () => {
       if (!isMounted) return;
       lastDisconnectTimeRef.current = Date.now();
@@ -1848,6 +1855,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       unsubscribeChanges();
       socket.off('company:logo_updated', onCompanyLogoUpdated);
       socket.off('company_profile:update', onCompanyProfileUpdated);
+      socket.off('auth:unauthorized', onUnauthorized);
       socket.off('disconnect', onSocketDisconnect);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('focus', handleWindowFocus);

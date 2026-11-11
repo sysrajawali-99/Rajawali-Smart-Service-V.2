@@ -324,37 +324,50 @@ function emitTenantRecordChange(eventName: string, payload: any) {
 
 io.on('connection', (socket) => {
   const token = socket.handshake.auth?.token;
+  let isAuthenticated = false;
+
   if (token) {
     const verified = verifyAuthToken(token);
     if (verified) {
+      isAuthenticated = true;
       const companyId = verified.company_id || verified.companyId || 'comp-main';
       socket.join(`company:${companyId}`);
-      if (verified.role === 'super_admin') {
+      if (verified.role === 'super_admin' || verified.role === 'admin') {
         socket.join('role:super_admin');
       }
-    } else {
-      socket.join('company:comp-main');
     }
-  } else {
-    socket.join('company:comp-main');
   }
 
-  // Allow client to join authenticated company room dynamically
+  // Celah Keamanan Ditutup: Token tidak valid/kedaluwarsa TIDAK boleh masuk room perusahaan mana pun
+  if (!isAuthenticated) {
+    socket.emit('auth:unauthorized', {
+      authenticated: false,
+      message: 'Sesi soket tidak valid atau kedaluwarsa. Silakan login kembali.',
+    });
+  }
+
+  // Allow client to join authenticated company room dynamically upon login
   socket.on('auth:join', (data: { token?: string }) => {
     if (data?.token) {
       const verified = verifyAuthToken(data.token);
       if (verified) {
         const companyId = verified.company_id || verified.companyId || 'comp-main';
         socket.join(`company:${companyId}`);
-        if (verified.role === 'super_admin') {
+        if (verified.role === 'super_admin' || verified.role === 'admin') {
           socket.join('role:super_admin');
         }
+      } else {
+        socket.emit('auth:unauthorized', {
+          authenticated: false,
+          message: 'Sesi soket tidak valid atau kedaluwarsa. Silakan login kembali.',
+        });
       }
     }
   });
 
   socket.emit('backend:status', {
     connected: true,
+    authenticated: isAuthenticated,
     socketId: socket.id,
     timestamp: new Date().toISOString(),
   });
@@ -579,6 +592,14 @@ async function getUsersList(): Promise<any[]> {
   } catch (err) {
     console.warn('[getUsersList] Notice:', err);
   }
+
+  // Perlindungan Keamanan: TIDAK PERNAH memakai akun default INITIAL_USERS di production
+  const isProduction = process.env.NODE_ENV === 'production';
+  if (isProduction) {
+    console.warn('[SECURITY WARNING] Data user di database kosong pada lingkungan produksi. Akun default INITIAL_USERS ditolak.');
+    return [];
+  }
+
   return INITIAL_USERS;
 }
 
@@ -736,26 +757,8 @@ function resolveSessionCompanyId(req: Request): string {
 
 function isSessionSuperAdmin(req: Request): boolean {
   const user = (req as any).user;
-  if (user?.role === 'super_admin' || user?.role === 'admin') {
+  if (user && (user.role === 'super_admin' || user.role === 'admin')) {
     return true;
-  }
-  const clientRole = ((req.headers['x-user-role'] || req.headers['x-role']) as string) || '';
-  if (clientRole === 'super_admin' || clientRole === 'admin') {
-    return true;
-  }
-  const clientUserId = ((req.headers['x-user-id'] || req.headers['x-userid']) as string) || '';
-  if (clientUserId) {
-    if (clientUserId === 'usr-admin' || clientUserId.includes('admin') || clientUserId.includes('super')) {
-      return true;
-    }
-    const memUser = memoryStore.get('users')?.get(clientUserId);
-    if (memUser && (memUser.role === 'super_admin' || memUser.role === 'admin')) {
-      return true;
-    }
-    const initUser = INITIAL_USERS.find((u: any) => u.id === clientUserId);
-    if (initUser && (initUser.role === 'super_admin' || initUser.role === 'admin')) {
-      return true;
-    }
   }
   return false;
 }
@@ -866,6 +869,13 @@ app.post('/api/auth/login', async (req: Request, res: Response) => {
   }
 
   const users = await getUsersList();
+  if (!users || users.length === 0) {
+    console.warn(`[SECURITY WARNING] Percobaan login gagal: tidak ada data pengguna terdaftar di database (Target: ${cleanId})`);
+    return res.status(401).json({
+      success: false,
+      error: 'Data pengguna tidak ditemukan di sistem. Silakan hubungi Administrator.',
+    });
+  }
   let matchedUser: any = null;
 
   if (userId) {
@@ -892,8 +902,9 @@ app.post('/api/auth/login', async (req: Request, res: Response) => {
         isMatch = storedPassword === cleanPass;
       }
 
-      // 2. Fallback kredensial bawaan standar jika hash di database tidak cocok
-      if (!isMatch) {
+      // 2. Fallback kredensial bawaan standar HANYA jika bukan di lingkungan production
+      const isProduction = process.env.NODE_ENV === 'production';
+      if (!isMatch && !isProduction) {
         const defaultRolePass =
           matchedUser.role === 'admin' || matchedUser.role === 'super_admin' || matchedUser.id === 'usr-admin'
             ? 'admin123'
@@ -1121,8 +1132,24 @@ app.get('/api/status', async (_req: Request, res: Response) => {
   });
 });
 
-// Endpoint Sinkronisasi Real-Time dari Server VPS Live (Metode 1)
-app.post('/api/sync/live-vps', async (_req: Request, res: Response) => {
+// Endpoint Sinkronisasi Real-Time dari Server VPS Live (Khusus Super Admin)
+app.post('/api/sync/live-vps', async (req: Request, res: Response) => {
+  // 1. Verifikasi Super Admin (hanya berdasarkan token login server-verified)
+  if (!isSessionSuperAdmin(req)) {
+    return res.status(403).json({
+      success: false,
+      error: 'Akses ditolak: Hanya Super Administrator yang berhak menjalankan sinkronisasi.',
+    });
+  }
+
+  // 2. Perlindungan Data Produksi: Tolak jika server sedang di mode production
+  if (process.env.NODE_ENV === 'production') {
+    return res.status(403).json({
+      success: false,
+      error: 'Operasi sinkronisasi dari luar dinonaktifkan pada lingkungan produksi untuk melindungi keutuhan data (DATA_RULES.md).',
+    });
+  }
+
   try {
     const result = await syncFromLiveServer();
     loadMemoryStoreFromDisk();
@@ -1744,7 +1771,7 @@ app.post('/api/companies/:id/logo', (req: Request, res: Response) => {
   const { id } = req.params;
   const isSuper = isSessionSuperAdmin(req);
   const sessionComp = resolveSessionCompanyId(req);
-  const userRole = (req as any).user?.role || (req.headers['x-user-role'] as string);
+  const userRole = (req as any).user?.role;
   const isCompanyAdmin = userRole === 'admin_perusahaan' && sessionComp === id;
 
   if (!isSuper && !isCompanyAdmin) {
