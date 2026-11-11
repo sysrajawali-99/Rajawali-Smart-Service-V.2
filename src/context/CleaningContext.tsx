@@ -1506,20 +1506,41 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       }
     });
 
-    // 3. Auto-pull when tab becomes active again / on focus: delta pull saja
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        console.debug('[Sync] Tab aktif kembali, delta pull data...');
-        pullAllDataFromServer(false);
-      }
-    };
-    const handleWindowFocus = () => {
+    // 3. Auto-pull when tab becomes active again / on focus: gabungkan dengan jeda minimal 30 detik
+    let lastResumePullAt = 0;
+    const handleAppResume = () => {
+      if (document.visibilityState !== 'visible') return;
+      const now = Date.now();
+      if (now - lastResumePullAt < 30_000) return;
+      lastResumePullAt = now;
+      console.debug('[Sync] Tab aktif kembali, delta pull data...');
       pullAllDataFromServer(false);
     };
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    window.addEventListener('focus', handleWindowFocus);
+    document.addEventListener('visibilitychange', handleAppResume);
+    window.addEventListener('focus', handleAppResume);
 
-    // 4. Periodic backup pull every 120 seconds: hanya jalan bila document.visibilityState==='visible' dan socket.connected===false
+    // 4. Periodic backup pull & socket heartbeat (30s timeout)
+    let lastSocketActivityAt = Date.now();
+    const markSocketAlive = () => {
+      lastSocketActivityAt = Date.now();
+    };
+    socket.on('connect', markSocketAlive);
+    socket.on('pong', markSocketAlive);
+    socket.io.on('packet', markSocketAlive);
+
+    const heartbeatInterval = setInterval(() => {
+      if (document.visibilityState !== 'visible') return;
+      if (socket.connected) {
+        socket.emit('ping');
+        if (Date.now() - lastSocketActivityAt > 30_000) {
+          console.warn('[Socket.IO] Tidak ada respons > 30 detik, reconnect & backup pull...');
+          socket.disconnect();
+          socket.connect();
+          pullAllDataFromServer(false);
+        }
+      }
+    }, 15_000);
+
     const backupInterval = setInterval(() => {
       if (document.visibilityState === 'visible' && !socket.connected) {
         console.debug('[Sync] Socket offline & tab aktif, menjalankan backup delta pull 120s...');
@@ -1830,8 +1851,12 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       socket.off('company_profile:update', onCompanyProfileUpdated);
       socket.off('auth:unauthorized', onUnauthorized);
       socket.off('disconnect', onSocketDisconnect);
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-      window.removeEventListener('focus', handleWindowFocus);
+      socket.off('connect', markSocketAlive);
+      socket.off('pong', markSocketAlive);
+      socket.io.off('packet', markSocketAlive);
+      document.removeEventListener('visibilitychange', handleAppResume);
+      window.removeEventListener('focus', handleAppResume);
+      clearInterval(heartbeatInterval);
       clearInterval(backupInterval);
       clearInterval(fullPullInterval);
     };
@@ -5004,9 +5029,8 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
   };
 
-  return (
-    <CleaningContext.Provider
-      value={{
+  const contextValue = useMemo(
+    () => ({
         pullAllDataFromServer,
         syncFromLiveVps,
         companyProfile: effectiveCompanyProfile,
@@ -5222,11 +5246,45 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         supabaseStatus,
         syncToSupabase,
         isInitialLoading,
-      }}
-    >
+    }),
+    [
+      effectiveCompanyProfile,
+      currentCompany,
+      isPwaIconsRegenerating,
+      userRole,
+      projects,
+      companies,
+      users,
+      activeUserId,
+      activeProjectId,
+      checklistLocations,
+      checklistTemplates,
+      dailyChecklists,
+      areas,
+      cleaners,
+      shifts,
+      schedules,
+      tasks,
+      inspections,
+      complaints,
+      notifications,
+      masterPrograms,
+      damageReports,
+      employeeTurnovers,
+      klienChecklistItems,
+      klienChecklistInspections,
+      specialJobs,
+      auditLogs,
+      rbacPermissions,
+      supabaseStatus,
+      isInitialLoading,
+    ]
+  );
+
+  return (
+    <CleaningContext.Provider value={contextValue}>
       {children}
     </CleaningContext.Provider>
-
   );
 };
 

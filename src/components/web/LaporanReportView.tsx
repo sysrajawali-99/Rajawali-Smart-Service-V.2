@@ -29,8 +29,7 @@ import {
 import { useCleaning } from '../../context/CleaningContext';
 import { CleaningTask } from '../../types';
 import { BeforeAfterModal } from '../modals/BeforeAfterModal';
-import { exportMonthlyReportToPDF } from '../../utils/pdfExport';
-import { exportTasksToExcel } from '../../utils/excelExport';
+
 import { PerformanceTrendsSection } from './PerformanceTrendsSection';
 
 
@@ -134,6 +133,7 @@ export const LaporanReportView: React.FC = () => {
   const handleDownloadPDF = async () => {
     setIsGeneratingPdf(true);
     try {
+      const { exportMonthlyReportToPDF } = await import('../../utils/pdfExport');
       await exportMonthlyReportToPDF({
         tasks: monthlyTasks,
         project: activeProject,
@@ -147,7 +147,8 @@ export const LaporanReportView: React.FC = () => {
     }
   };
 
-  const handleExportCSV = () => {
+  const handleExportCSV = async () => {
+    const { exportTasksToExcel } = await import('../../utils/excelExport');
     exportTasksToExcel(
       monthlyTasks,
       `Laporan_Bulanan_Pekerjaan_${selectedMonth}.csv`,

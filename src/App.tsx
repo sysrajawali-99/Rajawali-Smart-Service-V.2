@@ -1,27 +1,28 @@
-import React from 'react';
+import React, { Suspense, lazy } from 'react';
 import { CleaningProvider, useCleaning } from './context/CleaningContext';
 import { Header } from './components/layout/Header';
 import { Sidebar } from './components/layout/Sidebar';
-import { DashboardView } from './components/web/DashboardView';
-import { AreaCleaningView } from './components/web/AreaCleaningView';
-import { PetugasView } from './components/web/PetugasView';
-import { ShiftView } from './components/web/ShiftView';
-import { JadwalCleaningView } from './components/web/JadwalCleaningView';
-import { CleaningActivityView } from './components/web/CleaningActivityView';
-import { InspeksiControlView } from './components/web/InspeksiControlView';
-import { ComplaintView } from './components/web/ComplaintView';
-import { LaporanReportView } from './components/web/LaporanReportView';
-import { PengaturanView } from './components/web/PengaturanView';
-import { LokasiProyekView } from './components/web/LokasiProyekView';
-import { CeklistAreaView } from './components/web/CeklistAreaView';
-import { MasterCleaningProgramView } from './components/web/MasterCleaningProgramView';
-import { DailyActivityView } from './components/web/DailyActivityView';
-import { WeeklyActivityView } from './components/web/WeeklyActivityView';
-import { MonthlyActivityView } from './components/web/MonthlyActivityView';
-import { SpecialJobView } from './components/web/SpecialJobView';
-import { DamageReportView } from './components/web/DamageReportView';
-import { KlienModeView } from './components/web/klien/KlienModeView';
-import { CompanyManagementView } from './components/web/CompanyManagementView';
+
+const DashboardView = lazy(() => import('./components/web/DashboardView').then(m => ({ default: m.DashboardView })));
+const AreaCleaningView = lazy(() => import('./components/web/AreaCleaningView').then(m => ({ default: m.AreaCleaningView })));
+const PetugasView = lazy(() => import('./components/web/PetugasView').then(m => ({ default: m.PetugasView })));
+const ShiftView = lazy(() => import('./components/web/ShiftView').then(m => ({ default: m.ShiftView })));
+const JadwalCleaningView = lazy(() => import('./components/web/JadwalCleaningView').then(m => ({ default: m.JadwalCleaningView })));
+const CleaningActivityView = lazy(() => import('./components/web/CleaningActivityView').then(m => ({ default: m.CleaningActivityView })));
+const InspeksiControlView = lazy(() => import('./components/web/InspeksiControlView').then(m => ({ default: m.InspeksiControlView })));
+const ComplaintView = lazy(() => import('./components/web/ComplaintView').then(m => ({ default: m.ComplaintView })));
+const LaporanReportView = lazy(() => import('./components/web/LaporanReportView').then(m => ({ default: m.LaporanReportView })));
+const PengaturanView = lazy(() => import('./components/web/PengaturanView').then(m => ({ default: m.PengaturanView })));
+const LokasiProyekView = lazy(() => import('./components/web/LokasiProyekView').then(m => ({ default: m.LokasiProyekView })));
+const CeklistAreaView = lazy(() => import('./components/web/CeklistAreaView').then(m => ({ default: m.CeklistAreaView })));
+const MasterCleaningProgramView = lazy(() => import('./components/web/MasterCleaningProgramView').then(m => ({ default: m.MasterCleaningProgramView })));
+const DailyActivityView = lazy(() => import('./components/web/DailyActivityView').then(m => ({ default: m.DailyActivityView })));
+const WeeklyActivityView = lazy(() => import('./components/web/WeeklyActivityView').then(m => ({ default: m.WeeklyActivityView })));
+const MonthlyActivityView = lazy(() => import('./components/web/MonthlyActivityView').then(m => ({ default: m.MonthlyActivityView })));
+const SpecialJobView = lazy(() => import('./components/web/SpecialJobView').then(m => ({ default: m.SpecialJobView })));
+const DamageReportView = lazy(() => import('./components/web/DamageReportView').then(m => ({ default: m.DamageReportView })));
+const KlienModeView = lazy(() => import('./components/web/klien/KlienModeView').then(m => ({ default: m.KlienModeView })));
+const CompanyManagementView = lazy(() => import('./components/web/CompanyManagementView').then(m => ({ default: m.CompanyManagementView })));
 import { LoginPage } from './components/auth/LoginPage';
 import { OverdueAlertBanner } from './components/layout/OverdueAlertBanner';
 import { InstallPrompt } from './components/InstallPrompt';
@@ -232,7 +233,16 @@ const MainLayout: React.FC = () => {
         <Sidebar />
         <main className="flex-1 overflow-y-auto bg-slate-50 min-h-0">
           <div className="max-w-7xl mx-auto w-full p-3 sm:p-5 md:p-6 lg:p-8">
-            {renderActiveWebView()}
+            <Suspense
+              fallback={
+                <div className="flex items-center justify-center py-20 text-slate-500 text-sm">
+                  <div className="w-6 h-6 border-2 border-sky-500 border-t-transparent rounded-full animate-spin mr-3"></div>
+                  Memuat halaman...
+                </div>
+              }
+            >
+              {renderActiveWebView()}
+            </Suspense>
           </div>
         </main>
       </div>

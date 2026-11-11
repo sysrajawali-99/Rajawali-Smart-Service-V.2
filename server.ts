@@ -10,6 +10,7 @@ import webpush from 'web-push';
 import dotenv from 'dotenv';
 import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
+import compression from 'compression';
 import { INITIAL_USERS } from './src/data/initialData';
 import { syncFromLiveServer } from './scripts/sync-from-live';
 
@@ -19,6 +20,7 @@ const { Pool } = pg;
 
 const app = express();
 app.set('trust proxy', true);
+app.use(compression());
 const httpServer = http.createServer(app);
 
 // Global unhandled error guards to prevent unexpected process death
@@ -442,18 +444,17 @@ function loadMemoryStoreFromDisk() {
 
 let saveStoreTimeout: NodeJS.Timeout | null = null;
 function scheduleSaveMemoryStore() {
+  if (!useMemoryFallback) return;
   if (saveStoreTimeout) clearTimeout(saveStoreTimeout);
-  saveStoreTimeout = setTimeout(() => {
+  saveStoreTimeout = setTimeout(async () => {
     try {
       const dataDir = path.dirname(MEMORY_STORE_FILE);
-      if (!fs.existsSync(dataDir)) {
-        fs.mkdirSync(dataDir, { recursive: true });
-      }
+      await fs.promises.mkdir(dataDir, { recursive: true });
       const out: Record<string, Record<string, any>> = {};
       for (const [col, colMap] of memoryStore.entries()) {
         out[col] = Object.fromEntries(colMap.entries());
       }
-      fs.writeFileSync(MEMORY_STORE_FILE, JSON.stringify(out, null, 2), 'utf8');
+      await fs.promises.writeFile(MEMORY_STORE_FILE, JSON.stringify(out), 'utf8');
     } catch (e) {
       console.warn('[Persistence] Notice writing store file:', e);
     }
@@ -2540,14 +2541,47 @@ app.post('/api/sync/checklist', async (req: Request, res: Response) => {
           received_at,
         };
 
-        if (slotIndex >= 0) {
-          slots[slotIndex] = { ...slots[slotIndex], ...updatedSlot };
-        } else {
-          slots.push(updatedSlot);
-        }
+        const incomingTime = Date.parse(captured_at || received_at) || Date.now();
+        const existingTimeStr = existingSlot?.captured_at || existingSlot?.received_at || '';
+        const existingTime = existingTimeStr ? Date.parse(existingTimeStr) : 0;
+        const incomingUser = user?.name || req.body?.checkedBy || 'Petugas';
 
-        checklistRecord.hourlySlots = slots;
-        await upsertDbRecord('daily_checklists', targetChecklistId, checklistRecord);
+        if (existingSlot && existingTime > incomingTime) {
+          // Konflik jam yang sama: data di server lebih baru, pertahankan data server & catat ke audit log
+          await addAuditLog({
+            action: 'CHECKLIST_SLOT_CONFLICT_IGNORED',
+            module: 'CEKLIST_AREA',
+            description: `Konflik slot jam ${hour}:00 pada ${targetChecklistId}: pembaruan dari ${incomingUser} (${captured_at || received_at}) lebih lama dari data server (${existingTimeStr}), data server dipertahankan.`,
+            userId: user?.userId || 'system',
+            userName: incomingUser,
+            projectId,
+            company_id: sessionCompanyId,
+            details: { checklistId: targetChecklistId, hour, incomingTime: captured_at || received_at, existingTime: existingTimeStr },
+          });
+        } else {
+          if (existingSlot && existingTime > 0 && existingSlot.checkedBy && existingSlot.checkedBy !== incomingUser) {
+            // Konflik jam yang sama: pembaruan baru menang, catat ke audit log
+            await addAuditLog({
+              action: 'CHECKLIST_SLOT_CONFLICT_OVERWRITE',
+              module: 'CEKLIST_AREA',
+              description: `Konflik slot jam ${hour}:00 pada ${targetChecklistId}: pembaruan terbaru dari ${incomingUser} menggantikan isian sebelumnya oleh ${existingSlot.checkedBy}.`,
+              userId: user?.userId || 'system',
+              userName: incomingUser,
+              projectId,
+              company_id: sessionCompanyId,
+              details: { checklistId: targetChecklistId, hour, previousBy: existingSlot.checkedBy, incomingBy: incomingUser },
+            });
+          }
+
+          if (slotIndex >= 0) {
+            slots[slotIndex] = { ...slots[slotIndex], ...updatedSlot };
+          } else {
+            slots.push(updatedSlot);
+          }
+
+          checklistRecord.hourlySlots = slots;
+          await upsertDbRecord('daily_checklists', targetChecklistId, checklistRecord);
+        }
 
         // Broadcast to all active clients of this company
         emitTenantRecordChange('record:change', {
@@ -2607,21 +2641,19 @@ app.post('/api/sync/checklist', async (req: Request, res: Response) => {
     };
     await upsertDbRecord('processed_syncs', outboxId, syncReceipt);
 
-    // 6. Record audit log
-    await addAuditLog({
-      action: flaggedForSupervisorReview ? 'SYNC_CHECKLIST_FLAGGED' : 'SYNC_CHECKLIST_SUCCESS',
-      module: 'SINKRONISASI',
-      description: flaggedForSupervisorReview
-        ? `Sinkronisasi ceklist diterima tapi DITANDAI tinjau: ${flagReason}`
-        : `Sinkronisasi ceklist berhasil diproses dari antrean outbox perangkat`,
-      userId: user?.userId,
-      userName: user?.name,
-      projectId,
-      company_id: sessionCompanyId,
-      details: flaggedForSupervisorReview
-        ? `Sinkronisasi ceklist diterima tapi DITANDAI tinjau: ${flagReason} (ID Outbox: ${outboxId})`
-        : `Sinkronisasi ceklist berhasil diproses dari antrean outbox perangkat (ID Outbox: ${outboxId})`,
-    });
+    // 6. Record audit log ONLY if flagged (skip routine SYNC_CHECKLIST_SUCCESS)
+    if (flaggedForSupervisorReview) {
+      await addAuditLog({
+        action: 'SYNC_CHECKLIST_FLAGGED',
+        module: 'SINKRONISASI',
+        description: `Sinkronisasi ceklist diterima tapi DITANDAI tinjau: ${flagReason}`,
+        userId: user?.userId,
+        userName: user?.name,
+        projectId,
+        company_id: sessionCompanyId,
+        details: `Sinkronisasi ceklist diterima tapi DITANDAI tinjau: ${flagReason} (ID Outbox: ${outboxId})`,
+      });
+    }
 
     return res.json({
       success: true,
@@ -2904,17 +2936,34 @@ setInterval(runTaskNotificationScheduler, 5 * 60 * 1000);
 async function startServer() {
   await initDatabase();
 
+  const currentEnv = process.env.NODE_ENV || 'undefined';
+  console.log(`[Server] NODE_ENV = "${currentEnv}"`);
+  if (currentEnv !== 'production') {
+    console.warn(`[PERINGATAN] Server berjalan dengan NODE_ENV="${currentEnv}" (bukan "production"). Jika ini adalah VPS LIVE, segera set NODE_ENV=production!`);
+  }
+
   const isProduction = process.env.NODE_ENV === 'production';
 
   if (isProduction) {
     console.log('[Server] Starting in PRODUCTION mode');
     const distPath = path.resolve(process.cwd(), 'dist');
-    app.use(express.static(distPath));
+    app.use('/assets', express.static(path.join(distPath, 'assets'), {
+      maxAge: '1y',
+      immutable: true,
+    }));
+    app.use(express.static(distPath, {
+      setHeaders: (res, filePath) => {
+        if (filePath.endsWith('index.html') || filePath.endsWith('sw.js')) {
+          res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+        }
+      },
+    }));
 
     app.get('*', (req: Request, res: Response, next: NextFunction) => {
       if (req.path.startsWith('/api') || req.path.startsWith('/uploads')) {
         return next();
       }
+      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
       res.sendFile(path.resolve(distPath, 'index.html'));
     });
   } else {

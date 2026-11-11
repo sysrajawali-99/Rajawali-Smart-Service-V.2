@@ -180,12 +180,14 @@ export const Sidebar: React.FC = () => {
         },
       ],
     },
-    {
-      id: 'klien-mode-group',
-      title: 'Klien Mode',
-      icon: Building2,
-      colorBadge: 'bg-indigo-100 text-indigo-800 border-indigo-200',
-      items: [
+    ...(userRole === 'klien'
+      ? [
+          {
+            id: 'klien-mode-group',
+            title: 'Klien Mode',
+            icon: Building2,
+            colorBadge: 'bg-indigo-100 text-indigo-800 border-indigo-200',
+            items: [
         {
           id: 'klien-manpower',
           label: 'Manpower',
@@ -217,6 +219,8 @@ export const Sidebar: React.FC = () => {
         },
       ],
     },
+        ]
+      : []),
   ];
 
   // Filter groups and items by RBAC matrix
