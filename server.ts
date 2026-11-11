@@ -1146,6 +1146,106 @@ app.post('/api/sync/live-vps', async (_req: Request, res: Response) => {
   }
 });
 
+// Endpoint Khusus Super Admin: Backup Lengkap Data Sistem (Hanya Membaca Data)
+app.get('/api/admin/backup', async (req: Request, res: Response) => {
+  // Hanya membaca token login terverifikasi (bukan header klien)
+  const token = extractToken(req);
+  if (!token) {
+    return res.status(401).json({ error: 'Tidak terotentikasi. Silakan login terlebih dahulu.' });
+  }
+
+  const verified = verifyAuthToken(token);
+  if (!verified) {
+    return res.status(401).json({ error: 'Token sesi tidak valid atau kedaluwarsa.' });
+  }
+
+  // Hak akses ketat: Hanya Super Admin / Admin yang diizinkan
+  if (verified.role !== 'super_admin' && verified.role !== 'admin') {
+    return res.status(403).json({ error: 'Akses ditolak: Hanya Super Admin yang berhak mengunduh backup data.' });
+  }
+
+  try {
+    const backupData: Record<string, Record<string, any>> = {};
+    let dataSource = 'memori';
+    let postgresSuccess = false;
+
+    // 1. Prioritaskan membaca langsung dari PostgreSQL jika terhubung (bukan dari cache memori)
+    if (!useMemoryFallback && pool) {
+      try {
+        const resDb = await pool.query('SELECT collection, id, data FROM records ORDER BY collection, id ASC');
+        for (const row of resDb.rows) {
+          if (!backupData[row.collection]) {
+            backupData[row.collection] = {};
+          }
+          backupData[row.collection][row.id] = row.data;
+        }
+        postgresSuccess = true;
+        dataSource = 'PostgreSQL';
+      } catch (err: any) {
+        console.warn('[Backup] Postgres gagal dibaca, beralih ke fallback memori:', err?.message || err);
+      }
+    }
+
+    // 2. Hanya membaca dari cache memori JIKA PostgreSQL tidak terhubung atau gagal
+    if (!postgresSuccess) {
+      dataSource = 'memori';
+      if (memoryStore && memoryStore.size > 0) {
+        for (const [col, colMap] of memoryStore.entries()) {
+          backupData[col] = {};
+          for (const [id, val] of colMap.entries()) {
+            backupData[col][id] = val;
+          }
+        }
+      }
+
+      // 3. Fallback jika memoryStore kosong, baca dari file penyimpanan fisik disk
+      if (Object.keys(backupData).length === 0 && fs.existsSync(MEMORY_STORE_FILE)) {
+        try {
+          const raw = fs.readFileSync(MEMORY_STORE_FILE, 'utf8');
+          const parsed = JSON.parse(raw);
+          Object.assign(backupData, parsed);
+        } catch (e) {
+          console.warn('[Backup] Notice membaca file disk:', e);
+        }
+      }
+    }
+
+    // Hitung jumlah record per koleksi dan total seluruh record
+    const collectionCounts: Record<string, number> = {};
+    let totalRecords = 0;
+
+    for (const [col, items] of Object.entries(backupData)) {
+      const count = Object.keys(items || {}).length;
+      collectionCounts[col] = count;
+      totalRecords += count;
+    }
+
+    // Blok _meta di bagian paling atas file hasil backup
+    const finalResult = {
+      _meta: {
+        waktuBackup: new Date().toISOString(),
+        sumberData: dataSource,
+        totalRecords,
+        jumlahPerKoleksi: collectionCounts,
+      },
+      ...backupData,
+    };
+
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const filename = `backup-smart-cleaning-${timestamp}.json`;
+
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('X-Total-Records', String(totalRecords));
+    res.setHeader('X-Data-Source', dataSource);
+    res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition, X-Total-Records, X-Data-Source');
+    return res.send(JSON.stringify(finalResult, null, 2));
+  } catch (error: any) {
+    console.error('[Backup Error]:', error);
+    return res.status(500).json({ error: 'Gagal membuat file backup data', details: error?.message });
+  }
+});
+
 // 2. GET /api/records/:collection -> semua data satu koleksi (Difilter per company_id sesi)
 app.get('/api/records/:collection', async (req: Request, res: Response) => {
   const { collection } = req.params;
