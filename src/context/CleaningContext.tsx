@@ -954,7 +954,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const safeActiveProjectId =
     allowedProjects.some((p) => p.id === activeProjectId)
       ? activeProjectId
-      : allowedProjects[0]?.id || (isAdminOrSuper ? projects[0]?.id || '' : '');
+      : allowedProjects[0]?.id || (isAdminOrSuper ? projects[0]?.id || 'proj-1793818532678' : '');
 
   const setActiveProjectId = (id: string) => {
     // Only allow setting if admin OR if id is in allowedProjects
@@ -964,33 +964,21 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
   };
 
-  const fallbackEmptyProject: ProjectLocation = {
-    id: '',
-    name: 'Belum Ada Proyek',
-    clientName: '-',
-    city: '-',
-    address: '-',
-    managerName: '-',
-    managerPhone: '-',
-    totalCleaners: 0,
-    status: 'aktif',
-  };
-
   const activeProject =
     allowedProjects.find((p) => p.id === safeActiveProjectId) ||
     projects.find((p) => p.id === safeActiveProjectId) ||
     allowedProjects[0] ||
     projects[0] ||
-    fallbackEmptyProject;
+    ({ id: '', name: '', code: '', address: '', city: '', status: 'active' } as ProjectLocation);
 
   const visibleProjects = isAdminOrSuper ? projects : allowedProjects;
 
-  // 4. Checklist Master & 24-Hour Checklist Data (Diinisialisasi kosong, dimuat dari server)
+  // 4. Checklist Master & 24-Hour Checklist Data
   const [checklistLocations, setChecklistLocations] = useState<ChecklistLocation[]>([]);
   const [checklistTemplates, setChecklistTemplates] = useState<ChecklistTemplateItem[]>([]);
   const [dailyChecklists, setDailyChecklists] = useState<DailyAreaChecklist[]>([]);
 
-  // 5. Core Operational Data (Diinisialisasi kosong, dimuat dari server)
+  // 5. Core Operational Data
   const [areas, setAreas] = useState<Area[]>([]);
   const [cleaners, setCleaners] = useState<Cleaner[]>([]);
   const [shifts, setShifts] = useState<Shift[]>([]);
@@ -1008,7 +996,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const [klienChecklistInspections, setKlienChecklistInspections] = useState<KlienChecklistInspection[]>([]);
   const [specialJobs, setSpecialJobs] = useState<SpecialJobItem[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
-  const [rbacPermissions, setRbacPermissions] = useState<RoleModulePermission[]>([]);
+  const [rbacPermissions, setRbacPermissions] = useState<RoleModulePermission[]>(DEFAULT_RBAC_PERMISSIONS);
 
   // ==================== VPS POSTGRESQL & SOCKET.IO REALTIME SYNC ====================
   const [supabaseStatus, setSupabaseStatus] = useState<{
@@ -1124,6 +1112,21 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setter((prev) => mergeCollectionById(prev, remoteItems));
   };
 
+  // Helper to apply remote collection without any client-side seeding
+  const applyRemoteCollection = <T,>(
+    remoteItems: T[],
+    setter: React.Dispatch<React.SetStateAction<T[]>>,
+    fallbackItems?: T[]
+  ) => {
+    if (remoteItems && remoteItems.length > 0) {
+      setter(remoteItems);
+    } else if (fallbackItems) {
+      setter(fallbackItems);
+    } else {
+      setter([]);
+    }
+  };
+
   // Pull all collections from backend (full pull on initial load / 10m interval / long reconnect, delta otherwise)
   const pullAllDataFromServer = async (forceFullPull = false) => {
     const isFullPull = !initialSyncDone.current || forceFullPull;
@@ -1205,30 +1208,29 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           setCompanies(remoteCompanies);
         }
 
-        // TAHAP 2: Klien murni memuat data dari server, TIDAK PERNAH menyemai atau mengirim INITIAL_* ke server
-        setProjects(remoteProjects || []);
-        setUsers(remoteUsers || []);
-        setRbacPermissions(remoteRbac || []);
-        setAreas(remoteAreas || []);
-        setCleaners(remoteCleaners || []);
-        setShifts(remoteShifts || []);
-        setSchedules(remoteSchedules || []);
-        setChecklistLocations(remoteChecklistLocs || []);
-        setChecklistTemplates(remoteChecklistTpls || []);
-        setTasks(remoteTasks || []);
-        setInspections(remoteInspections || []);
-        setComplaints(remoteComplaints || []);
-        setDamageReports(remoteDamage || []);
-        setSpecialJobs(remoteSpecial || []);
-        setMasterPrograms(remoteMcp || []);
-        setEmployeeTurnovers(remoteTurnovers || []);
-        setKlienChecklistItems(remoteKlienItems || []);
-        setKlienChecklistInspections(remoteKlienInspections || []);
-        setNotifications(remoteNotifs || []);
-        setAuditLogs((remoteAuditLogs || []).map(normalizeAuditLog));
+        applyRemoteCollection(remoteProjects, setProjects);
+        applyRemoteCollection(remoteUsers, setUsers);
+        applyRemoteCollection(remoteRbac, setRbacPermissions, DEFAULT_RBAC_PERMISSIONS);
+        applyRemoteCollection(remoteAreas, setAreas);
+        applyRemoteCollection(remoteCleaners, setCleaners);
+        applyRemoteCollection(remoteShifts, setShifts);
+        applyRemoteCollection(remoteSchedules, setSchedules);
+        applyRemoteCollection(remoteChecklistLocs, setChecklistLocations);
+        applyRemoteCollection(remoteChecklistTpls, setChecklistTemplates);
+        applyRemoteCollection(remoteTasks, setTasks);
+        applyRemoteCollection(remoteInspections, setInspections);
+        applyRemoteCollection(remoteComplaints, setComplaints);
+        applyRemoteCollection(remoteDamage, setDamageReports);
+        applyRemoteCollection(remoteSpecial, setSpecialJobs);
+        applyRemoteCollection(remoteMcp, setMasterPrograms);
+        applyRemoteCollection(remoteTurnovers, setEmployeeTurnovers);
+        applyRemoteCollection(remoteKlienItems, setKlienChecklistItems);
+        applyRemoteCollection(remoteKlienInspections, setKlienChecklistInspections);
+        applyRemoteCollection(remoteNotifs, setNotifications);
+        applyRemoteCollection(remoteAuditLogs.map(normalizeAuditLog), setAuditLogs);
 
-        // Daily Checklists full pull: tanpa seeding ke server jika kosong
-        if (remoteDailyChecklists && remoteDailyChecklists.length > 0) {
+        // Daily Checklists full pull
+        if (remoteDailyChecklists.length > 0) {
           const serverMap = new Map(remoteDailyChecklists.map((c) => [c.id, c]));
           setDailyChecklists((prevLocal) => {
             const merged: DailyAreaChecklist[] = [];
@@ -2115,7 +2117,6 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           setActiveTab('dashboard');
         }
 
-        pullAllDataFromServer(true).catch(() => {});
         return { success: true };
       } else if (apiRes && !apiRes.success && apiRes.error) {
         // Backend menolak (password salah atau perusahaan ditangguhkan/diarsipkan)
@@ -2220,7 +2221,6 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           setActiveTab('dashboard');
         }
 
-        pullAllDataFromServer(true).catch(() => {});
         return { success: true };
       }
     } catch {}
@@ -2298,11 +2298,6 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
   };
 
-  // Fallback in-memory RBAC (hanya untuk dibaca di sisi klien, tidak pernah dikirim ke server)
-  const effectiveRbacPermissions = useMemo(() => {
-    return rbacPermissions && rbacPermissions.length > 0 ? rbacPermissions : DEFAULT_RBAC_PERMISSIONS;
-  }, [rbacPermissions]);
-
   const hasAccess = (role: UserRole, moduleId: string): boolean => {
     // Menu manajemen perusahaan HANYA untuk super_admin
     if (moduleId === 'perusahaan' || moduleId === 'companies') {
@@ -2314,7 +2309,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
     if (role === 'admin' || role === 'super_admin' || role === 'admin_perusahaan') return true;
     const perm =
-      effectiveRbacPermissions.find((p) => p.moduleId === moduleId) ||
+      rbacPermissions.find((p) => p.moduleId === moduleId) ||
       DEFAULT_RBAC_PERMISSIONS.find((p) => p.moduleId === moduleId);
     if (!perm) return true; // Default allow if not configured
     return Boolean(perm[role]);
@@ -5182,7 +5177,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         isReloading,
 
         // RBAC Permissions Matrix
-        rbacPermissions: effectiveRbacPermissions,
+        rbacPermissions,
         updateRbacPermission,
         resetRbacPermissions,
         hasAccess,
