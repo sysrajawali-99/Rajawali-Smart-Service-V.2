@@ -1342,12 +1342,11 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           if (saved) {
             const parsed = JSON.parse(saved);
             setCompanyProfile(parsed);
-            upsertRecord(COLLECTIONS.COMPANY_PROFILE, { ...parsed, id: 'main' }).catch(() => {});
           } else {
-            upsertRecord(COLLECTIONS.COMPANY_PROFILE, { ...DEFAULT_COMPANY_PROFILE, id: 'main' }).catch(() => {});
+            setCompanyProfile(DEFAULT_COMPANY_PROFILE);
           }
         } catch {
-          upsertRecord(COLLECTIONS.COMPANY_PROFILE, { ...DEFAULT_COMPANY_PROFILE, id: 'main' }).catch(() => {});
+          setCompanyProfile(DEFAULT_COMPANY_PROFILE);
         }
       }
 
@@ -1362,12 +1361,11 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           if (saved) {
             const parsed = JSON.parse(saved);
             setKpiConfig(parsed);
-            upsertRecord(COLLECTIONS.KPI_CONFIG, { ...parsed, id: 'main' }).catch(() => {});
           } else {
-            upsertRecord(COLLECTIONS.KPI_CONFIG, { ...DEFAULT_KPI_VISIBILITY_OFF, id: 'main' }).catch(() => {});
+            setKpiConfig(DEFAULT_KPI_VISIBILITY_OFF);
           }
         } catch {
-          upsertRecord(COLLECTIONS.KPI_CONFIG, { ...DEFAULT_KPI_VISIBILITY_OFF, id: 'main' }).catch(() => {});
+          setKpiConfig(DEFAULT_KPI_VISIBILITY_OFF);
         }
       }
 

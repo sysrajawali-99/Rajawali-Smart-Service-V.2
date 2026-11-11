@@ -64,9 +64,14 @@ const isOriginAllowed = (
     return callback(null, true);
   }
 
-  const cleanOrigin = origin.trim().replace(/\/+$/, '');
+const cleanOrigin = origin.trim().replace(/\/+$/, '');
   // Allow only if origin is explicitly present in ALLOWED_ORIGINS
   if (allowedOrigins.includes(cleanOrigin)) {
+    return callback(null, true);
+  }
+
+  // Also allow any development / preview environment requests
+  if (process.env.NODE_ENV !== 'production') {
     return callback(null, true);
   }
 
@@ -462,6 +467,54 @@ function scheduleSaveMemoryStore() {
 }
 
 loadMemoryStoreFromDisk();
+
+const DEFAULT_COMPANY_PROFILE = {
+  id: 'main',
+  companyName: 'PT RAJAWALI TALENTA INDONESIA',
+  tagline: 'Cleaning Operations & Facility Management System',
+  documentHeaderTitle: 'MANAJEMEN OPERASIONAL KEBERSIHAN & FASILITAS GEDUNG',
+  address: 'Gedung Office Tower Lt. 8, Jl. Jend. Sudirman No. 45',
+  city: 'Jakarta Selatan 12190',
+  phone: '021-5558901 / 0812-3456-7890',
+  email: 'rajawalitalentaindonesia@gmail.com',
+  website: 'www.rajawali-smart.co.id',
+  logoUrl: '',
+  company_id: 'comp-main',
+  companyId: 'comp-main',
+};
+
+const DEFAULT_MAIN_COMPANY = {
+  id: 'comp-main',
+  nama: 'PT RAJAWALI TALENTA INDONESIA',
+  slug: 'rajawali',
+  status: 'aktif',
+  company_id: 'comp-main',
+  companyId: 'comp-main',
+  createdAt: '2026-01-01T00:00:00.000Z',
+  updatedAt: '2026-01-01T00:00:00.000Z',
+};
+
+function ensureCoreDefaults() {
+  if (!memoryStore.has('company_profile')) {
+    memoryStore.set('company_profile', new Map());
+  }
+  const profMap = memoryStore.get('company_profile')!;
+  if (!profMap.has('main')) {
+    profMap.set('main', DEFAULT_COMPANY_PROFILE);
+    setRecordUpdatedAt('company_profile', 'main', '2026-01-01T00:00:00.000Z');
+  }
+
+  if (!memoryStore.has('companies')) {
+    memoryStore.set('companies', new Map());
+  }
+  const compMap = memoryStore.get('companies')!;
+  if (!compMap.has('comp-main')) {
+    compMap.set('comp-main', DEFAULT_MAIN_COMPANY);
+    setRecordUpdatedAt('companies', 'comp-main', '2026-01-01T00:00:00.000Z');
+  }
+}
+
+ensureCoreDefaults();
 
 const rawDbUrl = (process.env.DATABASE_URL || '').trim();
 if (rawDbUrl) {
@@ -1289,6 +1342,8 @@ app.get('/api/records/:collection', async (req: Request, res: Response) => {
       if (collection === 'companies') {
         // Non-superadmin hanya dapat melihat perusahaannya sendiri
         items = items.filter((c: any) => c.id === sessionCompanyId);
+      } else if (collection === 'company_profile' || collection === 'kpi_config') {
+        // Profil perusahaan & konfigurasi KPI bersifat global untuk semua pengguna yang memuat aplikasi
       } else if (collection === 'audit_logs') {
         // Requirement 5: Admin Perusahaan hanya melihat log perusahaannya
         items = items.filter((l: any) => (l.company_id || l.companyId || 'comp-main') === sessionCompanyId);
@@ -1359,6 +1414,8 @@ app.get('/api/records/:collection/:id', async (req: Request, res: Response) => {
         if (record.id !== sessionCompanyId) {
           return res.status(404).json({ error: 'Data tidak ditemukan' });
         }
+      } else if (collection === 'company_profile' || collection === 'kpi_config') {
+        // Global system branding and KPI configuration are readable by all sessions
       } else {
         const recordCompany = record.company_id || record.companyId || 'comp-main';
         if (recordCompany !== sessionCompanyId) {
@@ -2973,6 +3030,9 @@ async function startServer() {
       server: {
         middlewareMode: true,
         hmr: false,
+        ws: false,
+        watch: null,
+        allowedHosts: true,
       },
       appType: 'spa',
     });

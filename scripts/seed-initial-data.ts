@@ -37,6 +37,16 @@ import {
   INITIAL_NOTIFICATIONS,
   INITIAL_AUDIT_LOGS,
 } from '../src/data/initialData';
+import { DEFAULT_COMPANY_PROFILE } from '../src/types';
+
+const DEFAULT_MAIN_COMPANY = {
+  id: 'comp-main',
+  nama: 'PT RAJAWALI TALENTA INDONESIA',
+  slug: 'rajawali',
+  status: 'aktif',
+  company_id: 'comp-main',
+  companyId: 'comp-main',
+};
 
 const SEED_MAP: Record<string, any[]> = {
   projects: INITIAL_PROJECTS,
@@ -60,6 +70,8 @@ const SEED_MAP: Record<string, any[]> = {
   klien_checklist_inspections: INITIAL_KLIEN_CHECKLIST_INSPECTIONS,
   notifications: INITIAL_NOTIFICATIONS,
   audit_logs: INITIAL_AUDIT_LOGS,
+  company_profile: [{ ...DEFAULT_COMPANY_PROFILE, id: 'main', company_id: 'comp-main' }],
+  companies: [DEFAULT_MAIN_COMPANY],
 };
 
 function getRecordId(item: any): string {
