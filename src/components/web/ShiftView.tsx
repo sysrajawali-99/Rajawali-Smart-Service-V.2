@@ -984,7 +984,14 @@ export const ShiftView: React.FC = () => {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {shifts.map((shift) => {
+          {shifts.length === 0 ? (
+            <div className="col-span-full p-8 text-center bg-white rounded-2xl border border-slate-200">
+              <Clock className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+              <p className="text-sm font-semibold text-slate-700">Belum Ada Shift</p>
+              <p className="text-xs text-slate-400 mt-1">Daftar shift operasional saat ini kosong. Anda dapat menambahkan shift baru dari formulir atau menu Pengaturan.</p>
+            </div>
+          ) : (
+            shifts.map((shift) => {
             const duration = calculateShiftDuration(shift.startTime, shift.endTime);
             const shiftCleaners = cleaners.filter((c) => c.shiftId === shift.id);
 
@@ -1067,7 +1074,8 @@ export const ShiftView: React.FC = () => {
                 </div>
               </div>
             );
-          })}
+          })
+        )}
         </div>
       </div>
 
@@ -1082,39 +1090,45 @@ export const ShiftView: React.FC = () => {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-2">
-          {shifts.map((shift) => {
-            const dur = calculateShiftDuration(shift.startTime, shift.endTime);
-            return (
-              <div
-                key={shift.id}
-                className="p-3 rounded-xl border border-slate-200 bg-slate-50/60 flex flex-col justify-between"
-                style={{ borderTop: `4px solid ${shift.color}` }}
-              >
-                <div>
-                  <div className="flex items-center justify-between">
-                    <span className="font-bold text-xs text-slate-900 truncate">{shift.name}</span>
-                    <span
-                      className="text-[10px] font-bold px-1.5 py-0.5 rounded text-white shrink-0"
-                      style={{ backgroundColor: shift.color }}
-                    >
-                      {shift.code}
+          {shifts.length === 0 ? (
+            <div className="col-span-full py-4 text-center text-xs text-slate-400">
+              Belum ada jadwal rotasi shift.
+            </div>
+          ) : (
+            shifts.map((shift) => {
+              const dur = calculateShiftDuration(shift.startTime, shift.endTime);
+              return (
+                <div
+                  key={shift.id}
+                  className="p-3 rounded-xl border border-slate-200 bg-slate-50/60 flex flex-col justify-between"
+                  style={{ borderTop: `4px solid ${shift.color}` }}
+                >
+                  <div>
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-xs text-slate-900 truncate">{shift.name}</span>
+                      <span
+                        className="text-[10px] font-bold px-1.5 py-0.5 rounded text-white shrink-0"
+                        style={{ backgroundColor: shift.color }}
+                      >
+                        {shift.code}
+                      </span>
+                    </div>
+                    <div className="mt-1 flex items-center gap-1 text-xs font-semibold text-slate-700">
+                      <Clock className="w-3 h-3 text-slate-400" />
+                      <span>{shift.startTime} - {shift.endTime}</span>
+                    </div>
+                  </div>
+
+                  <div className="mt-3 pt-2 border-t border-slate-200/60 flex items-center justify-between text-[11px]">
+                    <span className="text-slate-500">Durasi:</span>
+                    <span className="font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded">
+                      {dur.text}
                     </span>
                   </div>
-                  <div className="mt-1 flex items-center gap-1 text-xs font-semibold text-slate-700">
-                    <Clock className="w-3 h-3 text-slate-400" />
-                    <span>{shift.startTime} - {shift.endTime}</span>
-                  </div>
                 </div>
-
-                <div className="mt-3 pt-2 border-t border-slate-200/60 flex items-center justify-between text-[11px]">
-                  <span className="text-slate-500">Durasi:</span>
-                  <span className="font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded">
-                    {dur.text}
-                  </span>
-                </div>
-              </div>
-            );
-          })}
+              );
+            })
+          )}
         </div>
       </div>
 
@@ -1139,7 +1153,14 @@ export const ShiftView: React.FC = () => {
 
         {/* Shift Cards Grid - Menampilkan seluruh shift */}
         <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-5">
-          {shifts.map((shift) => {
+          {shifts.length === 0 ? (
+            <div className="col-span-full p-8 text-center bg-white rounded-2xl border border-slate-200">
+              <Users className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+              <p className="text-sm font-semibold text-slate-700">Belum Ada Roster Petugas</p>
+              <p className="text-xs text-slate-400 mt-1">Data shift belum tersedia untuk menampilkan pembagian roster dan presensi petugas.</p>
+            </div>
+          ) : (
+            shifts.map((shift) => {
             const shiftCleaners = cleaners.filter((c) => c.shiftId === shift.id);
             const dur = calculateShiftDuration(shift.startTime, shift.endTime);
 
