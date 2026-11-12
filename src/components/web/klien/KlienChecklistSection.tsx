@@ -26,6 +26,11 @@ import {
   calculateShiftChecklistStats,
   ensureCompleteSlotItems,
 } from '../../../utils/checklistHelper';
+import {
+  getTodayDateString,
+  getCurrentHourRangeLabel,
+  findShiftForCurrentTime,
+} from '../../../utils/shiftUtils';
 
 interface ShiftSlotDefinition {
   hour: number;
@@ -45,12 +50,31 @@ export const KlienChecklistSection: React.FC = () => {
     companyProfile,
   } = useCleaning();
 
-  const [selectedDate, setSelectedDate] = useState('2026-09-13');
+  const [selectedDate, setSelectedDate] = useState<string>(() => getTodayDateString());
   const [selectedLocationId, setSelectedLocationId] = useState<string>(
     checklistLocations[0]?.id || 'cloc-1'
   );
-  const [selectedShiftId, setSelectedShiftId] = useState<string>('shift-1');
+  const [selectedShiftId, setSelectedShiftId] = useState<string>(() => findShiftForCurrentTime(shifts));
   const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
+  const [currentTime, setCurrentTime] = useState<Date>(new Date());
+
+  // Real-time minute interval to keep the rentang jam slot indicator active & up to date
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentTime(new Date());
+    }, 15000);
+    return () => clearInterval(timer);
+  }, []);
+
+  // Sync selectedShiftId if shifts load asynchronously
+  useEffect(() => {
+    if (shifts && shifts.length > 0) {
+      const exists = shifts.some((s) => s.id === selectedShiftId);
+      if (!exists && selectedShiftId !== 'all_24') {
+        setSelectedShiftId(findShiftForCurrentTime(shifts));
+      }
+    }
+  }, [shifts]);
 
   // Synchronize selectedLocationId when active project changes or checklist locations update
   useEffect(() => {
@@ -359,11 +383,18 @@ export const KlienChecklistSection: React.FC = () => {
               </select>
               <ChevronDown className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
             </div>
-            <p className="hidden md:block text-[10.5px] text-slate-500 truncate">
-              {activeShift
-                ? `${activeShift.description || 'Pembersihan operasional'}`
-                : 'Pemantauan checklist kebersihan 24 jam penuh'}
-            </p>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 text-[10.5px]">
+              <p className="text-slate-500 truncate">
+                {activeShift
+                  ? `${activeShift.description || 'Pembersihan operasional'}`
+                  : 'Pemantauan checklist kebersihan 24 jam penuh'}
+              </p>
+              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-amber-50 text-amber-900 border border-amber-200 font-bold shrink-0 text-[10.5px]">
+                <Clock className="w-3.5 h-3.5 text-amber-600 animate-spin" style={{ animationDuration: '6s' }} />
+                <span>Rentang Jam Sekarang: <strong className="text-amber-950 font-extrabold">{getCurrentHourRangeLabel(currentTime, true)}</strong></span>
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping"></span>
+              </span>
+            </div>
           </div>
 
           {/* 3. PILIHAN TANGGAL CEKLIST */}
@@ -375,10 +406,11 @@ export const KlienChecklistSection: React.FC = () => {
               </label>
               <button
                 type="button"
-                onClick={() => setSelectedDate('2026-09-13')}
-                className="hidden md:inline-block text-[10px] font-semibold text-slate-500 hover:text-sky-700 underline cursor-pointer"
+                onClick={() => setSelectedDate(getTodayDateString(currentTime))}
+                className="text-[10px] font-bold text-sky-700 hover:text-sky-800 bg-sky-50 hover:bg-sky-100 px-2 py-0.5 rounded border border-sky-200 transition-colors cursor-pointer"
+                title="Pilih tanggal hari ini saat aplikasi dibuka"
               >
-                Default (13 Sep)
+                Hari Ini (Realtime)
               </button>
             </div>
             <div className="relative flex items-center">
@@ -469,6 +501,10 @@ export const KlienChecklistSection: React.FC = () => {
             <span className="px-2.5 py-1 bg-sky-50 text-sky-800 border border-sky-200 rounded-lg text-xs font-bold">
               🕒 {activeShift ? `${activeShift.name} (${activeShift.startTime} - ${activeShift.endTime} WIB)` : '24 Jam Penuh'}
             </span>
+            <span className="px-2.5 py-1 bg-amber-50 text-amber-900 border border-amber-200 rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-2xs">
+              <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
+              <span>Jam Buka Sekarang: {getCurrentHourRangeLabel(currentTime, true)}</span>
+            </span>
           </div>
 
           <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-sky-600 text-white text-xs font-bold shadow-xs">
@@ -485,8 +521,11 @@ export const KlienChecklistSection: React.FC = () => {
                   <th className="px-2.5 py-2.5 w-24 text-center font-bold text-[11px] align-middle bg-slate-200/60 whitespace-nowrap">
                     Tanggal
                   </th>
-                  <th className="px-2.5 py-2.5 w-28 text-center font-bold text-[11px] align-middle bg-slate-200/60 whitespace-nowrap">
-                    Jam
+                  <th className="px-2.5 py-2.5 w-32 text-center font-bold text-[11px] align-middle bg-slate-200/60 whitespace-nowrap">
+                    <div className="flex flex-col items-center justify-center">
+                      <span>Rentang Jam</span>
+                      <span className="text-[9.5px] font-semibold text-slate-500">(WIB)</span>
+                    </div>
                   </th>
                   {tableColumns.map((col) => (
                     <th
@@ -513,16 +552,40 @@ export const KlienChecklistSection: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200">
-                {displayedSlotsWithMeta.map((slot) => (
+                {displayedSlotsWithMeta.map((slot) => {
+                  const todayStr = getTodayDateString(currentTime);
+                  const isTodaySelected = selectedDate === todayStr;
+                  const isCurrentHourSlot = isTodaySelected && currentTime.getHours() === slot.hour;
+
+                  return (
                   <tr
                     key={`${slot.hour}-${slot.dateStr}`}
-                    className="divide-x divide-slate-200 hover:bg-slate-50/80 transition-colors"
+                    className={`divide-x divide-slate-200 transition-colors ${
+                      isCurrentHourSlot ? 'bg-amber-50/80 font-semibold ring-1 ring-amber-300' : 'hover:bg-slate-50/80'
+                    }`}
                   >
                     <td className="p-1.5 text-[10.5px] font-medium text-slate-700 whitespace-nowrap">
-                      {slot.dateStr}
+                      <div className="flex items-center justify-center gap-1">
+                        <span>{slot.dateStr}</span>
+                        {slot.isNextDay && (
+                          <span className="px-1 py-0.2 rounded text-[9px] font-bold bg-purple-100 text-purple-800 border border-purple-200">
+                            +1 Hari
+                          </span>
+                        )}
+                      </div>
                     </td>
-                    <td className="p-1.5 text-[10.5px] font-bold text-slate-900 whitespace-nowrap bg-slate-50/70">
-                      {slot.timeLabel}
+                    <td className={`p-1.5 text-[10.5px] font-bold whitespace-nowrap ${
+                      isCurrentHourSlot ? 'bg-amber-100/80 text-amber-950' : 'bg-slate-50/70 text-slate-900'
+                    }`}>
+                      <div className="flex flex-col items-center justify-center gap-0.5">
+                        <span className="font-mono">{slot.timeLabel}</span>
+                        {isCurrentHourSlot && (
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-extrabold bg-amber-500 text-white shadow-2xs animate-pulse">
+                            <span className="w-1.5 h-1.5 rounded-full bg-white"></span>
+                            <span>Realtime</span>
+                          </span>
+                        )}
+                      </div>
                     </td>
                     {tableColumns.map((col) => {
                       const matchedItem =
@@ -571,7 +634,8 @@ export const KlienChecklistSection: React.FC = () => {
                       )}
                     </td>
                   </tr>
-                ))}
+                );
+              })}
               </tbody>
             </table>
           </div>

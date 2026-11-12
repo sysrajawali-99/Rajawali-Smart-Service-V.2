@@ -895,10 +895,17 @@ app.post('/api/auth/login', async (req: Request, res: Response) => {
       // 2. Fallback kredensial bawaan standar jika hash di database tidak cocok
       if (!isMatch) {
         const defaultRolePass =
-          matchedUser.role === 'admin' || matchedUser.role === 'super_admin' || matchedUser.id === 'usr-admin'
+          matchedUser.role === 'admin' ||
+          matchedUser.role === 'super_admin' ||
+          matchedUser.role === 'admin_perusahaan' ||
+          matchedUser.id === 'usr-admin'
             ? 'admin123'
+            : matchedUser.role === 'service_manager'
+            ? 'manager123'
             : matchedUser.role === 'supervisor'
             ? 'spv123'
+            : matchedUser.role === 'team_leader'
+            ? 'leader123'
             : matchedUser.role === 'petugas'
             ? 'petugas123'
             : 'klien123';
@@ -2698,7 +2705,12 @@ async function runTaskNotificationScheduler() {
         const supervisorUsers = allUsers.filter(
           (u) =>
             (u.company_id || u.companyId || 'comp-main') === taskCompany &&
-            (u.role === 'supervisor' || u.role === 'admin' || u.role === 'admin_perusahaan') &&
+            (u.role === 'supervisor' ||
+              u.role === 'team_leader' ||
+              u.role === 'service_manager' ||
+              u.role === 'admin' ||
+              u.role === 'super_admin' ||
+              u.role === 'admin_perusahaan') &&
             (!u.assignedProjectIds || u.assignedProjectIds.includes(projectId))
         );
         const supervisorIds = new Set(supervisorUsers.map((u) => u.id));
@@ -2756,7 +2768,12 @@ async function runTaskNotificationScheduler() {
         const supervisorUsers = allUsers.filter(
           (u) =>
             (u.company_id || u.companyId || 'comp-main') === taskCompany &&
-            (u.role === 'supervisor' || u.role === 'admin' || u.role === 'admin_perusahaan') &&
+            (u.role === 'supervisor' ||
+              u.role === 'team_leader' ||
+              u.role === 'service_manager' ||
+              u.role === 'admin' ||
+              u.role === 'super_admin' ||
+              u.role === 'admin_perusahaan') &&
             (!u.assignedProjectIds || u.assignedProjectIds.includes(projectId))
         );
         const supervisorIds = new Set(supervisorUsers.map((u) => u.id));

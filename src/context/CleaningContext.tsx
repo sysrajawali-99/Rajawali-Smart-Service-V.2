@@ -947,10 +947,11 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
   }, [effectiveCompanyProfile?.logoUrl, effectiveCompanyProfile?.companyName]);
 
-  // User restriction:
-  // Super Admin ('admin' or 'super_admin') can view all projects.
-  // Other users can ONLY view projects assigned to them by Super Admin!
-  const isAdminOrSuper = userRole === 'admin' || userRole === 'super_admin' || userRole === 'admin_perusahaan';
+  const isAdminOrSuper =
+    userRole === 'admin' ||
+    userRole === 'super_admin' ||
+    userRole === 'admin_perusahaan' ||
+    userRole === 'service_manager';
   const allowedProjects =
     isAdminOrSuper
       ? projects
@@ -2332,9 +2333,19 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     if (role === 'klien') {
       return moduleId === 'klien-mode' || moduleId.startsWith('klien-');
     }
-    if (role === 'admin' || role === 'super_admin' || role === 'admin_perusahaan') return true;
+    if (
+      role === 'admin' ||
+      role === 'super_admin' ||
+      role === 'admin_perusahaan' ||
+      role === 'service_manager'
+    ) {
+      return true;
+    }
     const perm = rbacPermissions.find((p) => p.moduleId === moduleId);
     if (!perm) return true; // Default allow if not configured
+    if (role === 'team_leader') {
+      return perm['team_leader'] !== undefined ? Boolean(perm['team_leader']) : Boolean(perm['supervisor']);
+    }
     return Boolean(perm[role]);
   };
 

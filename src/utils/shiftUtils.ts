@@ -133,3 +133,58 @@ export function getShiftHours(startTime: string, endTime: string): number[] {
 
   return hours;
 }
+
+/**
+ * Returns today's local date string formatted as YYYY-MM-DD.
+ */
+export function getTodayDateString(d: Date = new Date()): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+/**
+ * Returns the current hour slot range label in format "HH.00 - HH.00 WIB".
+ */
+export function getCurrentHourRangeLabel(d: Date = new Date(), withWib = true): string {
+  const h = d.getHours();
+  const nextH = (h + 1) === 24 ? 24 : (h + 1) % 24;
+  const hStr = String(h).padStart(2, '0');
+  const nextHStr = String(nextH).padStart(2, '0');
+  return `${hStr}.00 - ${nextHStr}.00${withWib ? ' WIB' : ''}`;
+}
+
+/**
+ * Determines which shift from the given list covers the specified or current real-time hour.
+ */
+export function findShiftForCurrentTime(
+  shiftsList: { id: string; startTime?: string; endTime?: string }[],
+  d: Date = new Date()
+): string {
+  if (!shiftsList || shiftsList.length === 0) return 'all_24';
+  const currentTotalMins = d.getHours() * 60 + d.getMinutes();
+
+  for (const s of shiftsList) {
+    const [startH, startM] = (s.startTime || '07:00').split(':').map((v) => parseInt(v, 10) || 0);
+    const [endH, endM] = (s.endTime || '15:00').split(':').map((v) => parseInt(v, 10) || 0);
+    const startMins = startH * 60 + startM;
+    const endMins = endH * 60 + endM;
+
+    if (startMins === endMins) {
+      return s.id;
+    }
+    if (startMins < endMins) {
+      if (currentTotalMins >= startMins && currentTotalMins < endMins) {
+        return s.id;
+      }
+    } else {
+      // Crosses midnight, e.g. 23:00 to 07:00
+      if (currentTotalMins >= startMins || currentTotalMins < endMins) {
+        return s.id;
+      }
+    }
+  }
+
+  return shiftsList[0]?.id || 'all_24';
+}

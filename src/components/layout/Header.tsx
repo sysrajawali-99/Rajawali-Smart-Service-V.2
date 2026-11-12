@@ -64,6 +64,16 @@ export const Header: React.FC = () => {
       color: 'bg-purple-100 text-purple-800 border-purple-200',
       desc: 'Kelola operasional & pengguna di lingkup perusahaan terkait',
     },
+    service_manager: {
+      title: 'Service Manager',
+      color: 'bg-rose-100 text-rose-800 border-rose-200',
+      desc: 'Manajemen mutu layanan, monitoring kinerja & eskalasi proyek',
+    },
+    team_leader: {
+      title: 'Team Leader',
+      color: 'bg-teal-100 text-teal-800 border-teal-200',
+      desc: 'Koordinator regu kerja lapangan & kontrol pembagian shift',
+    },
     admin: {
       title: 'Administrator',
       color: 'bg-indigo-100 text-indigo-800 border-indigo-200',
@@ -323,7 +333,7 @@ export const Header: React.FC = () => {
                     <p className="text-[11px] text-slate-500">Pilih role untuk simulasi hak akses</p>
                   </div>
 
-                  {(['admin', 'supervisor', 'petugas', 'klien'] as UserRole[]).map((role) => (
+                  {(['super_admin', 'admin_perusahaan', 'service_manager', 'supervisor', 'team_leader', 'petugas', 'klien'] as UserRole[]).map((role) => (
                     <button
                       key={role}
                       onClick={() => {

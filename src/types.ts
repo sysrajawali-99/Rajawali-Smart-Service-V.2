@@ -1,8 +1,10 @@
 export type UserRole =
   | 'super_admin'
   | 'admin_perusahaan'
+  | 'service_manager'
   | 'admin'
   | 'supervisor'
+  | 'team_leader'
   | 'petugas'
   | 'klien';
 
@@ -331,6 +333,8 @@ export interface RoleModulePermission {
   klien: boolean;
   super_admin?: boolean;
   admin_perusahaan?: boolean;
+  service_manager?: boolean;
+  team_leader?: boolean;
 }
 
 export type ChecklistLocationCategory =

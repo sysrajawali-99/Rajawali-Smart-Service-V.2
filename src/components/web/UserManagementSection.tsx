@@ -125,13 +125,20 @@ export const UserManagementSection: React.FC = () => {
   const totalUsers = users.length;
   const countPetugas = users.filter((u) => u.role === 'petugas').length;
   const countKlien = users.filter((u) => u.role === 'klien').length;
+  const countTeamLeader = users.filter((u) => u.role === 'team_leader').length;
   const countSpv = users.filter((u) => u.role === 'supervisor').length;
-  const countAdmin = users.filter((u) => u.role === 'admin').length;
+  const countServiceManager = users.filter((u) => u.role === 'service_manager').length;
+  const countAdminPerusahaan = users.filter((u) => u.role === 'admin_perusahaan').length;
+  const countAdmin = users.filter((u) => u.role === 'admin' || u.role === 'super_admin').length;
 
   // Filtered users
   const filteredUsers = useMemo(() => {
     return users.filter((u) => {
-      const matchRole = roleFilter === 'all' || u.role === roleFilter;
+      const matchRole =
+        roleFilter === 'all' ||
+        u.role === roleFilter ||
+        (roleFilter === 'super_admin' && (u.role === 'admin' || u.role === 'super_admin')) ||
+        (roleFilter === 'admin' && (u.role === 'admin' || u.role === 'super_admin'));
       const q = searchQuery.trim().toLowerCase();
       if (!q) return matchRole;
 
@@ -207,8 +214,12 @@ export const UserManagementSection: React.FC = () => {
     const defaultPass =
       addForm.role === 'super_admin' || addForm.role === 'admin' || addForm.role === 'admin_perusahaan'
         ? 'admin123'
+        : addForm.role === 'service_manager'
+        ? 'manager123'
         : addForm.role === 'supervisor'
         ? 'spv123'
+        : addForm.role === 'team_leader'
+        ? 'leader123'
         : addForm.role === 'petugas'
         ? 'petugas123'
         : 'klien123';
@@ -475,7 +486,18 @@ export const UserManagementSection: React.FC = () => {
                 : 'bg-sky-50 text-sky-700 hover:bg-sky-100 border border-sky-200/60'
             }`}
           >
-            🏢 Klien ({countKlien})
+            🏢 Klien / Tenant ({countKlien})
+          </button>
+          <button
+            type="button"
+            onClick={() => setRoleFilter('team_leader')}
+            className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+              roleFilter === 'team_leader'
+                ? 'bg-teal-700 text-white shadow-xs'
+                : 'bg-teal-50 text-teal-700 hover:bg-teal-100 border border-teal-200/60'
+            }`}
+          >
+            🎖️ Team Leader ({countTeamLeader})
           </button>
           <button
             type="button"
@@ -490,9 +512,31 @@ export const UserManagementSection: React.FC = () => {
           </button>
           <button
             type="button"
-            onClick={() => setRoleFilter('admin')}
+            onClick={() => setRoleFilter('service_manager')}
             className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
-              roleFilter === 'admin'
+              roleFilter === 'service_manager'
+                ? 'bg-rose-700 text-white shadow-xs'
+                : 'bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-200/60'
+            }`}
+          >
+            👔 Service Manager ({countServiceManager})
+          </button>
+          <button
+            type="button"
+            onClick={() => setRoleFilter('admin_perusahaan')}
+            className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+              roleFilter === 'admin_perusahaan'
+                ? 'bg-purple-700 text-white shadow-xs'
+                : 'bg-purple-50 text-purple-700 hover:bg-purple-100 border border-purple-200/60'
+            }`}
+          >
+            🏢 Admin Perusahaan ({countAdminPerusahaan})
+          </button>
+          <button
+            type="button"
+            onClick={() => setRoleFilter('super_admin')}
+            className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+              roleFilter === 'super_admin' || roleFilter === 'admin'
                 ? 'bg-indigo-700 text-white shadow-xs'
                 : 'bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200/60'
             }`}
@@ -602,8 +646,12 @@ export const UserManagementSection: React.FC = () => {
                             ? 'bg-indigo-50 border-indigo-200 text-indigo-800'
                             : u.role === 'admin_perusahaan'
                             ? 'bg-purple-50 border-purple-200 text-purple-800'
+                            : u.role === 'service_manager'
+                            ? 'bg-rose-50 border-rose-200 text-rose-800'
                             : u.role === 'supervisor'
                             ? 'bg-amber-50 border-amber-200 text-amber-800'
+                            : u.role === 'team_leader'
+                            ? 'bg-teal-50 border-teal-200 text-teal-800'
                             : u.role === 'petugas'
                             ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
                             : 'bg-sky-50 border-sky-200 text-sky-800'
@@ -612,14 +660,18 @@ export const UserManagementSection: React.FC = () => {
                         {u.role === 'super_admin'
                           ? 'Super Admin'
                           : u.role === 'admin'
-                          ? 'Admin'
+                          ? 'Super Admin'
                           : u.role === 'admin_perusahaan'
                           ? 'Admin Perusahaan'
+                          : u.role === 'service_manager'
+                          ? 'Service Manager'
                           : u.role === 'supervisor'
                           ? 'Supervisor'
+                          : u.role === 'team_leader'
+                          ? 'Team Leader'
                           : u.role === 'petugas'
                           ? 'Petugas'
-                          : 'Klien'}
+                          : 'Klien / Tenant'}
                       </span>
                       <div className="mt-1 flex items-center gap-1 text-[11px] text-slate-500 font-medium">
                         <Building2 className="w-3 h-3 text-slate-400 shrink-0" />
@@ -780,7 +832,7 @@ export const UserManagementSection: React.FC = () => {
                 <div>
                   <h4 className="font-bold text-slate-900 text-base">Tambah Akun Pengguna Baru</h4>
                   <p className="text-xs text-slate-500">
-                    Tambahkan akun untuk Petugas, Klien, atau Supervisor beserta pembatasan lokasi
+                    Tambahkan akun untuk Petugas, Klien, Team Leader, Supervisor, Service Manager, Admin Perusahaan, atau Super Admin
                   </p>
                 </div>
               </div>
@@ -799,7 +851,8 @@ export const UserManagementSection: React.FC = () => {
                 <label className="block font-bold text-slate-800 mb-1.5">
                   1. Pilih Peran / Role Akun <span className="text-rose-500">*</span>
                 </label>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
+                  {/* 1. Petugas */}
                   <button
                     type="button"
                     onClick={() =>
@@ -819,6 +872,7 @@ export const UserManagementSection: React.FC = () => {
                     <div className="text-[10px] text-emerald-700 font-medium">Tugas Lapangan & Ceklist</div>
                   </button>
 
+                  {/* 2. Klien / Tenant */}
                   <button
                     type="button"
                     onClick={() =>
@@ -838,6 +892,27 @@ export const UserManagementSection: React.FC = () => {
                     <div className="text-[10px] text-sky-700 font-medium">Portal Monitoring Gedung</div>
                   </button>
 
+                  {/* 3. Team Leader */}
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setAddForm({
+                        ...addForm,
+                        role: 'team_leader',
+                        password: addForm.password || 'leader123',
+                      })
+                    }
+                    className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
+                      addForm.role === 'team_leader'
+                        ? 'bg-teal-50 border-teal-400 text-teal-950 font-bold ring-2 ring-teal-300'
+                        : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
+                    }`}
+                  >
+                    <div className="text-sm mb-0.5">🎖️ Team Leader</div>
+                    <div className="text-[10px] text-teal-700 font-medium">Koordinator Regu & Shift</div>
+                  </button>
+
+                  {/* 4. Supervisor */}
                   <button
                     type="button"
                     onClick={() =>
@@ -854,50 +929,68 @@ export const UserManagementSection: React.FC = () => {
                     }`}
                   >
                     <div className="text-sm mb-0.5">📋 Supervisor</div>
-                    <div className="text-[10px] text-amber-700 font-medium">Audit QC & Shift</div>
+                    <div className="text-[10px] text-amber-700 font-medium">Audit QC, Inspeksi & Tim</div>
                   </button>
 
-                  {isSuperAdmin && (
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setAddForm({
-                          ...addForm,
-                          role: 'admin_perusahaan',
-                          password: addForm.password || 'admin123',
-                        })
-                      }
-                      className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
-                        addForm.role === 'admin_perusahaan'
-                          ? 'bg-purple-50 border-purple-400 text-purple-950 font-bold ring-2 ring-purple-300'
-                          : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
-                      }`}
-                    >
-                      <div className="text-sm mb-0.5">🏢 Admin Perusahaan</div>
-                      <div className="text-[10px] text-purple-700 font-medium">Pengelola 1 Perusahaan</div>
-                    </button>
-                  )}
+                  {/* 5. Service Manager */}
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setAddForm({
+                        ...addForm,
+                        role: 'service_manager',
+                        password: addForm.password || 'manager123',
+                      })
+                    }
+                    className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
+                      addForm.role === 'service_manager'
+                        ? 'bg-rose-50 border-rose-400 text-rose-950 font-bold ring-2 ring-rose-300'
+                        : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
+                    }`}
+                  >
+                    <div className="text-sm mb-0.5">👔 Service Manager</div>
+                    <div className="text-[10px] text-rose-700 font-medium">Manajemen Mutu & Layanan</div>
+                  </button>
 
-                  {isSuperAdmin && (
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setAddForm({
-                          ...addForm,
-                          role: 'super_admin',
-                          password: addForm.password || 'admin123',
-                        })
-                      }
-                      className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
-                        addForm.role === 'super_admin' || addForm.role === 'admin'
-                          ? 'bg-indigo-50 border-indigo-400 text-indigo-950 font-bold ring-2 ring-indigo-300'
-                          : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
-                      }`}
-                    >
-                      <div className="text-sm mb-0.5">🛡️ Super Admin</div>
-                      <div className="text-[10px] text-indigo-700 font-medium">Akses Penuh Semua Proyek</div>
-                    </button>
-                  )}
+                  {/* 6. Admin Perusahaan */}
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setAddForm({
+                        ...addForm,
+                        role: 'admin_perusahaan',
+                        password: addForm.password || 'admin123',
+                      })
+                    }
+                    className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
+                      addForm.role === 'admin_perusahaan'
+                        ? 'bg-purple-50 border-purple-400 text-purple-950 font-bold ring-2 ring-purple-300'
+                        : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
+                    }`}
+                  >
+                    <div className="text-sm mb-0.5">🏢 Admin Perusahaan</div>
+                    <div className="text-[10px] text-purple-700 font-medium">Pengelola 1 Perusahaan</div>
+                  </button>
+
+                  {/* 7. Super Admin */}
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setAddForm({
+                        ...addForm,
+                        role: 'super_admin',
+                        password: addForm.password || 'admin123',
+                      })
+                    }
+                    className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
+                      addForm.role === 'super_admin' || addForm.role === 'admin'
+                        ? 'bg-indigo-50 border-indigo-400 text-indigo-950 font-bold ring-2 ring-indigo-300'
+                        : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
+                    }`}
+                  >
+                    <div className="text-sm mb-0.5">🛡️ Super Admin</div>
+                    <div className="text-[10px] text-indigo-700 font-medium">Akses Penuh Semua Proyek</div>
+                  </button>
                 </div>
               </div>
 
@@ -1029,7 +1122,7 @@ export const UserManagementSection: React.FC = () => {
                       User hanya dapat mengakses & melihat data pada proyek yang dicentang di bawah ini.
                     </p>
                   </div>
-                  {addForm.role !== 'admin' && (
+                  {addForm.role !== 'admin' && addForm.role !== 'super_admin' && (
                     <div className="flex items-center gap-1.5 text-[11px]">
                       <button
                         type="button"
@@ -1055,7 +1148,7 @@ export const UserManagementSection: React.FC = () => {
                   )}
                 </div>
 
-                {addForm.role === 'admin' ? (
+                {addForm.role === 'admin' || addForm.role === 'super_admin' ? (
                   <div className="p-3 rounded-xl bg-indigo-50 border border-indigo-200 text-indigo-900 flex items-center gap-2">
                     <ShieldCheck className="w-5 h-5 text-indigo-600 shrink-0" />
                     <div>
@@ -1165,13 +1258,11 @@ export const UserManagementSection: React.FC = () => {
                 >
                   <option value="petugas">👷 Petugas Lapangan (Cleaning Staff)</option>
                   <option value="klien">🏢 Klien / Tenant (Building Management)</option>
+                  <option value="team_leader">🎖️ Team Leader (Koordinator Regu)</option>
                   <option value="supervisor">📋 Supervisor (SPV Operasional)</option>
-                  {isSuperAdmin && (
-                    <>
-                      <option value="admin_perusahaan">🏢 Admin Perusahaan (Tenant Admin)</option>
-                      <option value="super_admin">🛡️ Super Admin (Akses Global Penuh)</option>
-                    </>
-                  )}
+                  <option value="service_manager">👔 Service Manager (Manajer Layanan)</option>
+                  <option value="admin_perusahaan">🏢 Admin Perusahaan (Tenant Admin)</option>
+                  <option value="super_admin">🛡️ Super Admin (Akses Global Penuh)</option>
                 </select>
               </div>
 
@@ -1286,7 +1377,7 @@ export const UserManagementSection: React.FC = () => {
                       User hanya dapat melihat data pada lokasi proyek yang dicentang.
                     </p>
                   </div>
-                  {editForm.role !== 'admin' && (
+                  {editForm.role !== 'admin' && editForm.role !== 'super_admin' && (
                     <div className="flex items-center gap-1.5 text-[11px]">
                       <button
                         type="button"
@@ -1312,7 +1403,7 @@ export const UserManagementSection: React.FC = () => {
                   )}
                 </div>
 
-                {editForm.role === 'admin' ? (
+                {editForm.role === 'admin' || editForm.role === 'super_admin' ? (
                   <div className="p-3 rounded-xl bg-indigo-50 border border-indigo-200 text-indigo-900 flex items-center gap-2">
                     <ShieldCheck className="w-5 h-5 text-indigo-600 shrink-0" />
                     <div>
