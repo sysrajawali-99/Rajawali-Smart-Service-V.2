@@ -785,7 +785,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   }, [offlineQueue.length]);
 
   // 3. Project Locations
-  const [projects, setProjects] = useState<ProjectLocation[]>([]);
+  const [projects, setProjects] = useState<ProjectLocation[]>(INITIAL_PROJECTS);
 
   // 3b. Multi-Company Management (Super Admin)
   const [companies, setCompanies] = useState<Company[]>([
@@ -892,7 +892,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   });
 
   // 3. Users & Project Assignments
-  const [users, setUsers] = useState<AppUser[]>([]);
+  const [users, setUsers] = useState<AppUser[]>(INITIAL_USERS);
 
   const [activeUserId, setActiveUserId] = useState<string>(() => {
     return localStorage.getItem('sco_active_user_id') || 'usr-admin';
@@ -969,33 +969,46 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     projects.find((p) => p.id === safeActiveProjectId) ||
     allowedProjects[0] ||
     projects[0] ||
-    ({ id: '', name: '', code: '', address: '', city: '', status: 'active' } as ProjectLocation);
+    INITIAL_PROJECTS[0];
 
   const visibleProjects = isAdminOrSuper ? projects : allowedProjects;
 
   // 4. Checklist Master & 24-Hour Checklist Data
-  const [checklistLocations, setChecklistLocations] = useState<ChecklistLocation[]>([]);
-  const [checklistTemplates, setChecklistTemplates] = useState<ChecklistTemplateItem[]>([]);
-  const [dailyChecklists, setDailyChecklists] = useState<DailyAreaChecklist[]>([]);
+  const [checklistLocations, setChecklistLocations] = useState<ChecklistLocation[]>(INITIAL_CHECKLIST_LOCATIONS);
+  const [checklistTemplates, setChecklistTemplates] = useState<ChecklistTemplateItem[]>(INITIAL_CHECKLIST_TEMPLATES);
+  const [dailyChecklists, setDailyChecklists] = useState<DailyAreaChecklist[]>(() =>
+    INITIAL_DAILY_CHECKLISTS.map((d) => ({
+      ...d,
+      hourlySlots: (d.hourlySlots || []).map((slot) => ({
+        ...slot,
+        items: ensureCompleteSlotItems(slot.items, d.category || 'toilet', INITIAL_CHECKLIST_TEMPLATES),
+      })),
+    }))
+  );
 
   // 5. Core Operational Data
-  const [areas, setAreas] = useState<Area[]>([]);
-  const [cleaners, setCleaners] = useState<Cleaner[]>([]);
-  const [shifts, setShifts] = useState<Shift[]>([]);
-  const [schedules, setSchedules] = useState<CleaningSchedule[]>([]);
-  const [tasks, setTasks] = useState<CleaningTask[]>([]);
-  const [inspections, setInspections] = useState<QCInspection[]>([]);
-  const [complaints, setComplaints] = useState<Complaint[]>([]);
-  const [notifications, setNotifications] = useState<AppNotification[]>([]);
-  const [masterPrograms, setMasterPrograms] = useState<MasterCleaningProgramItem[]>([]);
-  const [damageReports, setDamageReports] = useState<FacilityDamageReport[]>([]);
+  const [areas, setAreas] = useState<Area[]>(INITIAL_AREAS);
+  const [cleaners, setCleaners] = useState<Cleaner[]>(INITIAL_CLEANERS);
+  const [shifts, setShifts] = useState<Shift[]>(INITIAL_SHIFTS);
+  const [schedules, setSchedules] = useState<CleaningSchedule[]>(INITIAL_SCHEDULES);
+  const [tasks, setTasks] = useState<CleaningTask[]>(INITIAL_TASKS);
+  const [inspections, setInspections] = useState<QCInspection[]>(INITIAL_INSPECTIONS);
+  const [complaints, setComplaints] = useState<Complaint[]>(INITIAL_COMPLAINTS);
+  const [notifications, setNotifications] = useState<AppNotification[]>(INITIAL_NOTIFICATIONS);
+  const [masterPrograms, setMasterPrograms] = useState<MasterCleaningProgramItem[]>(() =>
+    INITIAL_MASTER_PROGRAMS.map((p) => ({
+      ...p,
+      frequency: normalizeFrequencyCode(p.frequency),
+    }))
+  );
+  const [damageReports, setDamageReports] = useState<FacilityDamageReport[]>(INITIAL_DAMAGE_REPORTS);
 
   // Klien Mode States (Turnover, Custom Checklist Items, Inspections)
-  const [employeeTurnovers, setEmployeeTurnovers] = useState<EmployeeTurnoverRecord[]>([]);
-  const [klienChecklistItems, setKlienChecklistItems] = useState<KlienChecklistItem[]>([]);
-  const [klienChecklistInspections, setKlienChecklistInspections] = useState<KlienChecklistInspection[]>([]);
-  const [specialJobs, setSpecialJobs] = useState<SpecialJobItem[]>([]);
-  const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
+  const [employeeTurnovers, setEmployeeTurnovers] = useState<EmployeeTurnoverRecord[]>(INITIAL_EMPLOYEE_TURNOVERS);
+  const [klienChecklistItems, setKlienChecklistItems] = useState<KlienChecklistItem[]>(INITIAL_KLIEN_CHECKLIST_ITEMS);
+  const [klienChecklistInspections, setKlienChecklistInspections] = useState<KlienChecklistInspection[]>(INITIAL_KLIEN_CHECKLIST_INSPECTIONS);
+  const [specialJobs, setSpecialJobs] = useState<SpecialJobItem[]>(INITIAL_SPECIAL_JOBS);
+  const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>(() => INITIAL_AUDIT_LOGS.map(normalizeAuditLog));
   const [rbacPermissions, setRbacPermissions] = useState<RoleModulePermission[]>(DEFAULT_RBAC_PERMISSIONS);
 
   // ==================== VPS POSTGRESQL & SOCKET.IO REALTIME SYNC ====================
@@ -1112,18 +1125,25 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setter((prev) => mergeCollectionById(prev, remoteItems));
   };
 
-  // Helper to apply remote collection without any client-side seeding
-  const applyRemoteCollection = <T,>(
+  // Helper to load remote collection or seed once if empty on server
+  const loadOrSeedCollection = async <T extends { id?: string; moduleId?: string }>(
+    collection: string,
     remoteItems: T[],
-    setter: React.Dispatch<React.SetStateAction<T[]>>,
-    fallbackItems?: T[]
+    seedItems: T[],
+    setter: React.Dispatch<React.SetStateAction<T[]>>
   ) => {
-    if (remoteItems && remoteItems.length > 0) {
+    if (remoteItems.length > 0) {
       setter(remoteItems);
-    } else if (fallbackItems) {
-      setter(fallbackItems);
-    } else {
-      setter([]);
+    } else if (seedItems && seedItems.length > 0) {
+      console.debug(`[Seed] Koleksi '${collection}' kosong di server. Menyemai ${seedItems.length} data awal...`);
+      setter(seedItems);
+      for (const item of seedItems) {
+        try {
+          await upsertRecord(collection, item);
+        } catch (e) {
+          console.warn(`[Seed Error] Gagal menyemai item ${collection}:`, e);
+        }
+      }
     }
   };
 
@@ -1208,26 +1228,28 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           setCompanies(remoteCompanies);
         }
 
-        applyRemoteCollection(remoteProjects, setProjects);
-        applyRemoteCollection(remoteUsers, setUsers);
-        applyRemoteCollection(remoteRbac, setRbacPermissions, DEFAULT_RBAC_PERMISSIONS);
-        applyRemoteCollection(remoteAreas, setAreas);
-        applyRemoteCollection(remoteCleaners, setCleaners);
-        applyRemoteCollection(remoteShifts, setShifts);
-        applyRemoteCollection(remoteSchedules, setSchedules);
-        applyRemoteCollection(remoteChecklistLocs, setChecklistLocations);
-        applyRemoteCollection(remoteChecklistTpls, setChecklistTemplates);
-        applyRemoteCollection(remoteTasks, setTasks);
-        applyRemoteCollection(remoteInspections, setInspections);
-        applyRemoteCollection(remoteComplaints, setComplaints);
-        applyRemoteCollection(remoteDamage, setDamageReports);
-        applyRemoteCollection(remoteSpecial, setSpecialJobs);
-        applyRemoteCollection(remoteMcp, setMasterPrograms);
-        applyRemoteCollection(remoteTurnovers, setEmployeeTurnovers);
-        applyRemoteCollection(remoteKlienItems, setKlienChecklistItems);
-        applyRemoteCollection(remoteKlienInspections, setKlienChecklistInspections);
-        applyRemoteCollection(remoteNotifs, setNotifications);
-        applyRemoteCollection(remoteAuditLogs.map(normalizeAuditLog), setAuditLogs);
+        await Promise.all([
+          loadOrSeedCollection(COLLECTIONS.PROJECTS, remoteProjects, INITIAL_PROJECTS, setProjects),
+          loadOrSeedCollection(COLLECTIONS.USERS, remoteUsers, INITIAL_USERS, setUsers),
+          loadOrSeedCollection(COLLECTIONS.RBAC_PERMISSIONS, remoteRbac, DEFAULT_RBAC_PERMISSIONS, setRbacPermissions),
+          loadOrSeedCollection(COLLECTIONS.AREAS, remoteAreas, INITIAL_AREAS, setAreas),
+          loadOrSeedCollection(COLLECTIONS.CLEANERS, remoteCleaners, INITIAL_CLEANERS, setCleaners),
+          loadOrSeedCollection(COLLECTIONS.SHIFTS, remoteShifts, INITIAL_SHIFTS, setShifts),
+          loadOrSeedCollection(COLLECTIONS.SCHEDULES, remoteSchedules, INITIAL_SCHEDULES, setSchedules),
+          loadOrSeedCollection(COLLECTIONS.CHECKLIST_LOCATIONS, remoteChecklistLocs, INITIAL_CHECKLIST_LOCATIONS, setChecklistLocations),
+          loadOrSeedCollection(COLLECTIONS.CHECKLIST_TEMPLATES, remoteChecklistTpls, INITIAL_CHECKLIST_TEMPLATES, setChecklistTemplates),
+          loadOrSeedCollection(COLLECTIONS.TASKS, remoteTasks, INITIAL_TASKS, setTasks),
+          loadOrSeedCollection(COLLECTIONS.INSPECTIONS, remoteInspections, INITIAL_INSPECTIONS, setInspections),
+          loadOrSeedCollection(COLLECTIONS.COMPLAINTS, remoteComplaints, INITIAL_COMPLAINTS, setComplaints),
+          loadOrSeedCollection(COLLECTIONS.DAMAGE_REPORTS, remoteDamage, INITIAL_DAMAGE_REPORTS, setDamageReports),
+          loadOrSeedCollection(COLLECTIONS.SPECIAL_JOBS, remoteSpecial, INITIAL_SPECIAL_JOBS, setSpecialJobs),
+          loadOrSeedCollection(COLLECTIONS.MASTER_PROGRAMS, remoteMcp, INITIAL_MASTER_PROGRAMS, setMasterPrograms),
+          loadOrSeedCollection(COLLECTIONS.EMPLOYEE_TURNOVERS, remoteTurnovers, INITIAL_EMPLOYEE_TURNOVERS, setEmployeeTurnovers),
+          loadOrSeedCollection(COLLECTIONS.KLIEN_CHECKLIST_ITEMS, remoteKlienItems, INITIAL_KLIEN_CHECKLIST_ITEMS, setKlienChecklistItems),
+          loadOrSeedCollection(COLLECTIONS.KLIEN_CHECKLIST_INSPECTIONS, remoteKlienInspections, INITIAL_KLIEN_CHECKLIST_INSPECTIONS, setKlienChecklistInspections),
+          loadOrSeedCollection(COLLECTIONS.NOTIFICATIONS, remoteNotifs, INITIAL_NOTIFICATIONS, setNotifications),
+          loadOrSeedCollection(COLLECTIONS.AUDIT_LOGS, remoteAuditLogs.map(normalizeAuditLog), INITIAL_AUDIT_LOGS.map(normalizeAuditLog), setAuditLogs),
+        ]);
 
         // Daily Checklists full pull
         if (remoteDailyChecklists.length > 0) {
@@ -1261,8 +1283,13 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             }
             return merged;
           });
-        } else {
-          setDailyChecklists([]);
+        } else if (INITIAL_DAILY_CHECKLISTS && INITIAL_DAILY_CHECKLISTS.length > 0) {
+          console.debug(`[Seed] Koleksi 'daily_checklists' kosong di server. Menyemai data awal...`);
+          setDailyChecklists(INITIAL_DAILY_CHECKLISTS);
+          for (const item of INITIAL_DAILY_CHECKLISTS) {
+            checklistSnapshotRef.current.set(item.id, JSON.stringify(item));
+            upsertRecord(COLLECTIONS.DAILY_CHECKLISTS, item).catch(() => {});
+          }
         }
         initialSyncDone.current = true;
       } else {
@@ -1342,11 +1369,12 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           if (saved) {
             const parsed = JSON.parse(saved);
             setCompanyProfile(parsed);
+            upsertRecord(COLLECTIONS.COMPANY_PROFILE, { ...parsed, id: 'main' }).catch(() => {});
           } else {
-            setCompanyProfile(DEFAULT_COMPANY_PROFILE);
+            upsertRecord(COLLECTIONS.COMPANY_PROFILE, { ...DEFAULT_COMPANY_PROFILE, id: 'main' }).catch(() => {});
           }
         } catch {
-          setCompanyProfile(DEFAULT_COMPANY_PROFILE);
+          upsertRecord(COLLECTIONS.COMPANY_PROFILE, { ...DEFAULT_COMPANY_PROFILE, id: 'main' }).catch(() => {});
         }
       }
 
@@ -1361,11 +1389,12 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           if (saved) {
             const parsed = JSON.parse(saved);
             setKpiConfig(parsed);
+            upsertRecord(COLLECTIONS.KPI_CONFIG, { ...parsed, id: 'main' }).catch(() => {});
           } else {
-            setKpiConfig(DEFAULT_KPI_VISIBILITY_OFF);
+            upsertRecord(COLLECTIONS.KPI_CONFIG, { ...DEFAULT_KPI_VISIBILITY_OFF, id: 'main' }).catch(() => {});
           }
         } catch {
-          setKpiConfig(DEFAULT_KPI_VISIBILITY_OFF);
+          upsertRecord(COLLECTIONS.KPI_CONFIG, { ...DEFAULT_KPI_VISIBILITY_OFF, id: 'main' }).catch(() => {});
         }
       }
 
@@ -1380,11 +1409,11 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       // Cache operational data in Dexie IndexedDB for instant offline availability
       if (isFullPull) {
         cacheOfflineData({
-          templates: remoteChecklistTpls || [],
-          areas: remoteAreas || [],
-          locations: remoteChecklistLocs || [],
-          checklists: remoteDailyChecklists || [],
-          tasks: remoteTasks || [],
+          templates: remoteChecklistTpls?.length ? remoteChecklistTpls : INITIAL_CHECKLIST_TEMPLATES,
+          areas: remoteAreas?.length ? remoteAreas : INITIAL_AREAS,
+          locations: remoteChecklistLocs?.length ? remoteChecklistLocs : INITIAL_CHECKLIST_LOCATIONS,
+          checklists: remoteDailyChecklists?.length ? remoteDailyChecklists : INITIAL_DAILY_CHECKLISTS,
+          tasks: remoteTasks?.length ? remoteTasks : INITIAL_TASKS,
         }).catch(() => {});
       }
 
@@ -1504,41 +1533,20 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       }
     });
 
-    // 3. Auto-pull when tab becomes active again / on focus: gabungkan dengan jeda minimal 30 detik
-    let lastResumePullAt = 0;
-    const handleAppResume = () => {
-      if (document.visibilityState !== 'visible') return;
-      const now = Date.now();
-      if (now - lastResumePullAt < 30_000) return;
-      lastResumePullAt = now;
-      console.debug('[Sync] Tab aktif kembali, delta pull data...');
+    // 3. Auto-pull when tab becomes active again / on focus: delta pull saja
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        console.debug('[Sync] Tab aktif kembali, delta pull data...');
+        pullAllDataFromServer(false);
+      }
+    };
+    const handleWindowFocus = () => {
       pullAllDataFromServer(false);
     };
-    document.addEventListener('visibilitychange', handleAppResume);
-    window.addEventListener('focus', handleAppResume);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', handleWindowFocus);
 
-    // 4. Periodic backup pull & socket heartbeat (30s timeout)
-    let lastSocketActivityAt = Date.now();
-    const markSocketAlive = () => {
-      lastSocketActivityAt = Date.now();
-    };
-    socket.on('connect', markSocketAlive);
-    socket.on('pong', markSocketAlive);
-    socket.io.on('packet', markSocketAlive);
-
-    const heartbeatInterval = setInterval(() => {
-      if (document.visibilityState !== 'visible') return;
-      if (socket.connected) {
-        socket.emit('ping');
-        if (Date.now() - lastSocketActivityAt > 30_000) {
-          console.warn('[Socket.IO] Tidak ada respons > 30 detik, reconnect & backup pull...');
-          socket.disconnect();
-          socket.connect();
-          pullAllDataFromServer(false);
-        }
-      }
-    }, 15_000);
-
+    // 4. Periodic backup pull every 120 seconds: hanya jalan bila document.visibilityState==='visible' dan socket.connected===false
     const backupInterval = setInterval(() => {
       if (document.visibilityState === 'visible' && !socket.connected) {
         console.debug('[Sync] Socket offline & tab aktif, menjalankan backup delta pull 120s...');
@@ -1826,13 +1834,6 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     socket.on('company:logo_updated', onCompanyLogoUpdated);
     socket.on('company_profile:update', onCompanyProfileUpdated);
 
-    const onUnauthorized = (data: any) => {
-      console.warn('[Socket.IO] Koneksi soket ditolak (sesi tidak valid atau kedaluwarsa):', data?.message);
-      logout();
-    };
-
-    socket.on('auth:unauthorized', onUnauthorized);
-
     const onSocketDisconnect = () => {
       if (!isMounted) return;
       lastDisconnectTimeRef.current = Date.now();
@@ -1847,14 +1848,9 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       unsubscribeChanges();
       socket.off('company:logo_updated', onCompanyLogoUpdated);
       socket.off('company_profile:update', onCompanyProfileUpdated);
-      socket.off('auth:unauthorized', onUnauthorized);
       socket.off('disconnect', onSocketDisconnect);
-      socket.off('connect', markSocketAlive);
-      socket.off('pong', markSocketAlive);
-      socket.io.off('packet', markSocketAlive);
-      document.removeEventListener('visibilitychange', handleAppResume);
-      window.removeEventListener('focus', handleAppResume);
-      clearInterval(heartbeatInterval);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', handleWindowFocus);
       clearInterval(backupInterval);
       clearInterval(fullPullInterval);
     };
@@ -2331,9 +2327,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       return moduleId === 'klien-mode' || moduleId.startsWith('klien-');
     }
     if (role === 'admin' || role === 'super_admin' || role === 'admin_perusahaan') return true;
-    const perm =
-      rbacPermissions.find((p) => p.moduleId === moduleId) ||
-      DEFAULT_RBAC_PERMISSIONS.find((p) => p.moduleId === moduleId);
+    const perm = rbacPermissions.find((p) => p.moduleId === moduleId);
     if (!perm) return true; // Default allow if not configured
     return Boolean(perm[role]);
   };
@@ -5027,8 +5021,9 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
   };
 
-  const contextValue = useMemo(
-    () => ({
+  return (
+    <CleaningContext.Provider
+      value={{
         pullAllDataFromServer,
         syncFromLiveVps,
         companyProfile: effectiveCompanyProfile,
@@ -5244,45 +5239,11 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         supabaseStatus,
         syncToSupabase,
         isInitialLoading,
-    }),
-    [
-      effectiveCompanyProfile,
-      currentCompany,
-      isPwaIconsRegenerating,
-      userRole,
-      projects,
-      companies,
-      users,
-      activeUserId,
-      activeProjectId,
-      checklistLocations,
-      checklistTemplates,
-      dailyChecklists,
-      areas,
-      cleaners,
-      shifts,
-      schedules,
-      tasks,
-      inspections,
-      complaints,
-      notifications,
-      masterPrograms,
-      damageReports,
-      employeeTurnovers,
-      klienChecklistItems,
-      klienChecklistInspections,
-      specialJobs,
-      auditLogs,
-      rbacPermissions,
-      supabaseStatus,
-      isInitialLoading,
-    ]
-  );
-
-  return (
-    <CleaningContext.Provider value={contextValue}>
+      }}
+    >
       {children}
     </CleaningContext.Provider>
+
   );
 };
 

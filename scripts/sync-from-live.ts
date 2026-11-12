@@ -159,7 +159,8 @@ export async function syncFromLiveServer() {
   return { success: true, summary: syncSummary, primaryProjectId };
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+const isDirectRun = typeof import.meta !== 'undefined' && import.meta?.url ? import.meta.url === `file://${process.argv[1]}` : false;
+if (isDirectRun) {
   syncFromLiveServer()
     .then((res) => {
       console.log('Sinkronisasi selesai dengan sukses!', res.summary);

@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   AlertCircle,
   Plus,
@@ -87,50 +87,35 @@ export const ComplaintView: React.FC = () => {
     }
   }, [selectedComplaintDate]);
 
-  const [currentPage, setCurrentPage] = useState<number>(1);
-  const pageSize = 20;
+  const filtered = complaints.filter((c) => {
+    const matchStatus = statusFilter === 'all' || c.status === statusFilter;
+    const matchArea = areaFilter === 'all' || c.areaName === areaFilter;
+    const matchPriority = priorityFilter === 'all' || c.priority === priorityFilter;
 
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [statusFilter, areaFilter, priorityFilter, selectedComplaintDate, search]);
-
-  const filtered = useMemo(() => {
-    return complaints.filter((c) => {
-      const matchStatus = statusFilter === 'all' || c.status === statusFilter;
-      const matchArea = areaFilter === 'all' || c.areaName === areaFilter;
-      const matchPriority = priorityFilter === 'all' || c.priority === priorityFilter;
-
-      let matchDate = true;
-      if (selectedComplaintDate) {
-        const [y, m, d] = selectedComplaintDate.split('-');
-        const ddMmYyyy = d && m && y ? `${d}/${m}/${y}` : '';
-        const rawCreated = (c.createdAt || '').toLowerCase();
-        if (
-          selectedComplaintDate === '2026-09-13' &&
-          (rawCreated.includes('hari ini') || rawCreated.includes('kemarin') || !rawCreated.match(/\d{4}/))
-        ) {
-          matchDate = true;
-        } else {
-          matchDate =
-            rawCreated.includes(selectedComplaintDate.toLowerCase()) ||
-            (Boolean(ddMmYyyy) && rawCreated.includes(ddMmYyyy.toLowerCase()));
-        }
+    let matchDate = true;
+    if (selectedComplaintDate) {
+      const [y, m, d] = selectedComplaintDate.split('-');
+      const ddMmYyyy = d && m && y ? `${d}/${m}/${y}` : '';
+      const rawCreated = (c.createdAt || '').toLowerCase();
+      if (
+        selectedComplaintDate === '2026-09-13' &&
+        (rawCreated.includes('hari ini') || rawCreated.includes('kemarin') || !rawCreated.match(/\d{4}/))
+      ) {
+        matchDate = true;
+      } else {
+        matchDate =
+          rawCreated.includes(selectedComplaintDate.toLowerCase()) ||
+          (Boolean(ddMmYyyy) && rawCreated.includes(ddMmYyyy.toLowerCase()));
       }
+    }
 
-      const matchSearch =
-        c.ticketNumber.toLowerCase().includes(search.toLowerCase()) ||
-        c.reporterName.toLowerCase().includes(search.toLowerCase()) ||
-        c.areaName.toLowerCase().includes(search.toLowerCase()) ||
-        c.description.toLowerCase().includes(search.toLowerCase());
-      return matchStatus && matchArea && matchPriority && matchDate && matchSearch;
-    });
-  }, [complaints, statusFilter, areaFilter, priorityFilter, selectedComplaintDate, search]);
-
-  const totalPages = Math.ceil(filtered.length / pageSize) || 1;
-  const paginatedComplaints = useMemo(() => {
-    const start = (currentPage - 1) * pageSize;
-    return filtered.slice(start, start + pageSize);
-  }, [filtered, currentPage, pageSize]);
+    const matchSearch =
+      c.ticketNumber.toLowerCase().includes(search.toLowerCase()) ||
+      c.reporterName.toLowerCase().includes(search.toLowerCase()) ||
+      c.areaName.toLowerCase().includes(search.toLowerCase()) ||
+      c.description.toLowerCase().includes(search.toLowerCase());
+    return matchStatus && matchArea && matchPriority && matchDate && matchSearch;
+  });
 
   const getPriorityBadge = (priority: PriorityLevel, slaHours?: number) => {
     const hoursText = slaHours ? `${slaHours}j` : '';
@@ -313,7 +298,7 @@ export const ComplaintView: React.FC = () => {
 
       {/* Complaint Tickets List */}
       <div className="space-y-4">
-        {paginatedComplaints.map((ticket) => {
+        {filtered.map((ticket) => {
           const prio = getPriorityBadge(ticket.priority, ticket.slaHours);
           const hasPendingExt = ticket.extensionRequest && ticket.extensionRequest.status === 'pending';
 
@@ -722,38 +707,6 @@ export const ComplaintView: React.FC = () => {
           </div>
         )}
       </div>
-
-      {/* Pagination Controls */}
-      {totalPages > 1 && (
-        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 p-4 bg-white rounded-2xl border border-slate-200 shadow-xs text-xs text-slate-600">
-          <div>
-            Menampilkan <span className="font-bold text-slate-800">{(currentPage - 1) * pageSize + 1}</span> -{' '}
-            <span className="font-bold text-slate-800">{Math.min(currentPage * pageSize, filtered.length)}</span> dari{' '}
-            <span className="font-bold text-slate-800">{filtered.length}</span> tiket komplain
-          </div>
-          <div className="flex items-center gap-1.5">
-            <button
-              type="button"
-              disabled={currentPage <= 1}
-              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-              className="px-3 py-1.5 rounded-lg border border-slate-200 font-semibold disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-50 cursor-pointer"
-            >
-              Sebelumnya
-            </button>
-            <span className="font-bold text-slate-800 px-2">
-              Halaman {currentPage} dari {totalPages}
-            </span>
-            <button
-              type="button"
-              disabled={currentPage >= totalPages}
-              onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-              className="px-3 py-1.5 rounded-lg border border-slate-200 font-semibold disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-50 cursor-pointer"
-            >
-              Selanjutnya
-            </button>
-          </div>
-        </div>
-      )}
 
       {/* Modal New Complaint */}
       <NewComplaintModal

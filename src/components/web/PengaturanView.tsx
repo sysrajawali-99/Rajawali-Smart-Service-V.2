@@ -33,11 +33,9 @@ import {
   History,
   Smartphone,
   Server,
-  Download,
 } from 'lucide-react';
 import { useCleaning } from '../../context/CleaningContext';
 import { ChecklistLocationCategory, DashboardKpiVisibilityConfig, ChecklistTemplateItem } from '../../types';
-import { getAuthToken } from '../../services/apiService';
 import { UserManagementSection } from './UserManagementSection';
 import { CompanyProfileSettingsSection } from './CompanyProfileSettingsSection';
 import { SuperAdminBulkDeleteSection } from './SuperAdminBulkDeleteSection';
@@ -89,72 +87,6 @@ export const PengaturanView: React.FC = () => {
   const [rbacMessage, setRbacMessage] = useState<string | null>(null);
   const [deleteToast, setDeleteToast] = useState<string | null>(null);
   const [isAuditModalOpen, setIsAuditModalOpen] = useState(false);
-  const [isDownloadingBackup, setIsDownloadingBackup] = useState(false);
-  const [backupToast, setBackupToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
-
-  const handleDownloadBackup = async () => {
-    setIsDownloadingBackup(true);
-    setBackupToast(null);
-    try {
-      const token = getAuthToken();
-      const headers: Record<string, string> = {};
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
-      }
-      const res = await fetch('/api/admin/backup', { headers });
-      if (!res.ok) {
-        const errJson = await res.json().catch(() => null);
-        throw new Error(errJson?.error || `Gagal mengunduh backup data (Status ${res.status})`);
-      }
-      const blob = await res.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      const contentDisposition = res.headers.get('content-disposition');
-      let filename = `backup-smart-cleaning-${new Date().toISOString().slice(0, 10)}.json`;
-      if (contentDisposition) {
-        const match = contentDisposition.match(/filename="?([^"]+)"?/);
-        if (match && match[1]) filename = match[1];
-      }
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
-
-      // Ambil metadata jumlah record dan sumber data dari header respon atau isi file JSON
-      let totalCount = res.headers.get('x-total-records');
-      let dataSource = res.headers.get('x-data-source') || '';
-
-      if (!totalCount) {
-        try {
-          const text = await blob.text();
-          const parsed = JSON.parse(text);
-          if (parsed._meta?.totalRecords !== undefined) {
-            totalCount = String(parsed._meta.totalRecords);
-            dataSource = parsed._meta.sumberData || '';
-          }
-        } catch {}
-      }
-
-      const countText = totalCount ? `${totalCount} record` : 'seluruh record';
-      const sourceText = dataSource ? ` (Sumber: ${dataSource})` : '';
-
-      setBackupToast({
-        type: 'success',
-        message: `Backup berhasil: ${countText}${sourceText}. File "${filename}" telah tersimpan di perangkat Anda.`,
-      });
-      setTimeout(() => setBackupToast(null), 7000);
-    } catch (err: any) {
-      setBackupToast({
-        type: 'error',
-        message: err?.message || 'Gagal mengunduh file backup.',
-      });
-      setTimeout(() => setBackupToast(null), 6000);
-    } finally {
-      setIsDownloadingBackup(false);
-    }
-  };
 
   // Master Data Checklist Item state
   const [selectedCategoryTab, setSelectedCategoryTab] = useState<ChecklistLocationCategory>('toilet');
@@ -371,19 +303,6 @@ export const PengaturanView: React.FC = () => {
             </div>
           )}
 
-          {isSuperAdmin && (
-            <button
-              type="button"
-              onClick={handleDownloadBackup}
-              disabled={isDownloadingBackup}
-              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white font-semibold text-xs transition-colors shadow-xs cursor-pointer"
-              title="Unduh seluruh data sistem dalam 1 file JSON (Khusus Super Admin)"
-            >
-              <Download className={`w-3.5 h-3.5 ${isDownloadingBackup ? 'animate-bounce' : ''}`} />
-              <span>{isDownloadingBackup ? 'Mengunduh...' : 'Download Backup Data'}</span>
-            </button>
-          )}
-
           <button
             type="button"
             onClick={() => setActiveSubTab(activeSubTab === 'log' ? 'all' : 'log')}
@@ -563,66 +482,6 @@ export const PengaturanView: React.FC = () => {
           </button>
         )}
       </div>
-
-      {/* Toast Notifikasi Status Backup */}
-      {backupToast && (
-        <div
-          className={`p-3.5 rounded-xl text-xs font-semibold flex items-center justify-between gap-3 shadow-xs animate-in fade-in ${
-            backupToast.type === 'success'
-              ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
-              : 'bg-rose-50 text-rose-800 border border-rose-200'
-          }`}
-        >
-          <div className="flex items-center gap-2">
-            {backupToast.type === 'success' ? (
-              <Check className="w-4 h-4 text-emerald-600 shrink-0" />
-            ) : (
-              <Download className="w-4 h-4 text-rose-600 shrink-0" />
-            )}
-            <span>{backupToast.message}</span>
-          </div>
-          <button
-            type="button"
-            onClick={() => setBackupToast(null)}
-            className="text-slate-400 hover:text-slate-600 text-xs px-2 py-0.5 rounded cursor-pointer"
-          >
-            ✕
-          </button>
-        </div>
-      )}
-
-      {/* SECTION: Pencadangan Lengkap Data Sistem (Hanya Terlihat oleh Super Admin) */}
-      {isSuperAdmin && (
-        <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-emerald-50/90 via-teal-50/50 to-white border border-emerald-200 shadow-2xs flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div className="flex items-start gap-3">
-            <div className="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center font-bold shadow-xs shrink-0">
-              <Download className="w-5 h-5" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h3 className="font-bold text-slate-900 text-sm sm:text-base">
-                  Pencadangan Data Sistem (Database Backup)
-                </h3>
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200">
-                  Khusus Super Admin
-                </span>
-              </div>
-              <p className="text-xs text-slate-600 mt-1 max-w-2xl leading-relaxed">
-                Unduh salinan cadangan lengkap seluruh isi database (semua tabel/koleksi) ke dalam 1 file JSON langsung ke komputer atau ponsel Anda. Proses ini hanya membaca data dan aman tanpa mengubah data di server.
-              </p>
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={handleDownloadBackup}
-            disabled={isDownloadingBackup}
-            className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white font-semibold text-xs transition-colors shadow-xs cursor-pointer shrink-0"
-          >
-            <Download className={`w-4 h-4 ${isDownloadingBackup ? 'animate-bounce' : ''}`} />
-            <span>{isDownloadingBackup ? 'Menyiapkan File JSON...' : 'Download Backup Data'}</span>
-          </button>
-        </div>
-      )}
 
       {/* SECTION: Sinkronisasi Data Real-Time VPS */}
       {(activeSubTab === 'all' || activeSubTab === 'live_sync') && (

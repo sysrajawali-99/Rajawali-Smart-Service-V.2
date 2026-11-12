@@ -1,28 +1,27 @@
-import React, { Suspense, lazy } from 'react';
+import React from 'react';
 import { CleaningProvider, useCleaning } from './context/CleaningContext';
 import { Header } from './components/layout/Header';
 import { Sidebar } from './components/layout/Sidebar';
-
-const DashboardView = lazy(() => import('./components/web/DashboardView').then(m => ({ default: m.DashboardView })));
-const AreaCleaningView = lazy(() => import('./components/web/AreaCleaningView').then(m => ({ default: m.AreaCleaningView })));
-const PetugasView = lazy(() => import('./components/web/PetugasView').then(m => ({ default: m.PetugasView })));
-const ShiftView = lazy(() => import('./components/web/ShiftView').then(m => ({ default: m.ShiftView })));
-const JadwalCleaningView = lazy(() => import('./components/web/JadwalCleaningView').then(m => ({ default: m.JadwalCleaningView })));
-const CleaningActivityView = lazy(() => import('./components/web/CleaningActivityView').then(m => ({ default: m.CleaningActivityView })));
-const InspeksiControlView = lazy(() => import('./components/web/InspeksiControlView').then(m => ({ default: m.InspeksiControlView })));
-const ComplaintView = lazy(() => import('./components/web/ComplaintView').then(m => ({ default: m.ComplaintView })));
-const LaporanReportView = lazy(() => import('./components/web/LaporanReportView').then(m => ({ default: m.LaporanReportView })));
-const PengaturanView = lazy(() => import('./components/web/PengaturanView').then(m => ({ default: m.PengaturanView })));
-const LokasiProyekView = lazy(() => import('./components/web/LokasiProyekView').then(m => ({ default: m.LokasiProyekView })));
-const CeklistAreaView = lazy(() => import('./components/web/CeklistAreaView').then(m => ({ default: m.CeklistAreaView })));
-const MasterCleaningProgramView = lazy(() => import('./components/web/MasterCleaningProgramView').then(m => ({ default: m.MasterCleaningProgramView })));
-const DailyActivityView = lazy(() => import('./components/web/DailyActivityView').then(m => ({ default: m.DailyActivityView })));
-const WeeklyActivityView = lazy(() => import('./components/web/WeeklyActivityView').then(m => ({ default: m.WeeklyActivityView })));
-const MonthlyActivityView = lazy(() => import('./components/web/MonthlyActivityView').then(m => ({ default: m.MonthlyActivityView })));
-const SpecialJobView = lazy(() => import('./components/web/SpecialJobView').then(m => ({ default: m.SpecialJobView })));
-const DamageReportView = lazy(() => import('./components/web/DamageReportView').then(m => ({ default: m.DamageReportView })));
-const KlienModeView = lazy(() => import('./components/web/klien/KlienModeView').then(m => ({ default: m.KlienModeView })));
-const CompanyManagementView = lazy(() => import('./components/web/CompanyManagementView').then(m => ({ default: m.CompanyManagementView })));
+import { DashboardView } from './components/web/DashboardView';
+import { AreaCleaningView } from './components/web/AreaCleaningView';
+import { PetugasView } from './components/web/PetugasView';
+import { ShiftView } from './components/web/ShiftView';
+import { JadwalCleaningView } from './components/web/JadwalCleaningView';
+import { CleaningActivityView } from './components/web/CleaningActivityView';
+import { InspeksiControlView } from './components/web/InspeksiControlView';
+import { ComplaintView } from './components/web/ComplaintView';
+import { LaporanReportView } from './components/web/LaporanReportView';
+import { PengaturanView } from './components/web/PengaturanView';
+import { LokasiProyekView } from './components/web/LokasiProyekView';
+import { CeklistAreaView } from './components/web/CeklistAreaView';
+import { MasterCleaningProgramView } from './components/web/MasterCleaningProgramView';
+import { DailyActivityView } from './components/web/DailyActivityView';
+import { WeeklyActivityView } from './components/web/WeeklyActivityView';
+import { MonthlyActivityView } from './components/web/MonthlyActivityView';
+import { SpecialJobView } from './components/web/SpecialJobView';
+import { DamageReportView } from './components/web/DamageReportView';
+import { KlienModeView } from './components/web/klien/KlienModeView';
+import { CompanyManagementView } from './components/web/CompanyManagementView';
 import { LoginPage } from './components/auth/LoginPage';
 import { OverdueAlertBanner } from './components/layout/OverdueAlertBanner';
 import { InstallPrompt } from './components/InstallPrompt';
@@ -31,111 +30,6 @@ import { TopNotificationPopup, triggerTopNotification } from './components/commo
 import { ShieldAlert } from 'lucide-react';
 import { updateDocumentFavicon, updateDocumentTitle, getActiveAppIcon } from './utils/dynamicFavicon';
 import { setAppBadgeCount, clearAppBadgeCount } from './utils/appBadge';
-import { preloadAllViews } from './utils/routePreloader';
-
-const PageLoadingFallback: React.FC = () => (
-  <div className="w-full animate-pulse space-y-4 py-2">
-    <div className="h-1 w-full bg-slate-200 overflow-hidden rounded-full">
-      <div className="h-full bg-sky-500 animate-[indeterminate_1.2s_infinite_linear] rounded-full"></div>
-    </div>
-    <div className="bg-white rounded-2xl p-6 border border-slate-200 space-y-4 shadow-xs">
-      <div className="h-6 bg-slate-200 rounded w-1/4"></div>
-      <div className="h-4 bg-slate-100 rounded w-1/2"></div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 pt-3">
-        {[1, 2, 3, 4].map((i) => (
-          <div key={i} className="h-20 bg-slate-50 border border-slate-100 rounded-xl p-3"></div>
-        ))}
-      </div>
-      <div className="h-32 bg-slate-50 border border-slate-100 rounded-xl"></div>
-    </div>
-  </div>
-);
-
-const ActiveViewRouter = React.memo<{
-  activeTab: string;
-  isAllowed: boolean;
-  userRole: string;
-  setActiveTab: (tab: string) => void;
-}>(({ activeTab, isAllowed, userRole, setActiveTab }) => {
-  if (!isAllowed) {
-    return (
-      <div className="p-8 text-center bg-white rounded-2xl border border-slate-200 shadow-sm max-w-md mx-auto my-12">
-        <div className="w-12 h-12 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center mx-auto mb-4">
-          <ShieldAlert className="w-6 h-6" />
-        </div>
-        <h2 className="text-lg font-bold text-slate-800 mb-1">Akses Menu Dibatasi</h2>
-        <p className="text-sm text-slate-600 mb-6 leading-relaxed">
-          Peran akun Anda (<span className="font-semibold text-slate-800 capitalize">{userRole}</span>) belum diizinkan membuka menu ini sesuai konfigurasi Matriks Hak Akses (RBAC).
-        </p>
-        <button
-          type="button"
-          onClick={() => setActiveTab(userRole === 'klien' ? 'klien-mode' : 'dashboard')}
-          className="px-5 py-2.5 bg-sky-600 hover:bg-sky-700 text-white text-sm font-medium rounded-xl shadow-sm transition-colors cursor-pointer"
-        >
-          Kembali ke {userRole === 'klien' ? 'Portal Klien Mode' : 'Dashboard'}
-        </button>
-      </div>
-    );
-  }
-
-  switch (activeTab) {
-    case 'dashboard':
-      return <DashboardView />;
-    // Inspeksi Report
-    case 'ceklist':
-      return <CeklistAreaView />;
-    case 'area':
-      return <AreaCleaningView />;
-    case 'activity':
-      return <CleaningActivityView />;
-    case 'inspeksi':
-      return <InspeksiControlView />;
-    case 'report':
-      return <LaporanReportView />;
-    // Operational Report
-    case 'petugas':
-      return <PetugasView />;
-    case 'shift':
-      return <ShiftView />;
-    case 'jadwal':
-      return <JadwalCleaningView />;
-    case 'kerusakan':
-    case 'damage-report':
-      return <DamageReportView />;
-    case 'proyek':
-      return <LokasiProyekView />;
-    // Activity Report
-    case 'daily-activity':
-      return <DailyActivityView />;
-    case 'weekly-activity':
-      return <WeeklyActivityView />;
-    case 'monthly-activity':
-      return <MonthlyActivityView />;
-    case 'special-job':
-      return <SpecialJobView />;
-    case 'master-program':
-    case 'mcp':
-      return <MasterCleaningProgramView />;
-    case 'complaint':
-      return <ComplaintView />;
-    // Klien Mode Portal & Sub-Menu
-    case 'klien-mode':
-    case 'klien-manpower':
-    case 'klien-checklist':
-    case 'klien-kerusakan':
-    case 'klien-activity':
-    case 'klien-keluhan':
-      return <KlienModeView initialSubTab={activeTab} />;
-    // Sistem & Master Data
-    case 'perusahaan':
-    case 'companies':
-      return <CompanyManagementView />;
-    case 'pengaturan':
-      return <PengaturanView />;
-    default:
-      return userRole === 'klien' ? <KlienModeView initialSubTab="manpower" /> : <DashboardView />;
-  }
-});
 
 const MainLayout: React.FC = () => {
   const {
@@ -217,17 +111,6 @@ const MainLayout: React.FC = () => {
     }
   }, [isAuthenticated, userRole, activeTab, setActiveTab]);
 
-  // Background preloading of all route bundles during browser idle time
-  React.useEffect(() => {
-    if (isAuthenticated && !isInitialLoading) {
-      if ('requestIdleCallback' in window) {
-        (window as any).requestIdleCallback(() => preloadAllViews());
-      } else {
-        setTimeout(preloadAllViews, 600);
-      }
-    }
-  }, [isAuthenticated, isInitialLoading]);
-
   if (!isAuthenticated) {
     return (
       <div className="h-screen flex flex-col overflow-hidden">
@@ -255,6 +138,87 @@ const MainLayout: React.FC = () => {
 
   const isAllowed = hasAccess(userRole, activeTab);
 
+  const renderActiveWebView = () => {
+    if (!isAllowed) {
+      return (
+        <div className="p-8 text-center bg-white rounded-2xl border border-slate-200 shadow-sm max-w-md mx-auto my-12">
+          <div className="w-12 h-12 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center mx-auto mb-4">
+            <ShieldAlert className="w-6 h-6" />
+          </div>
+          <h2 className="text-lg font-bold text-slate-800 mb-1">Akses Menu Dibatasi</h2>
+          <p className="text-sm text-slate-600 mb-6 leading-relaxed">
+            Peran akun Anda (<span className="font-semibold text-slate-800 capitalize">{userRole}</span>) belum diizinkan membuka menu ini sesuai konfigurasi Matriks Hak Akses (RBAC).
+          </p>
+          <button
+            type="button"
+            onClick={() => setActiveTab(userRole === 'klien' ? 'klien-mode' : 'dashboard')}
+            className="px-5 py-2.5 bg-sky-600 hover:bg-sky-700 text-white text-sm font-medium rounded-xl shadow-sm transition-colors cursor-pointer"
+          >
+            Kembali ke {userRole === 'klien' ? 'Portal Klien Mode' : 'Dashboard'}
+          </button>
+        </div>
+      );
+    }
+
+    switch (activeTab) {
+      case 'dashboard':
+        return <DashboardView />;
+      // Inspeksi Report
+      case 'ceklist':
+        return <CeklistAreaView />;
+      case 'area':
+        return <AreaCleaningView />;
+      case 'activity':
+        return <CleaningActivityView />;
+      case 'inspeksi':
+        return <InspeksiControlView />;
+      case 'report':
+        return <LaporanReportView />;
+      // Operational Report
+      case 'petugas':
+        return <PetugasView />;
+      case 'shift':
+        return <ShiftView />;
+      case 'jadwal':
+        return <JadwalCleaningView />;
+      case 'kerusakan':
+      case 'damage-report':
+        return <DamageReportView />;
+      case 'proyek':
+        return <LokasiProyekView />;
+      // Activity Report
+      case 'daily-activity':
+        return <DailyActivityView />;
+      case 'weekly-activity':
+        return <WeeklyActivityView />;
+      case 'monthly-activity':
+        return <MonthlyActivityView />;
+      case 'special-job':
+        return <SpecialJobView />;
+      case 'master-program':
+      case 'mcp':
+        return <MasterCleaningProgramView />;
+      case 'complaint':
+        return <ComplaintView />;
+      // Klien Mode Portal & Sub-Menu
+      case 'klien-mode':
+      case 'klien-manpower':
+      case 'klien-checklist':
+      case 'klien-kerusakan':
+      case 'klien-activity':
+      case 'klien-keluhan':
+        return <KlienModeView initialSubTab={activeTab} />;
+      // Sistem & Master Data
+      case 'perusahaan':
+      case 'companies':
+        return <CompanyManagementView />;
+      case 'pengaturan':
+        return <PengaturanView />;
+      default:
+        return userRole === 'klien' ? <KlienModeView initialSubTab="manpower" /> : <DashboardView />;
+    }
+  };
+
   return (
     <div className="h-screen flex flex-col bg-slate-50 font-sans text-slate-900 antialiased selection:bg-sky-500 selection:text-white overflow-hidden">
       <TopNotificationPopup />
@@ -268,14 +232,7 @@ const MainLayout: React.FC = () => {
         <Sidebar />
         <main className="flex-1 overflow-y-auto bg-slate-50 min-h-0">
           <div className="max-w-7xl mx-auto w-full p-3 sm:p-5 md:p-6 lg:p-8">
-            <Suspense fallback={<PageLoadingFallback />}>
-              <ActiveViewRouter
-                activeTab={activeTab}
-                isAllowed={isAllowed}
-                userRole={userRole}
-                setActiveTab={setActiveTab}
-              />
-            </Suspense>
+            {renderActiveWebView()}
           </div>
         </main>
       </div>

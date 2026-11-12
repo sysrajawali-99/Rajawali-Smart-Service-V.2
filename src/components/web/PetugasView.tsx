@@ -31,7 +31,8 @@ import {
 import { useCleaning } from '../../context/CleaningContext';
 import { Cleaner, AttendanceStatusCode } from '../../types';
 import { calculateWorkingDays } from '../../utils/shiftUtils';
-
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 const MONTH_NAMES = [
   'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
@@ -383,11 +384,7 @@ export const PetugasView: React.FC = () => {
   };
 
   // Export to PDF
-  const handleExportPDF = async () => {
-    const [{ default: jsPDF }, { default: autoTable }] = await Promise.all([
-      import('jspdf'),
-      import('jspdf-autotable'),
-    ]);
+  const handleExportPDF = () => {
     const doc = new jsPDF({
       orientation: 'landscape',
       unit: 'mm',

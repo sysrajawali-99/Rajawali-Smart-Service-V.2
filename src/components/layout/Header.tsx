@@ -21,7 +21,7 @@ import { getActiveAppIcon } from '../../utils/dynamicFavicon';
 import { getFullUploadUrl } from '../../services/apiService';
 import { SupabaseStatusModal } from '../modals/SupabaseStatusModal';
 
-export const Header: React.FC = React.memo(() => {
+export const Header: React.FC = () => {
   const {
     userRole,
     setUserRole,
@@ -293,21 +293,6 @@ export const Header: React.FC = React.memo(() => {
 
         {/* Right Side: Role Selector / User Info, Notifications, Reload & Logout */}
         <div className="flex items-center gap-2 sm:gap-2.5 shrink-0">
-          {(userRole === 'admin' || userRole === 'super_admin' || userRole === 'admin_perusahaan' || userRole === 'supervisor') && (
-            <button
-              type="button"
-              onClick={() => setActiveTab(activeTab.startsWith('klien') ? 'dashboard' : 'klien-mode')}
-              className={`hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-semibold transition-colors cursor-pointer ${
-                activeTab.startsWith('klien')
-                  ? 'bg-indigo-600 text-white border-indigo-600 hover:bg-indigo-700'
-                  : 'bg-white text-indigo-700 border-indigo-200 hover:bg-indigo-50'
-              }`}
-              title="Beralih antara tampilan operasional dan tampilan Portal Klien"
-            >
-              <Building2 className="w-3.5 h-3.5 shrink-0" />
-              <span>{activeTab.startsWith('klien') ? 'Kembali ke Admin' : 'Lihat sebagai Klien'}</span>
-            </button>
-          )}
           {/* Super Admin Switcher OR Non-Admin User Info (Desktop only lg:; hidden on mobile & tablet, available inside bell) */}
           {userRole === 'admin' || userRole === 'super_admin' ? (
             <div className="relative hidden lg:block">
@@ -685,4 +670,4 @@ export const Header: React.FC = React.memo(() => {
       />
     </header>
   );
-});
+};

@@ -1,6 +1,6 @@
 // JTI Smart / Smart Cleaning Operations - Progressive Web App Service Worker
 // Versioned cache with current timestamp for reliable cache invalidation
-const CACHE_VERSION = 'jti-smart-v2026-11-12-perf';
+const CACHE_VERSION = 'jti-smart-v2026-11-04-badge';
 const STATIC_CACHE = `jti-static-${CACHE_VERSION}`;
 const ASSET_CACHE = `jti-assets-${CACHE_VERSION}`;
 
@@ -31,7 +31,7 @@ self.addEventListener('install', (event) => {
   );
 });
 
-// Activate: clean up all outdated versioned caches and claim active clients immediately
+// Activate: clean up all outdated versioned caches and claim active clients
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches
@@ -57,7 +57,7 @@ self.addEventListener('message', (event) => {
   }
 });
 
-// Fetch: network-first navigation with offline.html fallback, cache-first with background revalidation for static assets
+// Fetch: network-first navigation with offline.html fallback, cache-first for static assets
 self.addEventListener('fetch', (event) => {
   const { request } = event;
 
@@ -115,7 +115,7 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // 2. Static assets & Icons: Cache-first with network fallback & background update
+  // 2. Static assets & Icons: Cache-first with network fallback
   if (
     url.pathname.startsWith('/assets/') ||
     url.pathname.startsWith('/icons/') ||
@@ -125,17 +125,16 @@ self.addEventListener('fetch', (event) => {
   ) {
     event.respondWith(
       caches.match(request).then((cached) => {
-        const fetchPromise = fetch(request)
-          .then((networkResponse) => {
-            if (networkResponse && networkResponse.status === 200) {
-              const clone = networkResponse.clone();
-              caches.open(ASSET_CACHE).then((cache) => cache.put(request, clone));
-            }
-            return networkResponse;
-          })
-          .catch(() => cached);
-
-        return cached || fetchPromise;
+        if (cached) {
+          return cached;
+        }
+        return fetch(request).then((networkResponse) => {
+          if (networkResponse && networkResponse.status === 200) {
+            const clone = networkResponse.clone();
+            caches.open(ASSET_CACHE).then((cache) => cache.put(request, clone));
+          }
+          return networkResponse;
+        });
       })
     );
     return;

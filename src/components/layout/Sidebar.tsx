@@ -25,7 +25,6 @@ import {
   ChevronRight,
 } from 'lucide-react';
 import { useCleaning } from '../../context/CleaningContext';
-import { preloadComponent } from '../../utils/routePreloader';
 
 interface MenuItem {
   id: string;
@@ -43,7 +42,7 @@ interface MenuGroup {
   items: MenuItem[];
 }
 
-export const Sidebar: React.FC = React.memo(() => {
+export const Sidebar: React.FC = () => {
   const {
     activeTab,
     setActiveTab,
@@ -181,14 +180,12 @@ export const Sidebar: React.FC = React.memo(() => {
         },
       ],
     },
-    ...(userRole === 'klien'
-      ? [
-          {
-            id: 'klien-mode-group',
-            title: 'Klien Mode',
-            icon: Building2,
-            colorBadge: 'bg-indigo-100 text-indigo-800 border-indigo-200',
-            items: [
+    {
+      id: 'klien-mode-group',
+      title: 'Klien Mode',
+      icon: Building2,
+      colorBadge: 'bg-indigo-100 text-indigo-800 border-indigo-200',
+      items: [
         {
           id: 'klien-manpower',
           label: 'Manpower',
@@ -220,8 +217,6 @@ export const Sidebar: React.FC = React.memo(() => {
         },
       ],
     },
-        ]
-      : []),
   ];
 
   // Filter groups and items by RBAC matrix
@@ -269,10 +264,7 @@ export const Sidebar: React.FC = React.memo(() => {
   };
 
   const handleNavClick = (tabId: string) => {
-    preloadComponent(tabId);
-    React.startTransition(() => {
-      setActiveTab(tabId);
-    });
+    setActiveTab(tabId);
     setMobileMenuOpen(false);
   };
 
@@ -328,8 +320,6 @@ export const Sidebar: React.FC = React.memo(() => {
               <button
                 id="sidebar-nav-dashboard"
                 onClick={() => handleNavClick('dashboard')}
-                onMouseEnter={() => preloadComponent('dashboard')}
-                onTouchStart={() => preloadComponent('dashboard')}
                 className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
                   activeTab === 'dashboard'
                     ? 'bg-sky-600 text-white shadow-sm shadow-sky-200'
@@ -363,8 +353,6 @@ export const Sidebar: React.FC = React.memo(() => {
               <button
                 id="sidebar-nav-klien-mode"
                 onClick={() => handleNavClick('klien-mode')}
-                onMouseEnter={() => preloadComponent('klien-mode')}
-                onTouchStart={() => preloadComponent('klien-mode')}
                 className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
                   activeTab === 'klien-mode'
                     ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-200'
@@ -398,8 +386,6 @@ export const Sidebar: React.FC = React.memo(() => {
               <button
                 id="sidebar-nav-companies"
                 onClick={() => handleNavClick('perusahaan')}
-                onMouseEnter={() => preloadComponent('perusahaan')}
-                onTouchStart={() => preloadComponent('perusahaan')}
                 className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
                   activeTab === 'perusahaan'
                     ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-200'
@@ -505,8 +491,6 @@ export const Sidebar: React.FC = React.memo(() => {
                           key={item.id}
                           id={`sidebar-nav-${item.id}`}
                           onClick={() => handleNavClick(item.id)}
-                          onMouseEnter={() => preloadComponent(item.id)}
-                          onTouchStart={() => preloadComponent(item.id)}
                           className={`w-full flex items-center justify-between px-2.5 py-2 rounded-xl text-xs font-medium transition-all cursor-pointer ${
                             isActive
                               ? 'bg-sky-600 text-white font-semibold shadow-xs'
@@ -547,8 +531,6 @@ export const Sidebar: React.FC = React.memo(() => {
               <button
                 id="sidebar-nav-pengaturan"
                 onClick={() => handleNavClick('pengaturan')}
-                onMouseEnter={() => preloadComponent('pengaturan')}
-                onTouchStart={() => preloadComponent('pengaturan')}
                 className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-medium transition-all cursor-pointer ${
                   activeTab === 'pengaturan'
                     ? 'bg-sky-600 text-white font-semibold shadow-xs'
@@ -596,4 +578,4 @@ export const Sidebar: React.FC = React.memo(() => {
       </aside>
     </>
   );
-});
+};
