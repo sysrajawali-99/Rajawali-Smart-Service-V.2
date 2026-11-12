@@ -201,6 +201,20 @@ export const AreaCleaningView: React.FC = () => {
     return list;
   }, [areas]);
 
+  // Reset floor, type and search filters when active project changes to prevent displaying empty views
+  useEffect(() => {
+    setSelectedFloor('all');
+    setSelectedType('all');
+    setSearch('');
+  }, [activeProject?.id]);
+
+  // If currently selected floor does not exist in the new project floor list, reset to 'all'
+  useEffect(() => {
+    if (selectedFloor !== 'all' && !existingFloors.includes(selectedFloor)) {
+      setSelectedFloor('all');
+    }
+  }, [existingFloors, selectedFloor]);
+
   // Filtered areas based on search, floor, and type
   const filteredAreas = useMemo(() => {
     return areas.filter((area) => {
@@ -234,10 +248,11 @@ export const AreaCleaningView: React.FC = () => {
 
   // Helper: Find matching checklist location for an area
   const getChecklistForArea = (area: Area) => {
-    const targetProjectId = area.projectId || activeProject?.id || 'proj-1';
+    const fallbackProjId = activeProject?.id || 'proj-1793818532678';
+    const targetProjectId = area.projectId || fallbackProjId;
     return checklistLocations.find(
       (l) =>
-        (l.projectId || 'proj-1') === targetProjectId &&
+        (l.projectId || fallbackProjId) === targetProjectId &&
         (l.areaId === area.id ||
           l.name.trim().toLowerCase() === area.name.trim().toLowerCase() ||
           (l.code && area.code && l.code.trim().toUpperCase() === area.code.trim().toUpperCase()))

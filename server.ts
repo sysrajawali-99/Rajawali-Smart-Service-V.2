@@ -1,4 +1,5 @@
-import express, { Request, Response, NextFunction } from 'express';
+import express from 'express';
+import type { Request, Response, NextFunction } from 'express';
 import http from 'http';
 import path from 'path';
 import fs from 'fs';
@@ -10,8 +11,8 @@ import webpush from 'web-push';
 import dotenv from 'dotenv';
 import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
-import { INITIAL_USERS } from './src/data/initialData';
-import { syncFromLiveServer } from './scripts/sync-from-live';
+import { INITIAL_USERS } from './src/data/initialData.ts';
+import { syncFromLiveServer } from './scripts/sync-from-live.ts';
 
 dotenv.config();
 
@@ -34,8 +35,8 @@ httpServer.on('error', (err: any) => {
   console.error('[Server] HTTP Server event error:', err?.message || err);
 });
 
-// Configuration - port 3000 is required for AI Studio preview
-const PORT = 3000;
+// Configuration - port 3000 is default for AI Studio preview, dynamic for Cloud Run / production
+const PORT = Number(process.env.PORT) || 3000;
 const uploadsDir = path.resolve(process.cwd(), 'uploads');
 
 if (!fs.existsSync(uploadsDir)) {

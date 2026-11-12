@@ -159,7 +159,7 @@ export async function syncFromLiveServer() {
   return { success: true, summary: syncSummary, primaryProjectId };
 }
 
-const isDirectRun = typeof import.meta !== 'undefined' && import.meta?.url ? import.meta.url === `file://${process.argv[1]}` : false;
+const isDirectRun = Boolean(process.argv[1] && process.argv[1].endsWith('sync-from-live.ts'));
 if (isDirectRun) {
   syncFromLiveServer()
     .then((res) => {

@@ -952,16 +952,36 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     userRole === 'super_admin' ||
     userRole === 'admin_perusahaan' ||
     userRole === 'service_manager';
-  const allowedProjects =
-    isAdminOrSuper
-      ? projects
-      : projects.filter((p) => currentUser?.assignedProjectIds?.includes(p.id));
+
+  const defaultProjectId = projects[0]?.id || 'proj-1793818532678';
+
+  const allowedProjects = useMemo(() => {
+    if (isAdminOrSuper) return projects;
+    const userProjs = currentUser?.assignedProjectIds;
+    if (Array.isArray(userProjs) && userProjs.length > 0) {
+      const filtered = projects.filter((p) => userProjs.includes(p.id));
+      if (filtered.length > 0) return filtered;
+    }
+    // Defensive fallback: If user is non-admin but assignedProjectIds hasn't been set yet or projects is still matching,
+    // fallback to available projects so area and task data is NEVER completely empty!
+    return projects;
+  }, [isAdminOrSuper, projects, currentUser?.assignedProjectIds]);
 
   // If activeProjectId is not in allowedProjects, automatically select first allowed
-  const safeActiveProjectId =
-    allowedProjects.some((p) => p.id === activeProjectId)
-      ? activeProjectId
-      : allowedProjects[0]?.id || (isAdminOrSuper ? projects[0]?.id || 'proj-1793818532678' : '');
+  const safeActiveProjectId = useMemo(() => {
+    if (allowedProjects.some((p) => p.id === activeProjectId)) {
+      return activeProjectId;
+    }
+    return allowedProjects[0]?.id || defaultProjectId;
+  }, [allowedProjects, activeProjectId, defaultProjectId]);
+
+  // Synchronize state and localStorage if safeActiveProjectId diverged
+  useEffect(() => {
+    if (safeActiveProjectId && safeActiveProjectId !== activeProjectId) {
+      setActiveProjectIdState(safeActiveProjectId);
+      localStorage.setItem('sco_active_project_id', safeActiveProjectId);
+    }
+  }, [safeActiveProjectId, activeProjectId]);
 
   const setActiveProjectId = (id: string) => {
     // Only allow setting if admin OR if id is in allowedProjects
@@ -2125,11 +2145,33 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         setActiveUserId(apiRes.user.id);
         setUserRole(apiRes.user.role);
 
-        const userAllowedProjs =
-          apiRes.user.role === 'admin' || apiRes.user.role === 'super_admin' || apiRes.user.role === 'admin_perusahaan'
-            ? projects
-            : projects.filter((p) => apiRes.user.assignedProjectIds?.includes(p.id));
-        const nextProjId = userAllowedProjs[0]?.id || projects[0]?.id || 'proj-1';
+        // Update local users array with the authentic user info from backend
+        setUsers((prev) => {
+          const idx = prev.findIndex((u) => u.id === apiRes.user.id);
+          if (idx >= 0) {
+            const next = [...prev];
+            next[idx] = { ...next[idx], ...apiRes.user };
+            return next;
+          }
+          return [...prev, apiRes.user];
+        });
+
+        const userProjs = apiRes.user.assignedProjectIds || [];
+        const isUserAdmin =
+          apiRes.user.role === 'admin' ||
+          apiRes.user.role === 'super_admin' ||
+          apiRes.user.role === 'admin_perusahaan' ||
+          apiRes.user.role === 'service_manager';
+
+        let nextProjId = '';
+        if (isUserAdmin) {
+          nextProjId = projects[0]?.id || 'proj-1793818532678';
+        } else if (userProjs.length > 0) {
+          nextProjId = userProjs[0];
+        } else {
+          nextProjId = projects[0]?.id || 'proj-1793818532678';
+        }
+
         setActiveProjectIdState(nextProjId);
         localStorage.setItem('sco_active_project_id', nextProjId);
 
@@ -2197,11 +2239,22 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setActiveUserId(matchedUser.id);
     setUserRole(matchedUser.role);
 
-    const userAllowedProjs =
-      matchedUser.role === 'admin' || matchedUser.role === 'super_admin' || matchedUser.role === 'admin_perusahaan'
-        ? projects
-        : projects.filter((p) => matchedUser.assignedProjectIds?.includes(p.id));
-    const nextProjId = userAllowedProjs[0]?.id || projects[0]?.id || 'proj-1';
+    const userProjs = matchedUser.assignedProjectIds || [];
+    const isUserAdmin =
+      matchedUser.role === 'admin' ||
+      matchedUser.role === 'super_admin' ||
+      matchedUser.role === 'admin_perusahaan' ||
+      matchedUser.role === 'service_manager';
+
+    let nextProjId = '';
+    if (isUserAdmin) {
+      nextProjId = projects[0]?.id || 'proj-1793818532678';
+    } else if (userProjs.length > 0) {
+      nextProjId = userProjs[0];
+    } else {
+      nextProjId = projects[0]?.id || 'proj-1793818532678';
+    }
+
     setActiveProjectIdState(nextProjId);
     localStorage.setItem('sco_active_project_id', nextProjId);
 
@@ -2229,11 +2282,32 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         setActiveUserId(apiRes.user.id);
         setUserRole(apiRes.user.role);
 
-        const userAllowedProjs =
-          apiRes.user.role === 'admin' || apiRes.user.role === 'super_admin' || apiRes.user.role === 'admin_perusahaan'
-            ? projects
-            : projects.filter((p) => apiRes.user.assignedProjectIds?.includes(p.id));
-        const nextProjId = userAllowedProjs[0]?.id || projects[0]?.id || 'proj-1';
+        setUsers((prev) => {
+          const idx = prev.findIndex((u) => u.id === apiRes.user.id);
+          if (idx >= 0) {
+            const next = [...prev];
+            next[idx] = { ...next[idx], ...apiRes.user };
+            return next;
+          }
+          return [...prev, apiRes.user];
+        });
+
+        const userProjs = apiRes.user.assignedProjectIds || [];
+        const isUserAdmin =
+          apiRes.user.role === 'admin' ||
+          apiRes.user.role === 'super_admin' ||
+          apiRes.user.role === 'admin_perusahaan' ||
+          apiRes.user.role === 'service_manager';
+
+        let nextProjId = '';
+        if (isUserAdmin) {
+          nextProjId = projects[0]?.id || 'proj-1793818532678';
+        } else if (userProjs.length > 0) {
+          nextProjId = userProjs[0];
+        } else {
+          nextProjId = projects[0]?.id || 'proj-1793818532678';
+        }
+
         setActiveProjectIdState(nextProjId);
         localStorage.setItem('sco_active_project_id', nextProjId);
 
@@ -2260,11 +2334,22 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setActiveUserId(matchedUser.id);
     setUserRole(matchedUser.role);
 
-    const userAllowedProjs =
-      matchedUser.role === 'admin' || matchedUser.role === 'super_admin' || matchedUser.role === 'admin_perusahaan'
-        ? projects
-        : projects.filter((p) => matchedUser.assignedProjectIds?.includes(p.id));
-    const nextProjId = userAllowedProjs[0]?.id || projects[0]?.id || 'proj-1';
+    const userProjs = matchedUser.assignedProjectIds || [];
+    const isUserAdmin =
+      matchedUser.role === 'admin' ||
+      matchedUser.role === 'super_admin' ||
+      matchedUser.role === 'admin_perusahaan' ||
+      matchedUser.role === 'service_manager';
+
+    let nextProjId = '';
+    if (isUserAdmin) {
+      nextProjId = projects[0]?.id || 'proj-1793818532678';
+    } else if (userProjs.length > 0) {
+      nextProjId = userProjs[0];
+    } else {
+      nextProjId = projects[0]?.id || 'proj-1793818532678';
+    }
+
     setActiveProjectIdState(nextProjId);
     localStorage.setItem('sco_active_project_id', nextProjId);
 
@@ -3299,37 +3384,37 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   // Filter operational data by the active project location (strictly isolate locations)
-  const filteredAreas = areas.filter((a) => (a.projectId || 'proj-1') === safeActiveProjectId);
-  const filteredCleaners = cleaners.filter((c) => (c.projectId || 'proj-1') === safeActiveProjectId);
-  const filteredSchedules = schedules.filter((s) => (s.projectId || 'proj-1') === safeActiveProjectId);
-  const filteredTasks = tasks.filter((t) => (t.projectId || 'proj-1') === safeActiveProjectId);
-  const filteredInspections = inspections.filter((i) => (i.projectId || 'proj-1') === safeActiveProjectId);
-  const filteredComplaints = complaints.filter((c) => (c.projectId || 'proj-1') === safeActiveProjectId);
+  const filteredAreas = areas.filter((a) => (a.projectId || defaultProjectId) === safeActiveProjectId);
+  const filteredCleaners = cleaners.filter((c) => (c.projectId || defaultProjectId) === safeActiveProjectId);
+  const filteredSchedules = schedules.filter((s) => (s.projectId || defaultProjectId) === safeActiveProjectId);
+  const filteredTasks = tasks.filter((t) => (t.projectId || defaultProjectId) === safeActiveProjectId);
+  const filteredInspections = inspections.filter((i) => (i.projectId || defaultProjectId) === safeActiveProjectId);
+  const filteredComplaints = complaints.filter((c) => (c.projectId || defaultProjectId) === safeActiveProjectId);
   const filteredChecklistLocations = checklistLocations.filter(
-    (cl) => (cl.projectId || 'proj-1') === safeActiveProjectId
+    (cl) => (cl.projectId || defaultProjectId) === safeActiveProjectId
   );
   const filteredDailyChecklists = dailyChecklists.filter(
-    (d) => (d.projectId || 'proj-1') === safeActiveProjectId
+    (d) => (d.projectId || defaultProjectId) === safeActiveProjectId
   );
   const filteredMasterPrograms = masterPrograms.filter(
-    (m) => (m.projectId || 'proj-1') === safeActiveProjectId
+    (m) => (m.projectId || defaultProjectId) === safeActiveProjectId
   );
   const filteredDamageReports = damageReports.filter(
-    (r) => (r.projectId || 'proj-1') === safeActiveProjectId
+    (r) => (r.projectId || defaultProjectId) === safeActiveProjectId
   );
 
   // Klien Mode Filtered Data by Active Project
   const filteredTurnovers = employeeTurnovers.filter(
-    (to) => (to.projectId || 'proj-1') === safeActiveProjectId
+    (to) => (to.projectId || defaultProjectId) === safeActiveProjectId
   );
   const filteredKlienChecklistItems = klienChecklistItems.filter(
-    (item) => (item.projectId || 'proj-1') === safeActiveProjectId
+    (item) => (item.projectId || defaultProjectId) === safeActiveProjectId
   );
   const filteredKlienChecklistInspections = klienChecklistInspections.filter(
-    (insp) => (insp.projectId || 'proj-1') === safeActiveProjectId
+    (insp) => (insp.projectId || defaultProjectId) === safeActiveProjectId
   );
   const filteredSpecialJobs = specialJobs.filter(
-    (job) => (job.projectId || 'proj-1') === safeActiveProjectId
+    (job) => (job.projectId || defaultProjectId) === safeActiveProjectId
   );
 
   const addSpecialJob = (job: Omit<SpecialJobItem, 'id' | 'ticketNo' | 'createdAt'>): SpecialJobItem => {
@@ -3463,14 +3548,25 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   // Global areas/tasks filtered by user's assigned projects for non-admin
-  const accessibleAllAreas =
-    userRole === 'admin' || userRole === 'super_admin' || userRole === 'admin_perusahaan'
-      ? areas
-      : areas.filter((a) => currentUser?.assignedProjectIds?.includes(a.projectId || 'proj-1'));
-  const accessibleAllTasks =
-    userRole === 'admin' || userRole === 'super_admin' || userRole === 'admin_perusahaan'
-      ? tasks
-      : tasks.filter((t) => currentUser?.assignedProjectIds?.includes(t.projectId || 'proj-1'));
+  const accessibleAllAreas = useMemo(() => {
+    if (isAdminOrSuper) return areas;
+    const userProjs = currentUser?.assignedProjectIds;
+    if (Array.isArray(userProjs) && userProjs.length > 0) {
+      const filtered = areas.filter((a) => userProjs.includes(a.projectId || defaultProjectId));
+      if (filtered.length > 0) return filtered;
+    }
+    return areas;
+  }, [isAdminOrSuper, areas, currentUser?.assignedProjectIds, defaultProjectId]);
+
+  const accessibleAllTasks = useMemo(() => {
+    if (isAdminOrSuper) return tasks;
+    const userProjs = currentUser?.assignedProjectIds;
+    if (Array.isArray(userProjs) && userProjs.length > 0) {
+      const filtered = tasks.filter((t) => userProjs.includes(t.projectId || defaultProjectId));
+      if (filtered.length > 0) return filtered;
+    }
+    return tasks;
+  }, [isAdminOrSuper, tasks, currentUser?.assignedProjectIds, defaultProjectId]);
 
   const addMasterProgram = (item: Omit<MasterCleaningProgramItem, 'id' | 'createdAt' | 'updatedAt'>) => {
     const newItem: MasterCleaningProgramItem = {

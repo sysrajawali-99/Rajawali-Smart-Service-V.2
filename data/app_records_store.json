@@ -14,6 +14,36 @@
       "managerName": "Bapak Sarono ",
       "totalFloors": 5,
       "_rev": "2026-11-10T13:27:28.757Z"
+    },
+    "proj-2": {
+      "id": "proj-2",
+      "code": "PRJ-GKBI",
+      "name": "WISMA GKBI",
+      "address": "Jl. Jend. Sudirman No. 28, Bendungan Hilir",
+      "city": "Jakarta Pusat",
+      "totalFloors": 39,
+      "managerName": "Budi Santoso",
+      "clientName": "Building Management Wisma GKBI",
+      "status": "active",
+      "createdAt": "01 Nov 2026",
+      "companyId": "comp-main",
+      "company_id": "comp-main",
+      "_rev": "2026-11-12T04:29:29.205Z"
+    },
+    "proj-3": {
+      "id": "proj-3",
+      "code": "PRJ-SOETTA",
+      "name": "BANDARA SOEKARNO HATTA (TERMINAL 3)",
+      "address": "Bandara Internasional Soekarno-Hatta, Terminal 3 Ultimate",
+      "city": "Tangerang",
+      "totalFloors": 3,
+      "managerName": "Bambang Haryo",
+      "clientName": "PT Angkasa Pura II",
+      "status": "active",
+      "createdAt": "01 Nov 2026",
+      "companyId": "comp-main",
+      "company_id": "comp-main",
+      "_rev": "2026-11-12T04:29:29.205Z"
     }
   },
   "users": {
@@ -27,7 +57,9 @@
       "companyId": "comp-main",
       "company_id": "comp-main",
       "assignedProjectIds": [
-        "proj-1793818532678"
+        "proj-1793818532678",
+        "proj-2",
+        "proj-3"
       ],
       "mustChangePassword": false,
       "_rev": "2026-11-10T13:27:29.277Z"

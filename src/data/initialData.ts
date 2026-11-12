@@ -1,4 +1,4 @@
-import {
+import type {
   Area,
   Cleaner,
   Shift,
@@ -26,7 +26,7 @@ import {
   KlienChecklistItem,
   KlienChecklistInspection,
   SpecialJobItem,
-} from '../types';
+} from '../types.ts';
 
 export const INITIAL_SHIFTS: Shift[] = [
   {
@@ -238,12 +238,40 @@ export const INITIAL_PROJECTS: ProjectLocation[] = [
     code: 'PRJ-612',
     name: 'BLOK M SQUARE',
     address: 'Malawai 1',
-    city: 'Jakarta',
+    city: 'Jakarta Selatan',
     totalFloors: 5,
     managerName: 'Bapak Sarono ',
     clientName: 'Building Management Blok M Square',
     status: 'active',
     createdAt: '05 Nov 2026',
+    company_id: 'comp-main',
+    companyId: 'comp-main',
+  },
+  {
+    id: 'proj-2',
+    code: 'PRJ-GKBI',
+    name: 'WISMA GKBI',
+    address: 'Jl. Jend. Sudirman No. 28, Bendungan Hilir',
+    city: 'Jakarta Pusat',
+    totalFloors: 39,
+    managerName: 'Budi Santoso',
+    clientName: 'Building Management Wisma GKBI',
+    status: 'active',
+    createdAt: '01 Nov 2026',
+    company_id: 'comp-main',
+    companyId: 'comp-main',
+  },
+  {
+    id: 'proj-3',
+    code: 'PRJ-SOETTA',
+    name: 'BANDARA SOEKARNO HATTA (TERMINAL 3)',
+    address: 'Bandara Internasional Soekarno-Hatta, Terminal 3 Ultimate',
+    city: 'Tangerang',
+    totalFloors: 3,
+    managerName: 'Bambang Haryo',
+    clientName: 'PT Angkasa Pura II',
+    status: 'active',
+    createdAt: '01 Nov 2026',
     company_id: 'comp-main',
     companyId: 'comp-main',
   },
@@ -257,7 +285,7 @@ export const INITIAL_USERS: AppUser[] = [
     username: 'superadmin',
     password: 'admin123',
     role: 'admin',
-    assignedProjectIds: ['proj-1793818532678'],
+    assignedProjectIds: ['proj-1793818532678', 'proj-2', 'proj-3'],
     company_id: 'comp-main',
     companyId: 'comp-main',
   },
