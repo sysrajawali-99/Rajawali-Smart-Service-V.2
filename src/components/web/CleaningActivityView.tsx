@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   Activity,
   CheckCircle2,
@@ -181,6 +181,19 @@ export const CleaningActivityView: React.FC = () => {
       return true;
     });
   }, [tasks, statusFilter, shiftFilter, areaFilter, activeDateFilterDdMmYyyy]);
+
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const pageSize = 20;
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [statusFilter, shiftFilter, areaFilter, activeDateFilterDdMmYyyy]);
+
+  const totalPages = Math.ceil(filteredTasks.length / pageSize) || 1;
+  const paginatedTasks = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return filteredTasks.slice(start, start + pageSize);
+  }, [filteredTasks, currentPage, pageSize]);
 
   const handleExportToMonthly = (taskId: string, areaName: string) => {
     exportTasksToMonthlyReport([taskId], selectedMonth);
@@ -547,7 +560,7 @@ export const CleaningActivityView: React.FC = () => {
 
       {/* Task Activity Cards */}
       <div className="space-y-4">
-        {filteredTasks.map((task) => {
+        {paginatedTasks.map((task) => {
           const statusBadge = getStatusBadge(task.status);
           const checkedCount = task.checklistArea.filter((c) => c.checked).length;
           const totalChecklist = task.checklistArea.length;
@@ -1006,6 +1019,38 @@ export const CleaningActivityView: React.FC = () => {
           );
         })}
       </div>
+
+      {/* Pagination Controls */}
+      {totalPages > 1 && (
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 p-4 bg-white rounded-2xl border border-slate-200 shadow-xs text-xs text-slate-600">
+          <div>
+            Menampilkan <span className="font-bold text-slate-800">{(currentPage - 1) * pageSize + 1}</span> -{' '}
+            <span className="font-bold text-slate-800">{Math.min(currentPage * pageSize, filteredTasks.length)}</span> dari{' '}
+            <span className="font-bold text-slate-800">{filteredTasks.length}</span> aktivitas
+          </div>
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              disabled={currentPage <= 1}
+              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+              className="px-3 py-1.5 rounded-lg border border-slate-200 font-semibold disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-50 cursor-pointer"
+            >
+              Sebelumnya
+            </button>
+            <span className="font-bold text-slate-800 px-2">
+              Halaman {currentPage} dari {totalPages}
+            </span>
+            <button
+              type="button"
+              disabled={currentPage >= totalPages}
+              onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+              className="px-3 py-1.5 rounded-lg border border-slate-200 font-semibold disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-50 cursor-pointer"
+            >
+              Selanjutnya
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Modal Tambah Cleaning Activity & Checklist Kebersihan Area */}
       {showAddActivityModal && (

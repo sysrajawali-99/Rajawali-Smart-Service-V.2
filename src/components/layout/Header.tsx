@@ -21,7 +21,7 @@ import { getActiveAppIcon } from '../../utils/dynamicFavicon';
 import { getFullUploadUrl } from '../../services/apiService';
 import { SupabaseStatusModal } from '../modals/SupabaseStatusModal';
 
-export const Header: React.FC = () => {
+export const Header: React.FC = React.memo(() => {
   const {
     userRole,
     setUserRole,
@@ -685,4 +685,4 @@ export const Header: React.FC = () => {
       />
     </header>
   );
-};
+});

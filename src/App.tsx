@@ -31,6 +31,111 @@ import { TopNotificationPopup, triggerTopNotification } from './components/commo
 import { ShieldAlert } from 'lucide-react';
 import { updateDocumentFavicon, updateDocumentTitle, getActiveAppIcon } from './utils/dynamicFavicon';
 import { setAppBadgeCount, clearAppBadgeCount } from './utils/appBadge';
+import { preloadAllViews } from './utils/routePreloader';
+
+const PageLoadingFallback: React.FC = () => (
+  <div className="w-full animate-pulse space-y-4 py-2">
+    <div className="h-1 w-full bg-slate-200 overflow-hidden rounded-full">
+      <div className="h-full bg-sky-500 animate-[indeterminate_1.2s_infinite_linear] rounded-full"></div>
+    </div>
+    <div className="bg-white rounded-2xl p-6 border border-slate-200 space-y-4 shadow-xs">
+      <div className="h-6 bg-slate-200 rounded w-1/4"></div>
+      <div className="h-4 bg-slate-100 rounded w-1/2"></div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 pt-3">
+        {[1, 2, 3, 4].map((i) => (
+          <div key={i} className="h-20 bg-slate-50 border border-slate-100 rounded-xl p-3"></div>
+        ))}
+      </div>
+      <div className="h-32 bg-slate-50 border border-slate-100 rounded-xl"></div>
+    </div>
+  </div>
+);
+
+const ActiveViewRouter = React.memo<{
+  activeTab: string;
+  isAllowed: boolean;
+  userRole: string;
+  setActiveTab: (tab: string) => void;
+}>(({ activeTab, isAllowed, userRole, setActiveTab }) => {
+  if (!isAllowed) {
+    return (
+      <div className="p-8 text-center bg-white rounded-2xl border border-slate-200 shadow-sm max-w-md mx-auto my-12">
+        <div className="w-12 h-12 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center mx-auto mb-4">
+          <ShieldAlert className="w-6 h-6" />
+        </div>
+        <h2 className="text-lg font-bold text-slate-800 mb-1">Akses Menu Dibatasi</h2>
+        <p className="text-sm text-slate-600 mb-6 leading-relaxed">
+          Peran akun Anda (<span className="font-semibold text-slate-800 capitalize">{userRole}</span>) belum diizinkan membuka menu ini sesuai konfigurasi Matriks Hak Akses (RBAC).
+        </p>
+        <button
+          type="button"
+          onClick={() => setActiveTab(userRole === 'klien' ? 'klien-mode' : 'dashboard')}
+          className="px-5 py-2.5 bg-sky-600 hover:bg-sky-700 text-white text-sm font-medium rounded-xl shadow-sm transition-colors cursor-pointer"
+        >
+          Kembali ke {userRole === 'klien' ? 'Portal Klien Mode' : 'Dashboard'}
+        </button>
+      </div>
+    );
+  }
+
+  switch (activeTab) {
+    case 'dashboard':
+      return <DashboardView />;
+    // Inspeksi Report
+    case 'ceklist':
+      return <CeklistAreaView />;
+    case 'area':
+      return <AreaCleaningView />;
+    case 'activity':
+      return <CleaningActivityView />;
+    case 'inspeksi':
+      return <InspeksiControlView />;
+    case 'report':
+      return <LaporanReportView />;
+    // Operational Report
+    case 'petugas':
+      return <PetugasView />;
+    case 'shift':
+      return <ShiftView />;
+    case 'jadwal':
+      return <JadwalCleaningView />;
+    case 'kerusakan':
+    case 'damage-report':
+      return <DamageReportView />;
+    case 'proyek':
+      return <LokasiProyekView />;
+    // Activity Report
+    case 'daily-activity':
+      return <DailyActivityView />;
+    case 'weekly-activity':
+      return <WeeklyActivityView />;
+    case 'monthly-activity':
+      return <MonthlyActivityView />;
+    case 'special-job':
+      return <SpecialJobView />;
+    case 'master-program':
+    case 'mcp':
+      return <MasterCleaningProgramView />;
+    case 'complaint':
+      return <ComplaintView />;
+    // Klien Mode Portal & Sub-Menu
+    case 'klien-mode':
+    case 'klien-manpower':
+    case 'klien-checklist':
+    case 'klien-kerusakan':
+    case 'klien-activity':
+    case 'klien-keluhan':
+      return <KlienModeView initialSubTab={activeTab} />;
+    // Sistem & Master Data
+    case 'perusahaan':
+    case 'companies':
+      return <CompanyManagementView />;
+    case 'pengaturan':
+      return <PengaturanView />;
+    default:
+      return userRole === 'klien' ? <KlienModeView initialSubTab="manpower" /> : <DashboardView />;
+  }
+});
 
 const MainLayout: React.FC = () => {
   const {
@@ -112,6 +217,17 @@ const MainLayout: React.FC = () => {
     }
   }, [isAuthenticated, userRole, activeTab, setActiveTab]);
 
+  // Background preloading of all route bundles during browser idle time
+  React.useEffect(() => {
+    if (isAuthenticated && !isInitialLoading) {
+      if ('requestIdleCallback' in window) {
+        (window as any).requestIdleCallback(() => preloadAllViews());
+      } else {
+        setTimeout(preloadAllViews, 600);
+      }
+    }
+  }, [isAuthenticated, isInitialLoading]);
+
   if (!isAuthenticated) {
     return (
       <div className="h-screen flex flex-col overflow-hidden">
@@ -139,87 +255,6 @@ const MainLayout: React.FC = () => {
 
   const isAllowed = hasAccess(userRole, activeTab);
 
-  const renderActiveWebView = () => {
-    if (!isAllowed) {
-      return (
-        <div className="p-8 text-center bg-white rounded-2xl border border-slate-200 shadow-sm max-w-md mx-auto my-12">
-          <div className="w-12 h-12 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center mx-auto mb-4">
-            <ShieldAlert className="w-6 h-6" />
-          </div>
-          <h2 className="text-lg font-bold text-slate-800 mb-1">Akses Menu Dibatasi</h2>
-          <p className="text-sm text-slate-600 mb-6 leading-relaxed">
-            Peran akun Anda (<span className="font-semibold text-slate-800 capitalize">{userRole}</span>) belum diizinkan membuka menu ini sesuai konfigurasi Matriks Hak Akses (RBAC).
-          </p>
-          <button
-            type="button"
-            onClick={() => setActiveTab(userRole === 'klien' ? 'klien-mode' : 'dashboard')}
-            className="px-5 py-2.5 bg-sky-600 hover:bg-sky-700 text-white text-sm font-medium rounded-xl shadow-sm transition-colors cursor-pointer"
-          >
-            Kembali ke {userRole === 'klien' ? 'Portal Klien Mode' : 'Dashboard'}
-          </button>
-        </div>
-      );
-    }
-
-    switch (activeTab) {
-      case 'dashboard':
-        return <DashboardView />;
-      // Inspeksi Report
-      case 'ceklist':
-        return <CeklistAreaView />;
-      case 'area':
-        return <AreaCleaningView />;
-      case 'activity':
-        return <CleaningActivityView />;
-      case 'inspeksi':
-        return <InspeksiControlView />;
-      case 'report':
-        return <LaporanReportView />;
-      // Operational Report
-      case 'petugas':
-        return <PetugasView />;
-      case 'shift':
-        return <ShiftView />;
-      case 'jadwal':
-        return <JadwalCleaningView />;
-      case 'kerusakan':
-      case 'damage-report':
-        return <DamageReportView />;
-      case 'proyek':
-        return <LokasiProyekView />;
-      // Activity Report
-      case 'daily-activity':
-        return <DailyActivityView />;
-      case 'weekly-activity':
-        return <WeeklyActivityView />;
-      case 'monthly-activity':
-        return <MonthlyActivityView />;
-      case 'special-job':
-        return <SpecialJobView />;
-      case 'master-program':
-      case 'mcp':
-        return <MasterCleaningProgramView />;
-      case 'complaint':
-        return <ComplaintView />;
-      // Klien Mode Portal & Sub-Menu
-      case 'klien-mode':
-      case 'klien-manpower':
-      case 'klien-checklist':
-      case 'klien-kerusakan':
-      case 'klien-activity':
-      case 'klien-keluhan':
-        return <KlienModeView initialSubTab={activeTab} />;
-      // Sistem & Master Data
-      case 'perusahaan':
-      case 'companies':
-        return <CompanyManagementView />;
-      case 'pengaturan':
-        return <PengaturanView />;
-      default:
-        return userRole === 'klien' ? <KlienModeView initialSubTab="manpower" /> : <DashboardView />;
-    }
-  };
-
   return (
     <div className="h-screen flex flex-col bg-slate-50 font-sans text-slate-900 antialiased selection:bg-sky-500 selection:text-white overflow-hidden">
       <TopNotificationPopup />
@@ -233,15 +268,13 @@ const MainLayout: React.FC = () => {
         <Sidebar />
         <main className="flex-1 overflow-y-auto bg-slate-50 min-h-0">
           <div className="max-w-7xl mx-auto w-full p-3 sm:p-5 md:p-6 lg:p-8">
-            <Suspense
-              fallback={
-                <div className="flex items-center justify-center py-20 text-slate-500 text-sm">
-                  <div className="w-6 h-6 border-2 border-sky-500 border-t-transparent rounded-full animate-spin mr-3"></div>
-                  Memuat halaman...
-                </div>
-              }
-            >
-              {renderActiveWebView()}
+            <Suspense fallback={<PageLoadingFallback />}>
+              <ActiveViewRouter
+                activeTab={activeTab}
+                isAllowed={isAllowed}
+                userRole={userRole}
+                setActiveTab={setActiveTab}
+              />
             </Suspense>
           </div>
         </main>

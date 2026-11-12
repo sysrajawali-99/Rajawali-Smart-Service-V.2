@@ -2,7 +2,7 @@ import React from 'react';
 import { ChevronRight, X, BellRing } from 'lucide-react';
 import { useCleaning } from '../../context/CleaningContext';
 
-export const OverdueAlertBanner: React.FC = () => {
+export const OverdueAlertBanner: React.FC = React.memo(() => {
   const {
     notifications,
     setActiveTab,
@@ -81,5 +81,5 @@ export const OverdueAlertBanner: React.FC = () => {
       </div>
     </div>
   );
-};
+});
 
