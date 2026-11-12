@@ -347,6 +347,7 @@ export interface ChecklistLocation {
   company_id?: string;
   companyId?: string;
   projectId: string;
+  areaId?: string;
   name: string;
   category: ChecklistLocationCategory;
   floor: string;

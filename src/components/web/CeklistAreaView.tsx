@@ -100,11 +100,13 @@ export const CeklistAreaView: React.FC = () => {
     isSyncing,
     shifts,
     companyProfile,
+    selectedChecklistLocationId,
+    setSelectedChecklistLocationId,
   } = useCleaning();
 
   const [selectedDate, setSelectedDate] = useState('2026-09-13');
   const [selectedLocationId, setSelectedLocationId] = useState<string>(
-    checklistLocations[0]?.id || 'cloc-1'
+    selectedChecklistLocationId || checklistLocations[0]?.id || 'cloc-1'
   );
   const [selectedShiftId, setSelectedShiftId] = useState<string>('shift-1');
   const [viewMode, setViewMode] = useState<'official_table' | 'slot_details'>('official_table');
@@ -168,15 +170,22 @@ export const CeklistAreaView: React.FC = () => {
     };
   }, [showKopModal, showAddLocationModal, showAddManualItemModal]);
 
-  // Synchronize selectedLocationId when active project changes or checklist locations update
+  // Synchronize selectedLocationId when active project changes or selectedChecklistLocationId is set
   useEffect(() => {
+    if (selectedChecklistLocationId) {
+      const exists = checklistLocations.some((loc) => loc.id === selectedChecklistLocationId);
+      if (exists) {
+        setSelectedLocationId(selectedChecklistLocationId);
+        return;
+      }
+    }
     if (checklistLocations.length > 0) {
       const exists = checklistLocations.some((loc) => loc.id === selectedLocationId);
       if (!exists) {
         setSelectedLocationId(checklistLocations[0].id);
       }
     }
-  }, [checklistLocations, selectedLocationId]);
+  }, [checklistLocations, selectedLocationId, selectedChecklistLocationId]);
 
   // Make sure we have a valid selected location
   const currentLocation =
@@ -531,14 +540,27 @@ export const CeklistAreaView: React.FC = () => {
                 <MapPin className="w-3.5 h-3.5 text-emerald-700" />
                 <span>Area Proyek:</span>
               </label>
-              <span className="hidden md:inline-block text-[10px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-200">
-                {checklistLocations.length} Area Terdaftar
-              </span>
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('area')}
+                  className="text-[10px] font-bold text-sky-700 hover:text-sky-800 bg-sky-50 hover:bg-sky-100 px-2 py-0.5 rounded border border-sky-200 transition-colors cursor-pointer"
+                  title="Buka menu Pemetaan Lokasi Kerja & Material Cleaning"
+                >
+                  Pemetaan Lokasi Kerja ➔
+                </button>
+                <span className="hidden md:inline-block text-[10px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-200">
+                  {checklistLocations.length} Area
+                </span>
+              </div>
             </div>
             <div className="relative">
               <select
                 value={selectedLocationId}
-                onChange={(e) => setSelectedLocationId(e.target.value)}
+                onChange={(e) => {
+                  setSelectedLocationId(e.target.value);
+                  setSelectedChecklistLocationId?.(e.target.value);
+                }}
                 aria-label="Pilih Area Proyek"
                 className="w-full pl-3 pr-8 py-2 bg-emerald-50/50 border border-emerald-200 rounded-xl text-xs font-bold text-slate-900 focus:ring-2 focus:ring-sky-500 appearance-none cursor-pointer"
               >

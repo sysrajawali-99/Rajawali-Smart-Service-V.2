@@ -19,6 +19,7 @@ import {
   AppUser,
   RoleModulePermission,
   ChecklistLocation,
+  ChecklistLocationCategory,
   ChecklistTemplateItem,
   DailyAreaChecklist,
   HourlyCheckItemStatus,
@@ -210,6 +211,10 @@ interface CleaningContextType {
   addManualItemToDailyChecklist: (dailyChecklistId: string, itemName: string) => void;
   getOrCreateDailyChecklist: (projectId: string, locationId: string, date: string) => DailyAreaChecklist;
   ensureDailyChecklist: (projectId: string, locationId: string, date: string) => void;
+  selectedChecklistLocationId: string | null;
+  setSelectedChecklistLocationId: (id: string | null) => void;
+  createChecklistFromArea: (area: Area) => ChecklistLocation;
+  createChecklistsFromAreas: (areasToCreate: Area[]) => { createdCount: number; existingCount: number };
 
   // Master Cleaning Program (dipisahkan sesuai lokasi kerja user / klien)
   masterPrograms: MasterCleaningProgramItem[];
@@ -492,6 +497,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const [activeCleanerId, setActiveCleanerId] = useState<string>('cln-1');
   const [activeTab, setActiveTab] = useState<string>('dashboard');
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>('task-101');
+  const [selectedChecklistLocationId, setSelectedChecklistLocationId] = useState<string | null>(null);
 
   // Error notification helper for server operations
   const notifyServerError = (actionDesc: string, err?: any) => {
@@ -2612,6 +2618,126 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const deleteChecklistLocation = (id: string) => {
     setChecklistLocations((prev) => prev.filter((l) => l.id !== id));
     deleteRecord(COLLECTIONS.CHECKLIST_LOCATIONS, id).catch((err) => notifyServerError('menghapus lokasi ceklis', err));
+  };
+
+  const mapAreaTypeToChecklistCategory = (type: Area['type'], name: string): ChecklistLocationCategory => {
+    const combined = `${name} ${type || ''}`.toLowerCase();
+    if (type === 'toilet' || combined.includes('toilet') || combined.includes('wc') || combined.includes('urinoir') || combined.includes('kamar mandi') || combined.includes('kloset')) {
+      return 'toilet';
+    }
+    if (type === 'corridor' || combined.includes('koridor') || combined.includes('hallway') || combined.includes('selasar') || combined.includes('tangga')) {
+      return 'koridor';
+    }
+    if (type === 'pantry' || combined.includes('pantry') || combined.includes('dapur') || combined.includes('food court') || combined.includes('pujasera') || combined.includes('kantin')) {
+      return 'pantry';
+    }
+    if (type === 'lift' || type === 'escalator' || combined.includes('lift') || combined.includes('eskalator') || combined.includes('elevator')) {
+      return 'lift';
+    }
+    if (combined.includes('musholla') || combined.includes('masjid') || combined.includes('mushola') || combined.includes('tempat wudhu')) {
+      return 'musholla';
+    }
+    return 'public_area';
+  };
+
+  const createChecklistFromArea = (area: Area): ChecklistLocation => {
+    const targetProjectId = area.projectId || safeActiveProjectId;
+
+    // Check if matching checklist location already exists
+    const existing = checklistLocations.find(
+      (l) =>
+        (l.projectId || 'proj-1') === targetProjectId &&
+        (l.areaId === area.id ||
+          l.name.trim().toLowerCase() === area.name.trim().toLowerCase() ||
+          (l.code && area.code && l.code.trim().toUpperCase() === area.code.trim().toUpperCase()))
+    );
+
+    if (existing) {
+      return existing;
+    }
+
+    const category = mapAreaTypeToChecklistCategory(area.type, area.name);
+    const id = `cloc-${Date.now()}-${Math.floor(100 + Math.random() * 900)}`;
+    const newLoc: ChecklistLocation = {
+      id,
+      areaId: area.id,
+      projectId: targetProjectId,
+      name: area.name,
+      floor: area.floor || 'Lantai 1',
+      code: area.code || `CHK-${Math.floor(100 + Math.random() * 900)}`,
+      category,
+    };
+
+    setChecklistLocations((prev) => [...prev, newLoc]);
+    upsertRecord(COLLECTIONS.CHECKLIST_LOCATIONS, newLoc).catch((err) =>
+      notifyServerError('menambah lokasi ceklis dari area kerja', err)
+    );
+
+    const today = new Date().toISOString().split('T')[0];
+    ensureDailyChecklist(newLoc.projectId, newLoc.id, today);
+
+    addAuditLog({
+      action: 'create',
+      module: 'ceklist',
+      entityId: id,
+      entityName: newLoc.name,
+      details: `Integrasi Ceklist Area otomatis dari Lokasi Kerja "${area.name}" (${area.floor}) - Kategori: ${category}`,
+    });
+
+    return newLoc;
+  };
+
+  const createChecklistsFromAreas = (areasToCreate: Area[]): { createdCount: number; existingCount: number } => {
+    let createdCount = 0;
+    let existingCount = 0;
+    const newLocs: ChecklistLocation[] = [];
+    const today = new Date().toISOString().split('T')[0];
+    const currentLocs = [...checklistLocations];
+
+    for (const area of areasToCreate) {
+      const targetProjectId = area.projectId || safeActiveProjectId;
+      const alreadyExists = currentLocs.some(
+        (l) =>
+          (l.projectId || 'proj-1') === targetProjectId &&
+          (l.areaId === area.id ||
+            l.name.trim().toLowerCase() === area.name.trim().toLowerCase() ||
+            (l.code && area.code && l.code.trim().toUpperCase() === area.code.trim().toUpperCase()))
+      );
+
+      if (alreadyExists) {
+        existingCount++;
+      } else {
+        const category = mapAreaTypeToChecklistCategory(area.type, area.name);
+        const id = `cloc-${Date.now()}-${Math.floor(100 + Math.random() * 900)}-${createdCount}`;
+        const newLoc: ChecklistLocation = {
+          id,
+          areaId: area.id,
+          projectId: targetProjectId,
+          name: area.name,
+          floor: area.floor || 'Lantai 1',
+          code: area.code || `CHK-${Math.floor(100 + Math.random() * 900)}`,
+          category,
+        };
+        currentLocs.push(newLoc);
+        newLocs.push(newLoc);
+        createdCount++;
+      }
+    }
+
+    if (newLocs.length > 0) {
+      setChecklistLocations((prev) => [...prev, ...newLocs]);
+      newLocs.forEach((loc) => {
+        upsertRecord(COLLECTIONS.CHECKLIST_LOCATIONS, loc).catch(() => {});
+        ensureDailyChecklist(loc.projectId, loc.id, today);
+      });
+      addAuditLog({
+        action: 'create',
+        module: 'ceklist',
+        details: `Batch integrasi ${newLocs.length} ceklist area dari Pemetaan Lokasi Kerja`,
+      });
+    }
+
+    return { createdCount, existingCount };
   };
 
   const addChecklistTemplate = (tpl: Omit<ChecklistTemplateItem, 'id'>) => {
@@ -5123,6 +5249,10 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         addManualItemToDailyChecklist,
         getOrCreateDailyChecklist,
         ensureDailyChecklist,
+        selectedChecklistLocationId,
+        setSelectedChecklistLocationId,
+        createChecklistFromArea,
+        createChecklistsFromAreas,
 
         // Filtered operational data for active project location
         areas: filteredAreas,

@@ -23,6 +23,9 @@ import {
   CheckCircle2,
   AlertCircle,
   HelpCircle,
+  ClipboardList,
+  ArrowRight,
+  CheckSquare,
 } from 'lucide-react';
 import { useCleaning } from '../../context/CleaningContext';
 import { Area } from '../../types';
@@ -101,7 +104,19 @@ const POPULAR_MATERIALS_BY_CATEGORY: {
 ];
 
 export const AreaCleaningView: React.FC = () => {
-  const { areas, cleaners, addArea, updateArea, deleteArea, activeProject } = useCleaning();
+  const {
+    areas,
+    cleaners,
+    addArea,
+    updateArea,
+    deleteArea,
+    activeProject,
+    checklistLocations,
+    setActiveTab,
+    setSelectedChecklistLocationId,
+    createChecklistFromArea,
+    createChecklistsFromAreas,
+  } = useCleaning();
 
   // Search and Filter State
   const [search, setSearch] = useState('');
@@ -217,13 +232,29 @@ export const AreaCleaningView: React.FC = () => {
     return grouped;
   }, [filteredAreas]);
 
+  // Helper: Find matching checklist location for an area
+  const getChecklistForArea = (area: Area) => {
+    const targetProjectId = area.projectId || activeProject?.id || 'proj-1';
+    return checklistLocations.find(
+      (l) =>
+        (l.projectId || 'proj-1') === targetProjectId &&
+        (l.areaId === area.id ||
+          l.name.trim().toLowerCase() === area.name.trim().toLowerCase() ||
+          (l.code && area.code && l.code.trim().toUpperCase() === area.code.trim().toUpperCase()))
+    );
+  };
+
   // Overall statistics
   const stats = useMemo(() => {
     const totalLocations = areas.length;
     const floorCount = existingFloors.length;
     let totalMaterialCount = 0;
+    let totalWithChecklist = 0;
     areas.forEach((a) => {
       totalMaterialCount += a.materials?.length || 0;
+      if (getChecklistForArea(a)) {
+        totalWithChecklist++;
+      }
     });
     const avgMaterial = totalLocations > 0 ? (totalMaterialCount / totalLocations).toFixed(1) : '0';
     return {
@@ -231,8 +262,44 @@ export const AreaCleaningView: React.FC = () => {
       floorCount,
       totalMaterialCount,
       avgMaterial,
+      totalWithChecklist,
     };
-  }, [areas, existingFloors]);
+  }, [areas, existingFloors, checklistLocations, activeProject?.id]);
+
+  // Action: Buat / Buka Ceklist Area langsung dari lokasi kerja
+  const handleOpenOrCreateChecklist = (area: Area) => {
+    const existing = getChecklistForArea(area);
+    const loc = createChecklistFromArea(area);
+    setSelectedChecklistLocationId(loc.id);
+    if (existing) {
+      showToast(`Membuka Ceklist Kebersihan Area 24 Jam untuk "${area.name}" (${area.floor})...`);
+    } else {
+      showToast(`Lembar Ceklist Area untuk "${area.name}" berhasil dibuat & disinkronkan! Mengalihkan ke Ceklist Kebersihan Area...`);
+    }
+    setTimeout(() => {
+      setActiveTab('ceklist');
+    }, 200);
+  };
+
+  // Action: Buat Ceklist untuk semua lokasi pada lantai tertentu
+  const handleBatchCreateFloorChecklists = (floorName: string, floorAreas: Area[]) => {
+    const res = createChecklistsFromAreas(floorAreas);
+    if (res.createdCount > 0) {
+      showToast(`Berhasil membuat ${res.createdCount} lembar ceklist baru untuk ${floorName}!`);
+    } else {
+      showToast(`Semua lokasi kerja di ${floorName} (${floorAreas.length} area) sudah terintegrasi ke Ceklist Kebersihan Area.`);
+    }
+  };
+
+  // Action: Buat Ceklist untuk seluruh lokasi kerja proyek yang belum ada
+  const handleBatchCreateAllChecklists = () => {
+    const res = createChecklistsFromAreas(areas);
+    if (res.createdCount > 0) {
+      showToast(`Berhasil membuat ${res.createdCount} lembar ceklist baru untuk seluruh lokasi kerja proyek!`);
+    } else {
+      showToast(`Seluruh lokasi kerja (${areas.length} area) sudah terintegrasi ke Ceklist Kebersihan Area.`);
+    }
+  };
 
   // Open Material Modal
   const handleOpenMaterialModal = (area: Area) => {
@@ -460,13 +527,37 @@ export const AreaCleaningView: React.FC = () => {
 
       {/* KPI Stats Overview */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <div className="bg-white p-3.5 rounded-2xl border border-slate-200/80 shadow-xs">
-          <div className="flex items-center justify-between">
-            <p className="text-[11px] font-semibold text-slate-500">Total Lokasi Kerja</p>
-            <MapPin className="w-4 h-4 text-sky-500" />
+        <div className="bg-white p-3.5 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col justify-between">
+          <div>
+            <div className="flex items-center justify-between">
+              <p className="text-[11px] font-semibold text-slate-500">Total Lokasi Kerja</p>
+              <MapPin className="w-4 h-4 text-sky-500" />
+            </div>
+            <p className="text-2xl font-black text-slate-900 mt-1">{stats.totalLocations}</p>
+            <div className="flex flex-wrap items-center gap-1.5 mt-1">
+              <span
+                className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                  stats.totalWithChecklist === stats.totalLocations && stats.totalLocations > 0
+                    ? 'bg-emerald-100 text-emerald-800'
+                    : 'bg-amber-100 text-amber-800'
+                }`}
+              >
+                <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                {stats.totalWithChecklist} / {stats.totalLocations} Ada Ceklist
+              </span>
+            </div>
           </div>
-          <p className="text-2xl font-black text-slate-900 mt-1">{stats.totalLocations}</p>
-          <p className="text-[10px] text-slate-400 mt-0.5">Titik Area Terdaftar</p>
+          {stats.totalLocations > stats.totalWithChecklist && (
+            <button
+              type="button"
+              onClick={handleBatchCreateAllChecklists}
+              className="mt-2.5 w-full flex items-center justify-center gap-1 px-2 py-1 rounded-lg bg-sky-50 hover:bg-sky-100 text-sky-700 text-[10.5px] font-bold border border-sky-200 transition-colors cursor-pointer"
+              title="Buatkan Ceklist untuk semua lokasi kerja yang belum terdaftar di Ceklist Kebersihan Area"
+            >
+              <Plus className="w-3 h-3" />
+              <span>Buat Ceklist Semua Lokasi</span>
+            </button>
+          )}
         </div>
 
         <div className="bg-white p-3.5 rounded-2xl border border-slate-200/80 shadow-xs">
@@ -648,24 +739,37 @@ export const AreaCleaningView: React.FC = () => {
                     </div>
                   </div>
 
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setNewAreaFloor(floorName);
-                      setIsCustomFloor(false);
-                      setShowAddModal(true);
-                    }}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-300 hover:border-sky-500 bg-white hover:bg-sky-50 text-slate-700 hover:text-sky-700 text-xs font-semibold transition-all self-start sm:self-auto"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    <span>Tambah Lokasi di {floorName}</span>
-                  </button>
+                  <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+                    <button
+                      type="button"
+                      onClick={() => handleBatchCreateFloorChecklists(floorName, floorAreas)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-emerald-300 hover:border-emerald-500 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-xs font-bold transition-all cursor-pointer shadow-2xs"
+                      title={`Buatkan lembar Ceklist Kebersihan Area untuk semua lokasi kerja di ${floorName}`}
+                    >
+                      <ClipboardList className="w-3.5 h-3.5 text-emerald-700" />
+                      <span>Buat Ceklist Lantai Ini ({floorAreas.length})</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setNewAreaFloor(floorName);
+                        setIsCustomFloor(false);
+                        setShowAddModal(true);
+                      }}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-300 hover:border-sky-500 bg-white hover:bg-sky-50 text-slate-700 hover:text-sky-700 text-xs font-semibold transition-all cursor-pointer"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>Tambah Lokasi di {floorName}</span>
+                    </button>
+                  </div>
                 </div>
 
                 {/* Locations Grid */}
                 <div className="p-4 sm:p-5 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 gap-4">
                   {floorAreas.map((area, idx) => {
                     const materialList = area.materials || [];
+                    const existingChecklist = getChecklistForArea(area);
                     return (
                       <div
                         key={area.id}
@@ -674,18 +778,37 @@ export const AreaCleaningView: React.FC = () => {
                         <div>
                           {/* Top row: Type Icon, Code, and Edit Menu */}
                           <div className="flex items-start justify-between gap-2">
-                            <div className="flex items-center gap-2">
-                              <div className="w-7 h-7 rounded-lg bg-white border border-slate-200 flex items-center justify-center shadow-2xs">
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              <div className="w-7 h-7 rounded-lg bg-white border border-slate-200 flex items-center justify-center shadow-2xs shrink-0">
                                 {renderTypeIcon(area.type)}
                               </div>
-                              <div>
-                                <span className="text-[10px] font-mono font-bold text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
-                                  {area.code}
-                                </span>
-                                <span className="ml-1.5 text-[10px] font-semibold text-slate-400">
-                                  #{idx + 1}
-                                </span>
-                              </div>
+                              <span className="text-[10px] font-mono font-bold text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
+                                {area.code}
+                              </span>
+                              <span className="text-[10px] font-semibold text-slate-400">
+                                #{idx + 1}
+                              </span>
+                              {existingChecklist ? (
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenOrCreateChecklist(area)}
+                                  className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9.5px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300 hover:bg-emerald-200 transition-colors cursor-pointer"
+                                  title="Klik untuk langsung membuka lembar Ceklist Kebersihan Area 24 Jam"
+                                >
+                                  <CheckCircle2 className="w-2.5 h-2.5 text-emerald-600" />
+                                  <span>Ada Ceklist</span>
+                                </button>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenOrCreateChecklist(area)}
+                                  className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9.5px] font-bold bg-amber-50 text-amber-800 border border-amber-300 hover:bg-amber-100 transition-colors cursor-pointer"
+                                  title="Klik untuk langsung membuatkan lembar Ceklist Kebersihan Area 24 Jam"
+                                >
+                                  <Plus className="w-2.5 h-2.5 text-amber-700" />
+                                  <span>Buatkan Ceklist</span>
+                                </button>
+                              )}
                             </div>
 
                             <div className="flex items-center gap-1">
@@ -710,9 +833,15 @@ export const AreaCleaningView: React.FC = () => {
 
                           {/* Area Name & Category */}
                           <div className="mt-2.5">
-                            <h4 className="font-extrabold text-sm text-slate-900 leading-snug">
-                              {area.name}
-                            </h4>
+                            <button
+                              type="button"
+                              onClick={() => handleOpenOrCreateChecklist(area)}
+                              className="text-left font-extrabold text-sm text-slate-900 leading-snug hover:text-sky-600 transition-colors cursor-pointer group flex items-center gap-1.5 w-full"
+                              title="Klik untuk membuat atau membuka Ceklist Kebersihan Area 24 Jam"
+                            >
+                              <span>{area.name}</span>
+                              <ArrowRight className="w-3 h-3 text-slate-400 group-hover:text-sky-600 group-hover:translate-x-0.5 transition-all shrink-0 opacity-0 group-hover:opacity-100" />
+                            </button>
                             <div className="flex items-center gap-1.5 mt-0.5 text-[11px] text-slate-500">
                               <span>{getTypeNameLabel(area.type)}</span>
                               <span>•</span>
@@ -764,15 +893,35 @@ export const AreaCleaningView: React.FC = () => {
                           </div>
                         </div>
 
-                        {/* Card Footer: Update Material Action */}
-                        <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between">
+                        {/* Card Footer: Perintah Buat / Buka Ceklist Area & Update Material */}
+                        <div className="mt-4 pt-3 border-t border-slate-100 flex flex-col sm:flex-row items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => handleOpenOrCreateChecklist(area)}
+                            className={`flex-1 w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer ${
+                              existingChecklist
+                                ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                                : 'bg-sky-600 hover:bg-sky-700 text-white'
+                            }`}
+                            title={
+                              existingChecklist
+                                ? `Buka lembar Ceklist Kebersihan Area 24 Jam untuk "${area.name}"`
+                                : `Buatkan Ceklist Kebersihan Area 24 Jam baru untuk "${area.name}" dan langsung buka`
+                            }
+                          >
+                            <ClipboardList className="w-3.5 h-3.5" />
+                            <span>{existingChecklist ? 'Buka Ceklist Area' : 'Buatkan Ceklist'}</span>
+                            {existingChecklist && <ArrowRight className="w-3 h-3 shrink-0" />}
+                          </button>
+
                           <button
                             type="button"
                             onClick={() => handleOpenMaterialModal(area)}
-                            className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-sky-50 hover:bg-sky-100 border border-sky-200 text-sky-800 text-xs font-bold transition-colors shadow-2xs"
+                            className="w-full sm:w-auto flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-700 text-xs font-bold transition-colors shadow-2xs cursor-pointer shrink-0"
+                            title="Kelola daftar material permukaan yang digunakan di area ini"
                           >
-                            <Wrench className="w-3.5 h-3.5 text-sky-600" />
-                            <span>Update Material yang Digunakan</span>
+                            <Wrench className="w-3.5 h-3.5 text-slate-500" />
+                            <span>Material ({materialList.length})</span>
                           </button>
                         </div>
                       </div>

@@ -57,8 +57,8 @@ const isOriginAllowed = (
     return callback(null, true);
   }
 
-  // If ALLOWED_ORIGINS is empty, permit all origins in dev/preview environments
-  if (allowedOrigins.length === 0) {
+  // In non-production or preview environments, permit all origins
+  if (process.env.NODE_ENV !== 'production' || allowedOrigins.length === 0) {
     return callback(null, true);
   }
 
@@ -1284,7 +1284,22 @@ app.post('/api/records/:collection', async (req: Request, res: Response) => {
   }
 
   if (collection === 'audit_logs') {
-    return res.status(403).json({ error: 'Audit log hanya dapat dibuat oleh sistem internal.' });
+    let detailsText = '';
+    if (typeof data.details === 'string' && data.details.trim()) {
+      detailsText = data.details;
+    } else if (typeof data.description === 'string' && data.description.trim()) {
+      detailsText = data.description;
+    } else if (data.details && typeof data.details === 'object') {
+      try {
+        detailsText = JSON.stringify(data.details);
+      } catch {
+        detailsText = String(data.details);
+      }
+    } else {
+      detailsText = data.description || '-';
+    }
+    data.details = detailsText;
+    data.description = detailsText;
   }
 
   // Task 4.3: Admin Perusahaan tidak bisa membuat perusahaan & mengubah branding global
@@ -1370,17 +1385,36 @@ app.put('/api/records/:collection/:id', async (req: Request, res: Response) => {
     return res.status(400).json({ error: 'Body harus berupa objek JSON' });
   }
 
-  // Requirement 5: Audit log tidak bisa diedit/dihapus dari aplikasi
+  // Cek apakah data eksisting milik perusahaan lain (Requirement 3: 404 bukan 403)
+  const existing = await getDbRecord(collection, id);
+
+  // Requirement 5: Audit log bersifat permanen dan append-only (hanya boleh dibuat baru, tidak dapat diubah)
   if (collection === 'audit_logs') {
-    return res.status(403).json({ error: 'Audit log bersifat permanen dan tidak dapat diubah dari aplikasi.' });
+    if (existing) {
+      return res.status(403).json({ error: 'Audit log bersifat permanen dan tidak dapat diubah dari aplikasi.' });
+    }
+    let detailsText = '';
+    if (typeof data.details === 'string' && data.details.trim()) {
+      detailsText = data.details;
+    } else if (typeof data.description === 'string' && data.description.trim()) {
+      detailsText = data.description;
+    } else if (data.details && typeof data.details === 'object') {
+      try {
+        detailsText = JSON.stringify(data.details);
+      } catch {
+        detailsText = String(data.details);
+      }
+    } else {
+      detailsText = data.description || '-';
+    }
+    data.details = detailsText;
+    data.description = detailsText;
   }
 
   if (collection === 'company_profile' && !isSuper) {
     return res.status(403).json({ error: 'Akses ditolak: Hanya Super Administrator yang diizinkan mengubah profil & branding global sistem.' });
   }
 
-  // Cek apakah data eksisting milik perusahaan lain (Requirement 3: 404 bukan 403)
-  const existing = await getDbRecord(collection, id);
   if (existing && !isSuper) {
     if (collection === 'companies') {
       if (id !== sessionCompanyId) {
