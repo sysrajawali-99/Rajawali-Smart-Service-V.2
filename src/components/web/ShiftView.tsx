@@ -314,7 +314,8 @@ const QUICK_AREA_CHIPS = [
 
 export const ShiftView: React.FC = () => {
   const {
-    shifts,
+    shifts: allShifts,
+    getProjectShifts,
     cleaners,
     addShift,
     updateShift,
@@ -327,6 +328,11 @@ export const ShiftView: React.FC = () => {
     setActiveTab,
     checklistLocations,
   } = useCleaning();
+
+  const shifts = useMemo(() => {
+    const scoped = getProjectShifts(activeProjectId);
+    return scoped.length > 0 ? scoped : allShifts;
+  }, [getProjectShifts, activeProjectId, activeProject?.shiftIds, allShifts]);
 
   // Date and Monitoring Day
   const today = new Date();

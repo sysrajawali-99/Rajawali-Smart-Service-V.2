@@ -1,6 +1,6 @@
 // JTI Smart / Smart Cleaning Operations - Progressive Web App Service Worker
 // Versioned cache with current timestamp for reliable cache invalidation
-const CACHE_VERSION = 'jti-smart-v2026-11-04-badge';
+const CACHE_VERSION = 'jti-smart-v2026-11-18-r2';
 const STATIC_CACHE = `jti-static-${CACHE_VERSION}`;
 const ASSET_CACHE = `jti-assets-${CACHE_VERSION}`;
 

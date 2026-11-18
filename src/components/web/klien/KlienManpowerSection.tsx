@@ -45,7 +45,8 @@ const ATTENDANCE_DOT_MAP: Record<AttendanceStatusCode, string> = {
 export const KlienManpowerSection: React.FC = () => {
   const {
     cleaners,
-    shifts,
+    shifts: allShifts,
+    getProjectShifts,
     uploadedWorkSchedules,
     updateShift,
     updateCleaner,
@@ -55,6 +56,11 @@ export const KlienManpowerSection: React.FC = () => {
     deleteEmployeeTurnover,
     activeProject,
   } = useCleaning();
+
+  const shifts = useMemo(() => {
+    const scoped = getProjectShifts(activeProject?.id);
+    return scoped.length > 0 ? scoped : allShifts;
+  }, [getProjectShifts, activeProject?.id, activeProject?.shiftIds, allShifts]);
 
   const todayStr = getTodayDateString();
   const [selectedDate, setSelectedDate] = useState<string>(todayStr);
@@ -77,7 +83,7 @@ export const KlienManpowerSection: React.FC = () => {
   const [turnoverName, setTurnoverName] = useState('');
   const [turnoverNik, setTurnoverNik] = useState('');
   const [turnoverRole] = useState('Petugas Kebersihan');
-  const [turnoverShift, setTurnoverShift] = useState(() => shifts[0]?.name || 'Shift 1 ( satu )');
+  const [turnoverShift, setTurnoverShift] = useState(() => shifts[0]?.name || 'Shift 1');
   const [turnoverResignDate, setTurnoverResignDate] = useState(todayStr);
   const [turnoverReason, setTurnoverReason] = useState('Pindah domisili keluarga');
   const [turnoverStatus, setTurnoverStatus] = useState<'replaced' | 'recruiting' | 'pending'>('replaced');

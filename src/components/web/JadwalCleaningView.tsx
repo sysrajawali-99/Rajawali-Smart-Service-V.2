@@ -39,7 +39,9 @@ export const JadwalCleaningView: React.FC = () => {
     schedules,
     areas,
     cleaners,
-    shifts,
+    shifts: allShifts,
+    getProjectShifts,
+    activeProject,
     updateCleaner,
     addCleaner,
     deleteSchedule,
@@ -47,6 +49,11 @@ export const JadwalCleaningView: React.FC = () => {
     saveUploadedWorkSchedule,
     syncUploadedScheduleToCleaners,
   } = useCleaning();
+
+  const shifts = React.useMemo(() => {
+    const scoped = getProjectShifts(activeProject?.id);
+    return scoped.length > 0 ? scoped : allShifts;
+  }, [getProjectShifts, activeProject?.id, activeProject?.shiftIds, allShifts]);
 
   // Navigation tab: 'schedules' | 'roster' | 'upload'
   const [activeMainTab, setActiveMainTab] = useState<'schedules' | 'roster' | 'upload'>('schedules');

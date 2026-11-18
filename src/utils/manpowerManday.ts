@@ -149,28 +149,59 @@ function normalizeUpper(val: unknown): string {
     .toUpperCase();
 }
 
-function resolveCleanerFallbackShift(cleaner: Cleaner, shifts: Shift[]) {
-  const found =
-    shifts.find((s) => s.id === cleaner.shiftId) ||
-    shifts.find((s) => s.name?.toLowerCase() === (cleaner.shiftName || '').toLowerCase()) ||
-    shifts[0];
-
-  if (found) {
+export function resolveShiftForCleaner(cleaner: Cleaner, shifts: Shift[]) {
+  const byId = shifts.find((s) => s.id === cleaner.shiftId);
+  if (byId) {
     return {
-      id: found.id,
-      name: found.name,
-      code: found.code || 'S',
-      color: found.color || '#0284c7',
+      id: byId.id,
+      name: byId.name,
+      code: byId.code || 'S',
+      color: byId.color || '#0284c7',
+    };
+  }
+
+  const rawShiftName = (cleaner.shiftName || '').trim().toLowerCase();
+  const byExactName = rawShiftName
+    ? shifts.find((s) => s.name?.trim().toLowerCase() === rawShiftName)
+    : undefined;
+  if (byExactName) {
+    return {
+      id: byExactName.id,
+      name: byExactName.name,
+      code: byExactName.code || 'S',
+      color: byExactName.color || '#0284c7',
+    };
+  }
+
+  // Fuzzy match by shift number (1/2/3/4) within existing shifts
+  const numMatch = rawShiftName.match(/\bshift\s*(\d+)\b/i);
+  const byFuzzy = numMatch
+    ? shifts.find(
+        (s) =>
+          new RegExp(`\\bshift\\s*${numMatch[1]}\\b`, 'i').test(s.name || '') ||
+          s.code?.toUpperCase() === `S${numMatch[1]}`
+      )
+    : undefined;
+
+  const fallback = byFuzzy || shifts[0];
+  if (fallback) {
+    return {
+      id: fallback.id,
+      name: fallback.name,
+      code: fallback.code || 'S',
+      color: fallback.color || '#0284c7',
     };
   }
 
   return {
     id: cleaner.shiftId || 'shift-1',
-    name: cleaner.shiftName || 'Shift 1 ( satu )',
+    name: cleaner.shiftName || 'Shift 1',
     code: 'S1',
     color: '#0284c7',
   };
 }
+
+const resolveCleanerFallbackShift = resolveShiftForCleaner;
 
 export function deriveManpowerPlottingAndManday(params: {
   selectedDate: string;

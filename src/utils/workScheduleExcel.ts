@@ -669,17 +669,30 @@ export interface ResolvedShiftPair {
 }
 
 export function resolveShift1AndShift2(shifts: Shift[]): ResolvedShiftPair {
+  const list = Array.isArray(shifts) ? shifts : [];
+  const isNightShift = (s: Shift) =>
+    /\b(malam|night)\b/i.test(s.name || '') ||
+    ['SM', 'M', 'MLM', 'NGT'].includes((s.code || '').trim().toUpperCase());
+
   const s1 =
-    shifts.find((s) => s.code?.trim().toUpperCase() === 'S1') ||
-    shifts.find((s) => s.id === 'shift-1') ||
-    shifts.find((s) => /\bshift\s*1\b/i.test(s.name)) ||
-    shifts[0];
+    list.find((s) => ['S1', 'P', 'PG', 'PAGI'].includes((s.code || '').trim().toUpperCase())) ||
+    list.find((s) => s.id === 'shift-1') ||
+    list.find((s) => /\bshift\s*1\b/i.test(s.name || '') || /\bpagi\b/i.test(s.name || '')) ||
+    list.find((s) => !isNightShift(s)) ||
+    list[0];
+
+  const others = list.filter((s) => s.id !== s1?.id);
 
   const s2 =
-    shifts.find((s) => s.code?.trim().toUpperCase() === 'S2') ||
-    shifts.find((s) => s.id === 'shift-2') ||
-    shifts.find((s) => /\bshift\s*2\b/i.test(s.name)) ||
-    shifts.find((s) => s.id !== s1?.id);
+    others.find((s) =>
+      ['S2', 'S', 'SG', 'SIANG', 'MD', 'MID'].includes((s.code || '').trim().toUpperCase())
+    ) ||
+    others.find((s) => s.id === 'shift-2') ||
+    others.find((s) => /\bshift\s*2\b/i.test(s.name || '')) ||
+    others.find((s) => /\b(siang|midle|middle|sore)\b/i.test(s.name || '')) ||
+    others.find((s) => !isNightShift(s)) ||
+    others[0] ||
+    s1;
 
   return {
     shift1: s1

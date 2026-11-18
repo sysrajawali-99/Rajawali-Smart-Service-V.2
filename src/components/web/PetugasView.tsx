@@ -37,6 +37,7 @@ import {
   getCleanerAttendanceStatus,
   getDaysInMonthCount,
 } from '../../utils/shiftUtils';
+import { resolveShiftForCleaner } from '../../utils/manpowerManday';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
@@ -99,7 +100,8 @@ const ATTENDANCE_STATUS_LIST: Array<{
 export const PetugasView: React.FC = () => {
   const {
     cleaners,
-    shifts,
+    shifts: allShifts,
+    getProjectShifts,
     addCleaner,
     updateCleaner,
     deleteCleaner,
@@ -109,6 +111,11 @@ export const PetugasView: React.FC = () => {
     activeProject,
     updateProject,
   } = useCleaning();
+
+  const shifts = useMemo(() => {
+    const scoped = getProjectShifts(activeProjectId);
+    return scoped.length > 0 ? scoped : allShifts;
+  }, [getProjectShifts, activeProjectId, activeProject?.shiftIds, allShifts]);
 
   // Period filter (Periode Buka Buku & Tutup Buku)
   const today = new Date();
@@ -585,7 +592,7 @@ export const PetugasView: React.FC = () => {
       return [
         index + 1,
         c.name,
-        c.shiftName,
+        resolveShiftForCleaner(c, shifts).name,
         ...daysArr,
         hadirCount,
         izinCount,
@@ -649,7 +656,7 @@ export const PetugasView: React.FC = () => {
       const daysArr = periodDates
         .map((item) => getCleanerAttendanceStatus(c.attendanceByMonth, c.attendance, item))
         .join(',');
-      csv += `${idx + 1},"${c.name}","${c.shiftName}",${daysArr},${hadirCount},${izinCount},${sakitCount},${alpaCount},${lemburCount},${totalWorkingDays}\n`;
+      csv += `${idx + 1},"${c.name}","${resolveShiftForCleaner(c, shifts).name}",${daysArr},${hadirCount},${izinCount},${sakitCount},${alpaCount},${lemburCount},${totalWorkingDays}\n`;
     });
 
     const openFilePart = `${bookPeriod.openYear}-${String(bookPeriod.openMonth).padStart(2, '0')}-${String(bookPeriod.openDay).padStart(2, '0')}`;
@@ -1111,7 +1118,7 @@ export const PetugasView: React.FC = () => {
                         <div className="flex flex-wrap items-center gap-1.5">
                           <h4 className="text-sm font-bold text-slate-900">{cleaner.name}</h4>
                           <span className="text-[11px] font-semibold text-sky-700 bg-sky-50 px-2 py-0.5 rounded-md border border-sky-200">
-                            {cleaner.shiftName}
+                            {resolveShiftForCleaner(cleaner, shifts).name}
                           </span>
                         </div>
                         <p className="text-xs text-slate-500 mt-0.5 flex items-center gap-2">
@@ -1502,15 +1509,20 @@ export const PetugasView: React.FC = () => {
 
                       {/* Shift Badge */}
                       <td className="p-2.5 border-r border-slate-100">
-                        <div className="flex items-center gap-1.5">
-                          <span
-                            className="w-2.5 h-2.5 rounded-full shrink-0"
-                            style={{ backgroundColor: shiftObj?.color || '#0284c7' }}
-                          />
-                          <span className="font-semibold text-slate-800 text-[11px] truncate">
-                            {cleaner.shiftName}
-                          </span>
-                        </div>
+                        {(() => {
+                          const resolvedShift = resolveShiftForCleaner(cleaner, shifts);
+                          return (
+                            <div className="flex items-center gap-1.5">
+                              <span
+                                className="w-2.5 h-2.5 rounded-full shrink-0"
+                                style={{ backgroundColor: shiftObj?.color || resolvedShift.color || '#0284c7' }}
+                              />
+                              <span className="font-semibold text-slate-800 text-[11px] truncate">
+                                {resolvedShift.name}
+                              </span>
+                            </div>
+                          );
+                        })()}
                       </td>
 
                       {/* Period Date Cells (Buka Buku -> Tutup Buku) */}

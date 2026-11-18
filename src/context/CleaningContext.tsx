@@ -2743,12 +2743,20 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     const projectKey = doc.projectId || safeActiveProjectId || defaultProjectId || 'global';
     const activeProj = projects.find((p) => p.id === projectKey);
     const compId = doc.company_id || doc.companyId || activeProj?.company_id || activeProj?.companyId || currentCompany?.id || 'comp-main';
-    const projectShifts = shifts.filter(
-      (s) =>
-        (!s.projectId && (!s.projectIds || s.projectIds.length === 0)) ||
-        s.projectId === projectKey ||
-        s.projectIds?.includes(projectKey)
-    );
+    const hasExplicitShiftIds = Array.isArray(activeProj?.shiftIds) && activeProj.shiftIds.length > 0;
+    const projectShifts = hasExplicitShiftIds
+      ? shifts.filter(
+          (s) =>
+            activeProj!.shiftIds!.includes(s.id) ||
+            s.projectId === projectKey ||
+            (s.projectIds && s.projectIds.includes(projectKey))
+        )
+      : shifts.filter(
+          (s) =>
+            (!s.projectId && (!s.projectIds || s.projectIds.length === 0)) ||
+            s.projectId === projectKey ||
+            s.projectIds?.includes(projectKey)
+        );
     const { shift1, shift2 } = resolveShift1AndShift2(projectShifts.length > 0 ? projectShifts : shifts);
 
     const { rows, daysCount } = buildRowsFromEntries(doc.entries || []);
@@ -5133,6 +5141,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     const created: Shift = {
       ...newShift,
       id,
+      projectId: newShift.projectId || safeActiveProjectId || undefined,
       workHoursDuration: duration.totalHoursDecimal,
       durationText: duration.text,
     };
