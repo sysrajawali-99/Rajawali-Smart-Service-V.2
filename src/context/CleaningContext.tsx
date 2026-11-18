@@ -1080,12 +1080,124 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const checklistSnapshotRef = useRef<Map<string, string>>(new Map());
   const dirtyChecklistIdsRef = useRef<Set<string>>(new Set());
   const dailyChecklistsRef = useRef<DailyAreaChecklist[]>(dailyChecklists);
+  const cleanersRef = useRef<Cleaner[]>(cleaners);
+  const cleanerWriteQueueRef = useRef<Map<string, Promise<void>>>(new Map());
+  const projectsRef = useRef<ProjectLocation[]>(projects);
+  const projectWriteQueueRef = useRef<Map<string, Promise<void>>>(new Map());
   const lastPullAtRef = useRef<Record<string, string>>({});
   const lastDisconnectTimeRef = useRef<number | null>(null);
 
   useEffect(() => {
     dailyChecklistsRef.current = dailyChecklists;
   }, [dailyChecklists]);
+
+  useEffect(() => {
+    cleanersRef.current = cleaners;
+  }, [cleaners]);
+
+  useEffect(() => {
+    projectsRef.current = projects;
+  }, [projects]);
+
+  const syncCleanerRev = (saved: Cleaner) => {
+    if (!saved?.id || !saved._rev) return;
+    cleanersRef.current = cleanersRef.current.map((c) =>
+      c.id === saved.id ? { ...c, _rev: saved._rev } : c
+    );
+    setCleaners((prev) =>
+      prev.map((c) => (c.id === saved.id ? { ...c, _rev: saved._rev } : c))
+    );
+  };
+
+  const syncProjectRev = (saved: ProjectLocation) => {
+    if (!saved?.id || !saved._rev) return;
+    projectsRef.current = projectsRef.current.map((p) =>
+      p.id === saved.id ? { ...p, _rev: saved._rev } : p
+    );
+    setProjects((prev) =>
+      prev.map((p) => (p.id === saved.id ? { ...p, _rev: saved._rev } : p))
+    );
+  };
+
+  const enqueueCleanerWrite = (
+    cleanerId: string,
+    actionLabel: string,
+    mergeWithBase: (base: Cleaner) => Cleaner
+  ) => {
+    const prevChain = cleanerWriteQueueRef.current.get(cleanerId) || Promise.resolve();
+    const nextChain = prevChain
+      .catch(() => {})
+      .then(async () => {
+        const currentLocal = cleanersRef.current.find((c) => c.id === cleanerId);
+        if (!currentLocal) return;
+        const payload = mergeWithBase(currentLocal);
+        try {
+          const saved = await upsertRecord(COLLECTIONS.CLEANERS, payload);
+          syncCleanerRev(saved);
+        } catch (err: any) {
+          if (err?.status === 409 && err?.current) {
+            const serverCurrent = err.current as Cleaner;
+            const merged = mergeWithBase(serverCurrent);
+            merged._rev = serverCurrent._rev;
+            merged._baseRev = serverCurrent._rev;
+            cleanersRef.current = cleanersRef.current.map((c) =>
+              c.id === cleanerId ? merged : c
+            );
+            setCleaners((prev) => prev.map((c) => (c.id === cleanerId ? merged : c)));
+            try {
+              const savedRetry = await upsertRecord(COLLECTIONS.CLEANERS, merged);
+              syncCleanerRev(savedRetry);
+              return;
+            } catch (retryErr) {
+              notifyServerError(actionLabel, retryErr);
+              return;
+            }
+          }
+          notifyServerError(actionLabel, err);
+        }
+      });
+    cleanerWriteQueueRef.current.set(cleanerId, nextChain);
+  };
+
+  const enqueueProjectWrite = (
+    projectId: string,
+    actionLabel: string,
+    mergeWithBase: (base: ProjectLocation) => ProjectLocation
+  ) => {
+    const prevChain = projectWriteQueueRef.current.get(projectId) || Promise.resolve();
+    const nextChain = prevChain
+      .catch(() => {})
+      .then(async () => {
+        const currentLocal = projectsRef.current.find((p) => p.id === projectId);
+        if (!currentLocal) return;
+        const payload = mergeWithBase(currentLocal);
+        try {
+          const saved = await upsertRecord(COLLECTIONS.PROJECTS, payload);
+          syncProjectRev(saved);
+        } catch (err: any) {
+          if (err?.status === 409 && err?.current) {
+            const serverCurrent = err.current as ProjectLocation;
+            const merged = mergeWithBase(serverCurrent);
+            merged._rev = serverCurrent._rev;
+            merged._baseRev = serverCurrent._rev;
+            projectsRef.current = projectsRef.current.map((p) =>
+              p.id === projectId ? merged : p
+            );
+            setProjects((prev) => prev.map((p) => (p.id === projectId ? merged : p)));
+            try {
+              const savedRetry = await upsertRecord(COLLECTIONS.PROJECTS, merged);
+              syncProjectRev(savedRetry);
+              return;
+            } catch (retryErr) {
+              notifyServerError(actionLabel, retryErr);
+              return;
+            }
+          }
+          notifyServerError(actionLabel, err);
+        }
+      });
+    projectWriteQueueRef.current.set(projectId, nextChain);
+  };
 
   // Floating brief toast notification for conflicts
   const showToast = (message: string) => {
@@ -1119,10 +1231,11 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     } catch (err: any) {
       if (err?.status === 409 && err.current) {
         const serverCurrent = err.current;
-        // Gabungkan current dari server dengan perubahan lokal (field lokal menang, sisanya dari server)
+        // Gabungkan current dari server dengan perubahan lokal (field lokal menang, revisi pakai serverCurrent._rev)
         const merged: T = {
           ...serverCurrent,
           ...localItem,
+          _rev: serverCurrent._rev,
           _baseRev: serverCurrent._rev,
         };
         if (stateSetter) {
@@ -2594,8 +2707,11 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       year: 'numeric',
     });
     const newProj: ProjectLocation = { ...proj, id, createdAt };
+    projectsRef.current = [...projectsRef.current, newProj];
     setProjects((prev) => [...prev, newProj]);
-    upsertRecord(COLLECTIONS.PROJECTS, newProj).catch((err) => notifyServerError('menambah proyek', err));
+    upsertRecord(COLLECTIONS.PROJECTS, newProj)
+      .then((saved) => syncProjectRev(saved))
+      .catch((err) => notifyServerError('menambah proyek', err));
 
     // Give super admin access automatically (both super_admin and admin)
     const updatedAdmins = users
@@ -2614,16 +2730,17 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   const updateProject = (id: string, updates: Partial<ProjectLocation>) => {
-    const existing = projects.find((p) => p.id === id);
-    const updatedProj = existing ? { ...existing, ...updates } : undefined;
+    projectsRef.current = projectsRef.current.map((p) => (p.id === id ? { ...p, ...updates } : p));
     setProjects((prev) => prev.map((p) => (p.id === id ? { ...p, ...updates } : p)));
-    if (updatedProj) {
-      upsertRecord(COLLECTIONS.PROJECTS, updatedProj).catch((err) => notifyServerError('memperbarui proyek', err));
-    }
+    enqueueProjectWrite(id, 'memperbarui proyek', (base) => ({
+      ...base,
+      ...updates,
+    }));
   };
 
   const deleteProject = (id: string) => {
-    const remaining = projects.filter((p) => p.id !== id);
+    const remaining = projectsRef.current.filter((p) => p.id !== id);
+    projectsRef.current = remaining;
     setProjects(remaining);
     deleteRecord(COLLECTIONS.PROJECTS, id).catch((err) => notifyServerError('menghapus proyek', err));
     if (safeActiveProjectId === id) {
@@ -4703,22 +4820,25 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const addCleaner = (newCleaner: Omit<Cleaner, 'id'>) => {
     const id = `cln-${Date.now()}`;
     const item: Cleaner = { ...newCleaner, id, projectId: newCleaner.projectId || safeActiveProjectId };
+    cleanersRef.current = [...cleanersRef.current, item];
     setCleaners((prev) => [...prev, item]);
-    upsertRecord(COLLECTIONS.CLEANERS, item).catch((err) => notifyServerError('menambah petugas', err));
+    const writePromise = upsertRecord(COLLECTIONS.CLEANERS, item)
+      .then((saved) => syncCleanerRev(saved))
+      .catch((err) => notifyServerError('menambah petugas', err));
+    cleanerWriteQueueRef.current.set(id, writePromise);
   };
 
   const updateCleaner = (id: string, updates: Partial<Cleaner>) => {
-    const existing = cleaners.find((c) => c.id === id);
-    const updated = existing ? { ...existing, ...updates } : undefined;
-    setCleaners((prev) =>
-      prev.map((c) => (c.id === id ? { ...c, ...updates } : c))
-    );
-    if (updated) {
-      upsertRecord(COLLECTIONS.CLEANERS, updated).catch((err) => notifyServerError('memperbarui petugas', err));
-    }
+    cleanersRef.current = cleanersRef.current.map((c) => (c.id === id ? { ...c, ...updates } : c));
+    setCleaners((prev) => prev.map((c) => (c.id === id ? { ...c, ...updates } : c)));
+    enqueueCleanerWrite(id, 'memperbarui petugas', (base) => ({
+      ...base,
+      ...updates,
+    }));
   };
 
   const deleteCleaner = (id: string) => {
+    cleanersRef.current = cleanersRef.current.filter((c) => c.id !== id);
     setCleaners((prev) => prev.filter((c) => c.id !== id));
     deleteRecord(COLLECTIONS.CLEANERS, id).catch((err) => notifyServerError('menghapus petugas', err));
   };
@@ -4729,8 +4849,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     status: AttendanceStatusCode,
     monthPeriod?: string
   ) => {
-    const existing = cleaners.find((c) => c.id === cleanerId);
-    const buildNext = (c: Cleaner): Cleaner => {
+    const applyPatch = (c: Cleaner): Cleaner => {
       const currentAtt = { ...(c.attendance || {}) };
       currentAtt[day] = status;
       const currentByMonth = { ...(c.attendanceByMonth || {}) };
@@ -4746,11 +4865,9 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         attendanceByMonth: currentByMonth,
       };
     };
-    const updated = existing ? buildNext(existing) : undefined;
-    setCleaners((prev) => prev.map((c) => (c.id === cleanerId ? buildNext(c) : c)));
-    if (updated) {
-      upsertRecord(COLLECTIONS.CLEANERS, updated).catch((err) => notifyServerError('memperbarui presensi petugas', err));
-    }
+    cleanersRef.current = cleanersRef.current.map((c) => (c.id === cleanerId ? applyPatch(c) : c));
+    setCleaners((prev) => prev.map((c) => (c.id === cleanerId ? applyPatch(c) : c)));
+    enqueueCleanerWrite(cleanerId, 'memperbarui presensi petugas', applyPatch);
   };
 
   const batchSetCleanerAttendance = (
@@ -4758,8 +4875,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     days: Record<number, AttendanceStatusCode>,
     monthPeriod?: string
   ) => {
-    const existing = cleaners.find((c) => c.id === cleanerId);
-    const buildNext = (c: Cleaner): Cleaner => {
+    const applyPatch = (c: Cleaner): Cleaner => {
       const currentAtt = { ...(c.attendance || {}), ...days };
       const currentByMonth = { ...(c.attendanceByMonth || {}) };
       if (monthPeriod) {
@@ -4774,11 +4890,9 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         attendanceByMonth: currentByMonth,
       };
     };
-    const updated = existing ? buildNext(existing) : undefined;
-    setCleaners((prev) => prev.map((c) => (c.id === cleanerId ? buildNext(c) : c)));
-    if (updated) {
-      upsertRecord(COLLECTIONS.CLEANERS, updated).catch((err) => notifyServerError('memperbarui presensi petugas', err));
-    }
+    cleanersRef.current = cleanersRef.current.map((c) => (c.id === cleanerId ? applyPatch(c) : c));
+    setCleaners((prev) => prev.map((c) => (c.id === cleanerId ? applyPatch(c) : c)));
+    enqueueCleanerWrite(cleanerId, 'memperbarui presensi petugas', applyPatch);
   };
 
   const addShift = (newShift: Omit<Shift, 'id'>) => {
@@ -4823,23 +4937,18 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const toggleClockInOut = (cleanerId: string) => {
     const nowStr = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB';
-    let updated: Cleaner | undefined;
-    setCleaners((prev) =>
-      prev.map((c) => {
-        if (c.id !== cleanerId) return c;
-        const nextClockedIn = !c.isClockedIn;
-        updated = {
-          ...c,
-          isClockedIn: nextClockedIn,
-          status: nextClockedIn ? 'active' : 'off',
-          clockInTime: nextClockedIn ? nowStr : undefined,
-        };
-        return updated;
-      })
-    );
-    if (updated) {
-      upsertRecord(COLLECTIONS.CLEANERS, updated).catch((err) => notifyServerError('clock in/out petugas', err));
-    }
+    const applyPatch = (c: Cleaner): Cleaner => {
+      const nextClockedIn = !c.isClockedIn;
+      return {
+        ...c,
+        isClockedIn: nextClockedIn,
+        status: nextClockedIn ? 'active' : 'off',
+        clockInTime: nextClockedIn ? nowStr : undefined,
+      };
+    };
+    cleanersRef.current = cleanersRef.current.map((c) => (c.id === cleanerId ? applyPatch(c) : c));
+    setCleaners((prev) => prev.map((c) => (c.id === cleanerId ? applyPatch(c) : c)));
+    enqueueCleanerWrite(cleanerId, 'clock in/out petugas', applyPatch);
   };
 
   const dismissNotification = (id: string) => {

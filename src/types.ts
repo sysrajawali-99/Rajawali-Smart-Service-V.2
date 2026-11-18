@@ -96,6 +96,8 @@ export interface Cleaner {
   attendanceByMonth?: Record<string, Record<number, AttendanceStatusCode>>; // Periode YYYY-MM
   workPlotting?: string; // Plotingan lokasi kerja manual (e.g. "Toilet Lt. 2 & Pantry Barat")
   workPlottingUpdatedAt?: string; // Waktu update terakhir plotingan (e.g. "14:30 WIB")
+  _rev?: string;
+  _baseRev?: string;
 }
 
 export interface ShiftPlottingAllocation {
@@ -320,6 +322,8 @@ export interface ProjectLocation {
   createdAt: string;
   shiftIds?: string[]; // Daftar ID shift yang aktif / diterapkan di proyek ini
   attendancePeriod?: AttendanceBookPeriod;
+  _rev?: string;
+  _baseRev?: string;
 }
 
 export interface AppUser {
