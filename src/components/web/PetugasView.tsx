@@ -29,8 +29,14 @@ import {
   Phone,
 } from 'lucide-react';
 import { useCleaning } from '../../context/CleaningContext';
-import { Cleaner, AttendanceStatusCode } from '../../types';
-import { calculateWorkingDays } from '../../utils/shiftUtils';
+import { Cleaner, AttendanceStatusCode, AttendanceBookPeriod } from '../../types';
+import {
+  PeriodDateItem,
+  buildPeriodDates,
+  calculateWorkingDaysForPeriod,
+  getCleanerAttendanceStatus,
+  getDaysInMonthCount,
+} from '../../utils/shiftUtils';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
@@ -100,14 +106,136 @@ export const PetugasView: React.FC = () => {
     updateCleanerAttendance,
     batchSetCleanerAttendance,
     activeProjectId,
+    activeProject,
+    updateProject,
   } = useCleaning();
 
-  // Period filter
+  // Period filter (Periode Buka Buku & Tutup Buku)
   const today = new Date();
-  const [selectedMonth, setSelectedMonth] = useState<number>(today.getMonth()); // 0-11
-  const [selectedYear, setSelectedYear] = useState<number>(today.getFullYear());
+  const currentYear = today.getFullYear();
 
-  const periodKey = `${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}`;
+  const getDefaultBookPeriod = (): AttendanceBookPeriod => {
+    const y = today.getFullYear();
+    const m = today.getMonth() + 1;
+    return {
+      openDay: 1,
+      openMonth: m,
+      openYear: y,
+      closeDay: getDaysInMonthCount(y, m),
+      closeMonth: m,
+      closeYear: y,
+    };
+  };
+
+  const storagePeriodKey = `petugas_book_period_${activeProjectId || 'default'}`;
+
+  const [bookPeriod, setBookPeriod] = useState<AttendanceBookPeriod>(() => {
+    if (activeProject?.attendancePeriod) {
+      return activeProject.attendancePeriod;
+    }
+    try {
+      const saved = localStorage.getItem(storagePeriodKey);
+      if (saved) {
+        const parsed = JSON.parse(saved) as AttendanceBookPeriod;
+        if (
+          parsed &&
+          parsed.openDay >= 1 &&
+          parsed.openMonth >= 1 &&
+          parsed.openYear >= 2000 &&
+          parsed.closeDay >= 1 &&
+          parsed.closeMonth >= 1 &&
+          parsed.closeYear >= 2000
+        ) {
+          return parsed;
+        }
+      }
+    } catch {
+      // ignore invalid stored value
+    }
+    return getDefaultBookPeriod();
+  });
+
+  // Sync when switching project or receiving remote update for project's attendancePeriod
+  useEffect(() => {
+    if (activeProject?.attendancePeriod) {
+      const remote = activeProject.attendancePeriod;
+      setBookPeriod((prev) => {
+        if (
+          prev.openDay === remote.openDay &&
+          prev.openMonth === remote.openMonth &&
+          prev.openYear === remote.openYear &&
+          prev.closeDay === remote.closeDay &&
+          prev.closeMonth === remote.closeMonth &&
+          prev.closeYear === remote.closeYear
+        ) {
+          return prev;
+        }
+        return remote;
+      });
+      return;
+    }
+    try {
+      const saved = localStorage.getItem(storagePeriodKey);
+      if (saved) {
+        const parsed = JSON.parse(saved) as AttendanceBookPeriod;
+        if (parsed?.openYear && parsed?.closeYear) {
+          setBookPeriod(parsed);
+          return;
+        }
+      }
+    } catch {
+      // ignore
+    }
+    setBookPeriod(getDefaultBookPeriod());
+  }, [activeProjectId, activeProject?.attendancePeriod, storagePeriodKey]);
+
+  const updateBookPeriod = (updater: (prev: AttendanceBookPeriod) => AttendanceBookPeriod) => {
+    setBookPeriod((prev) => {
+      const rawNext = updater(prev);
+      const safeOpenMax = getDaysInMonthCount(rawNext.openYear, rawNext.openMonth);
+      const safeCloseMax = getDaysInMonthCount(rawNext.closeYear, rawNext.closeMonth);
+      const next: AttendanceBookPeriod = {
+        ...rawNext,
+        openDay: Math.max(1, Math.min(rawNext.openDay, safeOpenMax)),
+        closeDay: Math.max(1, Math.min(rawNext.closeDay, safeCloseMax)),
+      };
+      try {
+        localStorage.setItem(storagePeriodKey, JSON.stringify(next));
+      } catch {
+        // ignore storage errors
+      }
+      if (activeProject?.id) {
+        updateProject(activeProject.id, { attendancePeriod: next });
+      }
+      return next;
+    });
+  };
+
+  const yearOptions = useMemo(() => {
+    const base = Array.from({ length: 16 }, (_, i) => currentYear - 5 + i);
+    const set = new Set<number>([...base, bookPeriod.openYear, bookPeriod.closeYear]);
+    return Array.from(set).sort((a, b) => a - b);
+  }, [currentYear, bookPeriod.openYear, bookPeriod.closeYear]);
+
+  const openMonthMaxDays = useMemo(
+    () => getDaysInMonthCount(bookPeriod.openYear, bookPeriod.openMonth),
+    [bookPeriod.openYear, bookPeriod.openMonth]
+  );
+
+  const closeMonthMaxDays = useMemo(
+    () => getDaysInMonthCount(bookPeriod.closeYear, bookPeriod.closeMonth),
+    [bookPeriod.closeYear, bookPeriod.closeMonth]
+  );
+
+  const {
+    dates: periodDates,
+    isInvalidOrder: isPeriodInvalidOrder,
+    isTruncated: isPeriodTruncated,
+    totalRawDays: periodTotalRawDays,
+  } = useMemo(() => buildPeriodDates(bookPeriod, 62), [bookPeriod]);
+
+  const openLabel = `${bookPeriod.openDay} ${MONTH_NAMES[bookPeriod.openMonth - 1] || ''} ${bookPeriod.openYear}`;
+  const closeLabel = `${bookPeriod.closeDay} ${MONTH_NAMES[bookPeriod.closeMonth - 1] || ''} ${bookPeriod.closeYear}`;
 
   // Search & Filter
   const [searchQuery, setSearchQuery] = useState('');
@@ -138,7 +266,7 @@ export const PetugasView: React.FC = () => {
   // Quick Popover Picker for cell status
   const [activeCellPicker, setActiveCellPicker] = useState<{
     cleanerId: string;
-    day: number;
+    dateItem: PeriodDateItem;
   } | null>(null);
 
   // Toast / Status banner
@@ -178,15 +306,18 @@ export const PetugasView: React.FC = () => {
     });
   }, [cleaners, searchQuery, selectedShiftFilter]);
 
-  // Overall Statistics
+  // Overall Statistics across active Buka Buku - Tutup Buku period
   const overallStats = useMemo(() => {
     let totalWorkDays = 0;
     let totalHadir = 0;
     let totalLembur = 0;
 
     filteredCleaners.forEach((c) => {
-      const att = (c.attendanceByMonth && c.attendanceByMonth[periodKey]) || c.attendance || {};
-      const { hadirCount, lemburCount, totalWorkingDays } = calculateWorkingDays(att);
+      const { hadirCount, lemburCount, totalWorkingDays } = calculateWorkingDaysForPeriod(
+        c.attendanceByMonth,
+        c.attendance,
+        periodDates
+      );
       totalWorkDays += totalWorkingDays;
       totalHadir += hadirCount;
       totalLembur += lemburCount;
@@ -198,24 +329,27 @@ export const PetugasView: React.FC = () => {
       totalHadir,
       totalLembur,
     };
-  }, [filteredCleaners, periodKey]);
+  }, [filteredCleaners, periodDates]);
 
   // Handle cell click (cycle or picker)
-  const handleCellClick = (cleaner: Cleaner, day: number) => {
-    const currentAtt = (cleaner.attendanceByMonth && cleaner.attendanceByMonth[periodKey]) || cleaner.attendance || {};
-    const currentStatus = currentAtt[day] || '-';
+  const handleCellClick = (cleaner: Cleaner, dateItem: PeriodDateItem) => {
+    const currentStatus = getCleanerAttendanceStatus(
+      cleaner.attendanceByMonth,
+      cleaner.attendance,
+      dateItem
+    );
 
     // Cycle order: H -> L -> I -> S -> A -> - -> H
     const cycleOrder: AttendanceStatusCode[] = ['H', 'L', 'I', 'S', 'A', '-'];
     const currentIndex = cycleOrder.indexOf(currentStatus);
     const nextStatus = cycleOrder[(currentIndex + 1) % cycleOrder.length];
 
-    updateCleanerAttendance(cleaner.id, day, nextStatus, periodKey);
+    updateCleanerAttendance(cleaner.id, dateItem.day, nextStatus, dateItem.monthKey);
   };
 
   // Direct set from picker
-  const handleSelectStatus = (cleanerId: string, day: number, status: AttendanceStatusCode) => {
-    updateCleanerAttendance(cleanerId, day, status, periodKey);
+  const handleSelectStatus = (cleanerId: string, dateItem: PeriodDateItem, status: AttendanceStatusCode) => {
+    updateCleanerAttendance(cleanerId, dateItem.day, status, dateItem.monthKey);
     setActiveCellPicker(null);
   };
 
@@ -255,16 +389,31 @@ export const PetugasView: React.FC = () => {
       });
       showToast(`Data petugas "${cleanerFormName.trim()}" & plotingan lokasi berhasil diperbarui.`);
     } else {
-      // Create with default full H attendance for weekdays
+      // Create with default H attendance for weekdays across the active Buka Buku - Tutup Buku period
       const newAtt: Record<number, AttendanceStatusCode> = {};
-      for (let d = 1; d <= 31; d++) {
-        const isWeekend = d % 7 === 0 || d % 7 === 6;
-        newAtt[d] = isWeekend ? '-' : 'H';
+      const newAttByMonth: Record<string, Record<number, AttendanceStatusCode>> = {};
+
+      if (periodDates.length > 0) {
+        periodDates.forEach((item) => {
+          const st: AttendanceStatusCode = item.isWeekend ? '-' : 'H';
+          newAtt[item.day] = st;
+          if (!newAttByMonth[item.monthKey]) newAttByMonth[item.monthKey] = {};
+          newAttByMonth[item.monthKey][item.day] = st;
+        });
+      } else {
+        const fallbackMonthKey = `${bookPeriod.openYear}-${String(bookPeriod.openMonth).padStart(2, '0')}`;
+        newAttByMonth[fallbackMonthKey] = {};
+        for (let d = 1; d <= 31; d++) {
+          const isWeekend = d % 7 === 0 || d % 7 === 6;
+          const st: AttendanceStatusCode = isWeekend ? '-' : 'H';
+          newAtt[d] = st;
+          newAttByMonth[fallbackMonthKey][d] = st;
+        }
       }
 
       addCleaner({
         name: cleanerFormName.trim(),
-        nik: `CLN-${selectedYear}-${Math.floor(100 + Math.random() * 900)}`,
+        nik: `CLN-${bookPeriod.openYear}-${Math.floor(100 + Math.random() * 900)}`,
         phone: '0812-0000-0000',
         shiftId: matchedShift?.id || 'shift-1',
         shiftName: matchedShift?.name || 'Shift 1 ( satu )',
@@ -277,9 +426,7 @@ export const PetugasView: React.FC = () => {
         isClockedIn: true,
         clockInTime: '07:00 WIB',
         attendance: newAtt,
-        attendanceByMonth: {
-          [periodKey]: newAtt,
-        },
+        attendanceByMonth: newAttByMonth,
         workPlotting: cleanerFormPlotting.trim() || 'Lobby Utama & Area Publik',
         workPlottingUpdatedAt: nowTimeStr,
       });
@@ -298,14 +445,16 @@ export const PetugasView: React.FC = () => {
     }
   };
 
-  // Batch Fill: Set all weekdays to H
+  // Batch Fill: Set all weekdays to H across active period
   const handleBatchFillWeekdays = (cleanerId: string) => {
-    const days: Record<number, AttendanceStatusCode> = {};
-    for (let d = 1; d <= 31; d++) {
-      const isWeekend = d % 7 === 0 || d % 7 === 6;
-      days[d] = isWeekend ? '-' : 'H';
-    }
-    batchSetCleanerAttendance(cleanerId, days, periodKey);
+    const byMonth: Record<string, Record<number, AttendanceStatusCode>> = {};
+    periodDates.forEach((item) => {
+      if (!byMonth[item.monthKey]) byMonth[item.monthKey] = {};
+      byMonth[item.monthKey][item.day] = item.isWeekend ? '-' : 'H';
+    });
+    Object.entries(byMonth).forEach(([mKey, days]) => {
+      batchSetCleanerAttendance(cleanerId, days, mKey);
+    });
     showToast('Kehadiran hari kerja diatur ke Hadir (H).');
   };
 
@@ -385,6 +534,11 @@ export const PetugasView: React.FC = () => {
 
   // Export to PDF
   const handleExportPDF = () => {
+    if (periodDates.length === 0) {
+      showToast('Rentang tanggal Buka Buku & Tutup Buku belum valid.');
+      return;
+    }
+
     const doc = new jsPDF({
       orientation: 'landscape',
       unit: 'mm',
@@ -399,16 +553,19 @@ export const PetugasView: React.FC = () => {
     doc.setFontSize(10);
     doc.setTextColor(100, 116, 139); // slate-500
     doc.text(
-      `Periode: ${MONTH_NAMES[selectedMonth]} ${selectedYear} | Ketentuan: H=Hadir, I=Izin, S=Sakit, A=Alpa, L=Lembur (Dihitung 2x Hari Kerja)`,
+      `Periode Buka/Tutup Buku: ${openLabel} s/d ${closeLabel} (${periodDates.length} Hari) | H=Hadir, I=Izin, S=Sakit, A=Alpa, L=Lembur (2x)`,
       14,
       21
     );
+
+    const crossesMultipleMonths =
+      bookPeriod.openMonth !== bookPeriod.closeMonth || bookPeriod.openYear !== bookPeriod.closeYear;
 
     const headers = [
       'No',
       'Nama Petugas',
       'Shift',
-      ...Array.from({ length: 31 }, (_, i) => String(i + 1)),
+      ...periodDates.map((item) => (crossesMultipleMonths ? `${item.day}/${item.month}` : String(item.day))),
       'H',
       'I',
       'S',
@@ -418,11 +575,12 @@ export const PetugasView: React.FC = () => {
     ];
 
     const bodyData = filteredCleaners.map((c, index) => {
-      const att = (c.attendanceByMonth && c.attendanceByMonth[periodKey]) || c.attendance || {};
       const { hadirCount, lemburCount, izinCount, sakitCount, alpaCount, totalWorkingDays } =
-        calculateWorkingDays(att);
+        calculateWorkingDaysForPeriod(c.attendanceByMonth, c.attendance, periodDates);
 
-      const daysArr = Array.from({ length: 31 }, (_, i) => att[i + 1] || '-');
+      const daysArr = periodDates.map((item) =>
+        getCleanerAttendanceStatus(c.attendanceByMonth, c.attendance, item)
+      );
 
       return [
         index + 1,
@@ -438,13 +596,15 @@ export const PetugasView: React.FC = () => {
       ];
     });
 
+    const statColStart = 3 + periodDates.length;
+
     autoTable(doc, {
       head: [headers],
       body: bodyData,
       startY: 26,
       styles: {
-        fontSize: 7,
-        cellPadding: 1.2,
+        fontSize: periodDates.length > 35 ? 6 : 7,
+        cellPadding: 1.1,
         halign: 'center',
       },
       headStyles: {
@@ -456,37 +616,48 @@ export const PetugasView: React.FC = () => {
         0: { cellWidth: 8 },
         1: { halign: 'left', cellWidth: 28 },
         2: { halign: 'left', cellWidth: 24 },
-        // Last columns: stats
-        34: { fillColor: [236, 253, 245], fontStyle: 'bold' }, // H
-        35: { fillColor: [240, 249, 255] }, // I
-        36: { fillColor: [254, 243, 199] }, // S
-        37: { fillColor: [255, 228, 230] }, // A
-        38: { fillColor: [243, 232, 255], fontStyle: 'bold' }, // L (2x)
-        39: { fillColor: [224, 242, 254], fontStyle: 'bold' }, // Total
+        [statColStart]: { fillColor: [236, 253, 245], fontStyle: 'bold' }, // H
+        [statColStart + 1]: { fillColor: [240, 249, 255] }, // I
+        [statColStart + 2]: { fillColor: [254, 243, 199] }, // S
+        [statColStart + 3]: { fillColor: [255, 228, 230] }, // A
+        [statColStart + 4]: { fillColor: [243, 232, 255], fontStyle: 'bold' }, // L (2x)
+        [statColStart + 5]: { fillColor: [224, 242, 254], fontStyle: 'bold' }, // Total
       },
     });
 
-    doc.save(`Rekap_Kehadiran_Petugas_${periodKey}.pdf`);
+    const openFilePart = `${bookPeriod.openYear}-${String(bookPeriod.openMonth).padStart(2, '0')}-${String(bookPeriod.openDay).padStart(2, '0')}`;
+    const closeFilePart = `${bookPeriod.closeYear}-${String(bookPeriod.closeMonth).padStart(2, '0')}-${String(bookPeriod.closeDay).padStart(2, '0')}`;
+    doc.save(`Rekap_Kehadiran_Petugas_${openFilePart}_sd_${closeFilePart}.pdf`);
   };
 
   // Export to CSV
   const handleExportCSV = () => {
-    const daysHeader = Array.from({ length: 31 }, (_, i) => `Tgl_${i + 1}`).join(',');
+    if (periodDates.length === 0) {
+      showToast('Rentang tanggal Buka Buku & Tutup Buku belum valid.');
+      return;
+    }
+
+    const daysHeader = periodDates
+      .map((item) => `Tgl_${String(item.day).padStart(2, '0')}-${String(item.month).padStart(2, '0')}-${item.year}`)
+      .join(',');
     let csv = `No,Nama Petugas,Shift,${daysHeader},Hadir,Izin,Sakit,Alpa,Lembur,Total Hari Kerja (L=2x)\n`;
 
     filteredCleaners.forEach((c, idx) => {
-      const att = (c.attendanceByMonth && c.attendanceByMonth[periodKey]) || c.attendance || {};
       const { hadirCount, lemburCount, izinCount, sakitCount, alpaCount, totalWorkingDays } =
-        calculateWorkingDays(att);
+        calculateWorkingDaysForPeriod(c.attendanceByMonth, c.attendance, periodDates);
 
-      const daysArr = Array.from({ length: 31 }, (_, i) => att[i + 1] || '-').join(',');
+      const daysArr = periodDates
+        .map((item) => getCleanerAttendanceStatus(c.attendanceByMonth, c.attendance, item))
+        .join(',');
       csv += `${idx + 1},"${c.name}","${c.shiftName}",${daysArr},${hadirCount},${izinCount},${sakitCount},${alpaCount},${lemburCount},${totalWorkingDays}\n`;
     });
 
+    const openFilePart = `${bookPeriod.openYear}-${String(bookPeriod.openMonth).padStart(2, '0')}-${String(bookPeriod.openDay).padStart(2, '0')}`;
+    const closeFilePart = `${bookPeriod.closeYear}-${String(bookPeriod.closeMonth).padStart(2, '0')}-${String(bookPeriod.closeDay).padStart(2, '0')}`;
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
-    link.setAttribute('download', `Rekap_Kehadiran_Petugas_${periodKey}.csv`);
+    link.setAttribute('download', `Rekap_Kehadiran_Petugas_${openFilePart}_sd_${closeFilePart}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -507,40 +678,19 @@ export const PetugasView: React.FC = () => {
         <div>
           <h2 className="text-lg font-bold text-slate-900 tracking-tight flex items-center gap-2">
             <Users className="w-5 h-5 text-sky-600" />
-            Data Petugas & Presensi Kehadiran (1 - 31)
+            Data Petugas & Presensi Kehadiran
           </h2>
           <p className="text-xs text-slate-500 mt-0.5">
-            Daftar petugas kebersihan, penugasan shift kerja, dan rekap kehadiran tanggal 1 sampai 31.{' '}
+            Daftar petugas kebersihan, penugasan shift kerja, dan rekap kehadiran periode{' '}
+            <strong className="text-slate-700">
+              {openLabel} s/d {closeLabel}
+            </strong>{' '}
+            ({periodDates.length} Hari).{' '}
             <strong className="text-purple-700 font-semibold">Khusus Lembur (L) dihitung 2x hari kerja.</strong>
           </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-2.5">
-          {/* Month & Year Selectors */}
-          <div className="flex items-center gap-1.5 bg-white border border-slate-200 rounded-xl px-2.5 py-1.5 shadow-2xs text-xs">
-            <Calendar className="w-3.5 h-3.5 text-slate-400" />
-            <select
-              value={selectedMonth}
-              onChange={(e) => setSelectedMonth(Number(e.target.value))}
-              className="font-bold text-slate-800 bg-transparent focus:outline-none cursor-pointer"
-            >
-              {MONTH_NAMES.map((m, idx) => (
-                <option key={m} value={idx}>
-                  {m}
-                </option>
-              ))}
-            </select>
-            <select
-              value={selectedYear}
-              onChange={(e) => setSelectedYear(Number(e.target.value))}
-              className="font-bold text-slate-800 bg-transparent focus:outline-none cursor-pointer border-l border-slate-200 pl-1.5"
-            >
-              <option value={2025}>2025</option>
-              <option value={2026}>2026</option>
-              <option value={2027}>2027</option>
-            </select>
-          </div>
-
           {/* Export Buttons */}
           <button
             onClick={handleExportPDF}
@@ -569,6 +719,202 @@ export const PetugasView: React.FC = () => {
             <span>+ Tambah Petugas</span>
           </button>
         </div>
+      </div>
+
+      {/* Pengaturan Periode Buka Buku & Tutup Buku */}
+      <div className="p-4 rounded-2xl bg-white border border-slate-200 shadow-2xs space-y-3">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-slate-100">
+          <div className="flex items-center gap-2">
+            <Calendar className="w-4 h-4 text-sky-600 shrink-0" />
+            <div>
+              <h3 className="text-xs font-bold text-slate-900">
+                Pengaturan Periode Buka Buku & Tutup Buku
+              </h3>
+              <p className="text-[11px] text-slate-500">
+                Atur tanggal, bulan, dan tahun mulai (Buka Buku) serta berakhir (Tutup Buku) presensi petugas.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] font-bold text-sky-800 bg-sky-50 border border-sky-200 px-2.5 py-1 rounded-lg">
+              {isPeriodInvalidOrder ? 'Rentang Tidak Valid' : `${periodDates.length} Hari Terjadwal`}
+            </span>
+            <button
+              type="button"
+              onClick={() => updateBookPeriod(() => getDefaultBookPeriod())}
+              className="px-2.5 py-1 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-[11px] font-semibold text-slate-700 transition-colors cursor-pointer"
+              title="Kembalikan ke tanggal 1 s/d akhir bulan berjalan"
+            >
+              Bulan Ini
+            </button>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+          {/* Buka Buku */}
+          <div className="p-3 rounded-xl bg-emerald-50/50 border border-emerald-200/80 space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-emerald-900">
+                Buka Buku (Tanggal Mulai)
+              </span>
+              <span className="text-[11px] font-semibold text-emerald-700">{openLabel}</span>
+            </div>
+
+            <div className="grid grid-cols-3 gap-2">
+              <div>
+                <label className="block text-[10px] font-semibold text-slate-600 mb-1">
+                  Tanggal
+                </label>
+                <select
+                  aria-label="Tanggal Buka Buku"
+                  value={bookPeriod.openDay}
+                  onChange={(e) =>
+                    updateBookPeriod((prev) => ({ ...prev, openDay: Number(e.target.value) }))
+                  }
+                  className="w-full px-2.5 py-1.5 rounded-lg border border-emerald-200 bg-white text-xs font-bold text-slate-800 focus:ring-2 focus:ring-emerald-500 focus:outline-none cursor-pointer"
+                >
+                  {Array.from({ length: openMonthMaxDays }, (_, i) => i + 1).map((d) => (
+                    <option key={d} value={d}>
+                      {String(d).padStart(2, '0')}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-semibold text-slate-600 mb-1">
+                  Bulan
+                </label>
+                <select
+                  aria-label="Bulan Buka Buku"
+                  value={bookPeriod.openMonth}
+                  onChange={(e) =>
+                    updateBookPeriod((prev) => ({ ...prev, openMonth: Number(e.target.value) }))
+                  }
+                  className="w-full px-2.5 py-1.5 rounded-lg border border-emerald-200 bg-white text-xs font-bold text-slate-800 focus:ring-2 focus:ring-emerald-500 focus:outline-none cursor-pointer"
+                >
+                  {MONTH_NAMES.map((m, idx) => (
+                    <option key={m} value={idx + 1}>
+                      {m}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-semibold text-slate-600 mb-1">
+                  Tahun
+                </label>
+                <select
+                  aria-label="Tahun Buka Buku"
+                  value={bookPeriod.openYear}
+                  onChange={(e) =>
+                    updateBookPeriod((prev) => ({ ...prev, openYear: Number(e.target.value) }))
+                  }
+                  className="w-full px-2.5 py-1.5 rounded-lg border border-emerald-200 bg-white text-xs font-bold text-slate-800 focus:ring-2 focus:ring-emerald-500 focus:outline-none cursor-pointer"
+                >
+                  {yearOptions.map((y) => (
+                    <option key={y} value={y}>
+                      {y}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          </div>
+
+          {/* Tutup Buku */}
+          <div className="p-3 rounded-xl bg-amber-50/50 border border-amber-200/80 space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-amber-900">
+                Tutup Buku (Tanggal Akhir)
+              </span>
+              <span className="text-[11px] font-semibold text-amber-700">{closeLabel}</span>
+            </div>
+
+            <div className="grid grid-cols-3 gap-2">
+              <div>
+                <label className="block text-[10px] font-semibold text-slate-600 mb-1">
+                  Tanggal
+                </label>
+                <select
+                  aria-label="Tanggal Tutup Buku"
+                  value={bookPeriod.closeDay}
+                  onChange={(e) =>
+                    updateBookPeriod((prev) => ({ ...prev, closeDay: Number(e.target.value) }))
+                  }
+                  className="w-full px-2.5 py-1.5 rounded-lg border border-amber-200 bg-white text-xs font-bold text-slate-800 focus:ring-2 focus:ring-amber-500 focus:outline-none cursor-pointer"
+                >
+                  {Array.from({ length: closeMonthMaxDays }, (_, i) => i + 1).map((d) => (
+                    <option key={d} value={d}>
+                      {String(d).padStart(2, '0')}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-semibold text-slate-600 mb-1">
+                  Bulan
+                </label>
+                <select
+                  aria-label="Bulan Tutup Buku"
+                  value={bookPeriod.closeMonth}
+                  onChange={(e) =>
+                    updateBookPeriod((prev) => ({ ...prev, closeMonth: Number(e.target.value) }))
+                  }
+                  className="w-full px-2.5 py-1.5 rounded-lg border border-amber-200 bg-white text-xs font-bold text-slate-800 focus:ring-2 focus:ring-amber-500 focus:outline-none cursor-pointer"
+                >
+                  {MONTH_NAMES.map((m, idx) => (
+                    <option key={m} value={idx + 1}>
+                      {m}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-semibold text-slate-600 mb-1">
+                  Tahun
+                </label>
+                <select
+                  aria-label="Tahun Tutup Buku"
+                  value={bookPeriod.closeYear}
+                  onChange={(e) =>
+                    updateBookPeriod((prev) => ({ ...prev, closeYear: Number(e.target.value) }))
+                  }
+                  className="w-full px-2.5 py-1.5 rounded-lg border border-amber-200 bg-white text-xs font-bold text-slate-800 focus:ring-2 focus:ring-amber-500 focus:outline-none cursor-pointer"
+                >
+                  {yearOptions.map((y) => (
+                    <option key={y} value={y}>
+                      {y}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {isPeriodInvalidOrder && (
+          <div className="p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
+            <span>
+              Tanggal <strong>Tutup Buku</strong> ({closeLabel}) harus sama dengan atau setelah tanggal{' '}
+              <strong>Buka Buku</strong> ({openLabel}).
+            </span>
+          </div>
+        )}
+
+        {isPeriodTruncated && (
+          <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-xs flex items-center gap-2">
+            <Info className="w-4 h-4 shrink-0 text-amber-600" />
+            <span>
+              Rentang terpilih ({periodTotalRawDays} hari) melebihi batas tampilan 62 hari. Menampilkan 62 hari pertama dari tanggal Buka Buku.
+            </span>
+          </div>
+        )}
       </div>
 
       {/* KPI Cards */}
@@ -703,7 +1049,7 @@ export const PetugasView: React.FC = () => {
               }`}
             >
               <Table className="w-3.5 h-3.5" />
-              <span>Matriks 31 Hari</span>
+              <span>Matriks ({periodDates.length} Hari)</span>
             </button>
           </div>
         </div>
@@ -720,10 +1066,6 @@ export const PetugasView: React.FC = () => {
             </div>
           ) : (
             filteredCleaners.map((cleaner) => {
-              const att =
-                (cleaner.attendanceByMonth && cleaner.attendanceByMonth[periodKey]) ||
-                cleaner.attendance ||
-                {};
               const {
                 hadirCount,
                 lemburCount,
@@ -731,14 +1073,18 @@ export const PetugasView: React.FC = () => {
                 sakitCount,
                 alpaCount,
                 totalWorkingDays,
-              } = calculateWorkingDays(att);
+              } = calculateWorkingDaysForPeriod(
+                cleaner.attendanceByMonth,
+                cleaner.attendance,
+                periodDates
+              );
 
-              const today = new Date();
-              const todayDay =
-                today.getMonth() === selectedMonth && today.getFullYear() === selectedYear
-                  ? today.getDate()
-                  : 1;
-              const todayStatus = att[todayDay] || '-';
+              const todayIso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+              const quickDateItem =
+                periodDates.find((d) => d.isoDate === todayIso) || periodDates[0];
+              const todayStatus = quickDateItem
+                ? getCleanerAttendanceStatus(cleaner.attendanceByMonth, cleaner.attendance, quickDateItem)
+                : '-';
               const isCalendarExpanded = expandedCleanerCalendar === cleaner.id;
 
               return (
@@ -820,60 +1166,71 @@ export const PetugasView: React.FC = () => {
                     </button>
                   </div>
 
-                  {/* Today Attendance Quick Tapper (Touch Friendly) */}
-                  <div className="p-3 rounded-xl bg-gradient-to-r from-sky-50 to-indigo-50 border border-sky-200 space-y-2">
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="font-bold text-sky-900 flex items-center gap-1">
-                        <Calendar className="w-3.5 h-3.5 text-sky-600" />
-                        <span>Presensi Cepat (Tgl {todayDay} {MONTH_NAMES[selectedMonth]}):</span>
-                      </span>
-                      <span
-                        className={`px-2 py-0.5 rounded-md text-[11px] font-black ${
-                          todayStatus === 'H'
-                            ? 'bg-emerald-600 text-white'
-                            : todayStatus === 'L'
-                            ? 'bg-purple-600 text-white'
-                            : todayStatus === 'I'
-                            ? 'bg-sky-600 text-white'
-                            : todayStatus === 'S'
-                            ? 'bg-amber-600 text-white'
-                            : todayStatus === 'A'
-                            ? 'bg-rose-600 text-white'
-                            : 'bg-slate-300 text-slate-700'
-                        }`}
-                      >
-                        Status: [{todayStatus}]
-                      </span>
-                    </div>
-
-                    {/* Touch Buttons */}
-                    <div className="grid grid-cols-6 gap-1.5">
-                      {(['H', 'L', 'I', 'S', 'A', '-'] as AttendanceStatusCode[]).map((st) => (
-                        <button
-                          key={st}
-                          type="button"
-                          onClick={() => updateCleanerAttendance(cleaner.id, todayDay, st, periodKey)}
-                          className={`h-9 rounded-lg text-xs font-black transition-all flex items-center justify-center ${
-                            todayStatus === st
-                              ? st === 'H'
-                                ? 'bg-emerald-600 text-white ring-2 ring-emerald-300 shadow-xs'
-                                : st === 'L'
-                                ? 'bg-purple-600 text-white ring-2 ring-purple-300 shadow-xs'
-                                : st === 'I'
-                                ? 'bg-sky-600 text-white ring-2 ring-sky-300 shadow-xs'
-                                : st === 'S'
-                                ? 'bg-amber-600 text-white ring-2 ring-amber-300 shadow-xs'
-                                : st === 'A'
-                                ? 'bg-rose-600 text-white ring-2 ring-rose-300 shadow-xs'
-                                : 'bg-slate-600 text-white ring-2 ring-slate-300 shadow-xs'
-                              : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-100'
+                  {/* Today / Period Date Quick Tapper (Touch Friendly) */}
+                  {quickDateItem && (
+                    <div className="p-3 rounded-xl bg-gradient-to-r from-sky-50 to-indigo-50 border border-sky-200 space-y-2">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="font-bold text-sky-900 flex items-center gap-1">
+                          <Calendar className="w-3.5 h-3.5 text-sky-600" />
+                          <span>
+                            Presensi Cepat (Tgl {quickDateItem.day} {MONTH_NAMES[quickDateItem.month - 1]} {quickDateItem.year}):
+                          </span>
+                        </span>
+                        <span
+                          className={`px-2 py-0.5 rounded-md text-[11px] font-black ${
+                            todayStatus === 'H'
+                              ? 'bg-emerald-600 text-white'
+                              : todayStatus === 'L'
+                              ? 'bg-purple-600 text-white'
+                              : todayStatus === 'I'
+                              ? 'bg-sky-600 text-white'
+                              : todayStatus === 'S'
+                              ? 'bg-amber-600 text-white'
+                              : todayStatus === 'A'
+                              ? 'bg-rose-600 text-white'
+                              : 'bg-slate-300 text-slate-700'
                           }`}
                         >
-                          {st === 'L' ? 'L (2x)' : st}
-                        </button>
-                      ))}
+                          Status: [{todayStatus}]
+                        </span>
+                      </div>
+
+                      {/* Touch Buttons */}
+                      <div className="grid grid-cols-6 gap-1.5">
+                        {(['H', 'L', 'I', 'S', 'A', '-'] as AttendanceStatusCode[]).map((st) => (
+                          <button
+                            key={st}
+                            type="button"
+                            onClick={() =>
+                              updateCleanerAttendance(
+                                cleaner.id,
+                                quickDateItem.day,
+                                st,
+                                quickDateItem.monthKey
+                              )
+                            }
+                            className={`h-9 rounded-lg text-xs font-black transition-all flex items-center justify-center ${
+                              todayStatus === st
+                                ? st === 'H'
+                                  ? 'bg-emerald-600 text-white ring-2 ring-emerald-300 shadow-xs'
+                                  : st === 'L'
+                                  ? 'bg-purple-600 text-white ring-2 ring-purple-300 shadow-xs'
+                                  : st === 'I'
+                                  ? 'bg-sky-600 text-white ring-2 ring-sky-300 shadow-xs'
+                                  : st === 'S'
+                                  ? 'bg-amber-600 text-white ring-2 ring-amber-300 shadow-xs'
+                                  : st === 'A'
+                                  ? 'bg-rose-600 text-white ring-2 ring-rose-300 shadow-xs'
+                                  : 'bg-slate-600 text-white ring-2 ring-slate-300 shadow-xs'
+                                : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-100'
+                            }`}
+                          >
+                            {st === 'L' ? 'L (2x)' : st}
+                          </button>
+                        ))}
+                      </div>
                     </div>
-                  </div>
+                  )}
 
                   {/* Monthly Summary Badges */}
                   <div className="grid grid-cols-3 sm:grid-cols-6 gap-1.5 text-center text-xs">
@@ -903,7 +1260,7 @@ export const PetugasView: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* Expandable 31 Days Matrix for this Cleaner */}
+                  {/* Expandable Period Days Matrix for this Cleaner */}
                   <div className="pt-1">
                     <button
                       type="button"
@@ -914,7 +1271,7 @@ export const PetugasView: React.FC = () => {
                     >
                       <span className="flex items-center gap-1.5">
                         <Calendar className="w-3.5 h-3.5 text-sky-600" />
-                        <span>Riwayat Presensi 31 Hari Bulan Ini</span>
+                        <span>Riwayat Presensi Periode ({periodDates.length} Hari)</span>
                       </span>
                       <div className="flex items-center gap-1">
                         <span className="text-[11px] text-slate-500">
@@ -930,18 +1287,31 @@ export const PetugasView: React.FC = () => {
 
                     {isCalendarExpanded && (
                       <div className="mt-2 p-3 rounded-xl border border-slate-200 bg-slate-50 space-y-2">
-                        <p className="text-[11px] text-slate-500 text-center">
-                          Ketuk tanggal untuk mengganti status kehadiran:
-                        </p>
+                        <div className="flex items-center justify-between gap-2 flex-wrap">
+                          <p className="text-[11px] text-slate-500">
+                            Ketuk tanggal untuk mengganti status kehadiran:
+                          </p>
+                          <button
+                            type="button"
+                            onClick={() => handleBatchFillWeekdays(cleaner.id)}
+                            className="px-2 py-0.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-[10px] font-bold text-emerald-700 cursor-pointer"
+                          >
+                            Isi Hari Kerja (H)
+                          </button>
+                        </div>
                         <div className="grid grid-cols-7 gap-1 text-center">
-                          {Array.from({ length: 31 }, (_, i) => {
-                            const d = i + 1;
-                            const st = att[d] || '-';
+                          {periodDates.map((item) => {
+                            const st = getCleanerAttendanceStatus(
+                              cleaner.attendanceByMonth,
+                              cleaner.attendance,
+                              item
+                            );
                             return (
                               <button
-                                key={d}
+                                key={item.isoDate}
                                 type="button"
-                                onClick={() => handleCellClick(cleaner, d)}
+                                onClick={() => handleCellClick(cleaner, item)}
+                                title={`${item.day} ${MONTH_NAMES[item.month - 1]} ${item.year}`}
                                 className={`p-1.5 rounded-lg border text-center transition-all ${
                                   st === 'H'
                                     ? 'bg-emerald-100 border-emerald-300 text-emerald-900 font-black'
@@ -953,11 +1323,13 @@ export const PetugasView: React.FC = () => {
                                     ? 'bg-amber-100 border-amber-300 text-amber-900 font-black'
                                     : st === 'A'
                                     ? 'bg-rose-100 border-rose-300 text-rose-900 font-black'
+                                    : item.isWeekend
+                                    ? 'bg-rose-50/60 border-rose-200/70 text-slate-400'
                                     : 'bg-white border-slate-200 text-slate-400'
                                 }`}
                               >
                                 <span className="text-[9px] text-slate-500 block leading-none">
-                                  {d}
+                                  {item.day} {item.monthShort}
                                 </span>
                                 <span className="text-xs font-black block mt-0.5">{st}</span>
                               </button>
@@ -975,7 +1347,7 @@ export const PetugasView: React.FC = () => {
       )}
 
       {/* ============================================================ */}
-      {/* 2. VIEW MODE: TABEL MATRIKS 31 HARI                          */}
+      {/* 2. VIEW MODE: TABEL MATRIKS PERIODE BUKA - TUTUP BUKU        */}
       {/* ============================================================ */}
       {viewMode === 'matrix' && (
         <div className="space-y-3">
@@ -984,7 +1356,7 @@ export const PetugasView: React.FC = () => {
             <div className="flex items-center gap-2">
               <Smartphone className="w-4 h-4 text-amber-600 shrink-0" />
               <span className="text-[11px] leading-tight">
-                Tabel lebar 31 hari: Geser ke samping, atau gunakan <strong>Kartu Petugas</strong> untuk tampilan ramah layar ponsel.
+                Tabel lebar {periodDates.length} hari: Geser ke samping, atau gunakan <strong>Kartu Petugas</strong> untuk tampilan ramah layar ponsel.
               </span>
             </div>
             <button
@@ -1011,25 +1383,21 @@ export const PetugasView: React.FC = () => {
                   Shift
                 </th>
 
-                {/* Days 1 to 31 */}
-                {Array.from({ length: 31 }, (_, i) => {
-                  const day = i + 1;
-                  // Calculate weekend indicator for visual cue
-                  const testDate = new Date(selectedYear, selectedMonth, day);
-                  const isWeekend = testDate.getDay() === 0 || testDate.getDay() === 6;
-
-                  return (
-                    <th
-                      key={day}
-                      className={`p-1 text-center w-8 border-r border-slate-200 ${
-                        isWeekend ? 'bg-rose-50 text-rose-700' : 'bg-slate-100'
-                      }`}
-                      title={`Tanggal ${day} ${MONTH_NAMES[selectedMonth]}`}
-                    >
-                      <span>{day}</span>
-                    </th>
-                  );
-                })}
+                {/* Period Dates: Buka Buku -> Tutup Buku */}
+                {periodDates.map((item) => (
+                  <th
+                    key={item.isoDate}
+                    className={`p-1 text-center w-8 border-r border-slate-200 ${
+                      item.isWeekend ? 'bg-rose-50 text-rose-700' : 'bg-slate-100'
+                    }`}
+                    title={`Tanggal ${item.day} ${MONTH_NAMES[item.month - 1]} ${item.year}`}
+                  >
+                    <span className="block leading-tight">{item.day}</span>
+                    <span className="block text-[9px] font-medium opacity-75 leading-none mt-0.5">
+                      {item.monthShort}
+                    </span>
+                  </th>
+                ))}
 
                 {/* Recapitulation Headers */}
                 <th
@@ -1077,17 +1445,12 @@ export const PetugasView: React.FC = () => {
             <tbody className="divide-y divide-slate-100">
               {filteredCleaners.length === 0 ? (
                 <tr>
-                  <td colSpan={40} className="p-8 text-center text-slate-400">
+                  <td colSpan={periodDates.length + 10} className="p-8 text-center text-slate-400">
                     Tidak ada data petugas yang cocok dengan pencarian atau filter.
                   </td>
                 </tr>
               ) : (
                 filteredCleaners.map((cleaner, index) => {
-                  const att =
-                    (cleaner.attendanceByMonth && cleaner.attendanceByMonth[periodKey]) ||
-                    cleaner.attendance ||
-                    {};
-
                   const {
                     hadirCount,
                     lemburCount,
@@ -1095,7 +1458,11 @@ export const PetugasView: React.FC = () => {
                     sakitCount,
                     alpaCount,
                     totalWorkingDays,
-                  } = calculateWorkingDays(att);
+                  } = calculateWorkingDaysForPeriod(
+                    cleaner.attendanceByMonth,
+                    cleaner.attendance,
+                    periodDates
+                  );
 
                   const shiftObj = shifts.find((s) => s.id === cleaner.shiftId);
 
@@ -1146,10 +1513,13 @@ export const PetugasView: React.FC = () => {
                         </div>
                       </td>
 
-                      {/* Days 1 to 31 Cells */}
-                      {Array.from({ length: 31 }, (_, i) => {
-                        const day = i + 1;
-                        const status = att[day] || '-';
+                      {/* Period Date Cells (Buka Buku -> Tutup Buku) */}
+                      {periodDates.map((item) => {
+                        const status = getCleanerAttendanceStatus(
+                          cleaner.attendanceByMonth,
+                          cleaner.attendance,
+                          item
+                        );
 
                         let cellStyle = 'bg-slate-50/60 text-slate-400 hover:bg-slate-100';
                         if (status === 'H') {
@@ -1166,14 +1536,14 @@ export const PetugasView: React.FC = () => {
 
                         return (
                           <td
-                            key={day}
-                            onClick={() => handleCellClick(cleaner, day)}
+                            key={item.isoDate}
+                            onClick={() => handleCellClick(cleaner, item)}
                             onContextMenu={(e) => {
                               e.preventDefault();
-                              setActiveCellPicker({ cleanerId: cleaner.id, day });
+                              setActiveCellPicker({ cleanerId: cleaner.id, dateItem: item });
                             }}
                             className="p-0.5 text-center border-r border-slate-100 cursor-pointer select-none"
-                            title={`Tgl ${day}: Status ${status} (Klik untuk rotasi status H -> L -> I -> S -> A -> -)`}
+                            title={`Tgl ${item.day} ${MONTH_NAMES[item.month - 1]} ${item.year}: Status ${status} (Klik untuk rotasi status H -> L -> I -> S -> A -> -)`}
                           >
                             <div
                               className={`w-6 h-6 mx-auto rounded-md flex items-center justify-center text-[11px] transition-all hover:scale-110 active:scale-95 ${cellStyle}`}
@@ -1264,7 +1634,8 @@ export const PetugasView: React.FC = () => {
           <div className="bg-white rounded-2xl p-4 shadow-2xl border border-slate-200 max-w-xs w-full text-center space-y-3 animate-in zoom-in-95 duration-150">
             <div className="flex items-center justify-between pb-2 border-b border-slate-100">
               <h4 className="text-xs font-bold text-slate-900">
-                Pilih Status Tanggal {activeCellPicker.day} {MONTH_NAMES[selectedMonth]}:
+                Pilih Status Tanggal {activeCellPicker.dateItem.day}{' '}
+                {MONTH_NAMES[activeCellPicker.dateItem.month - 1]} {activeCellPicker.dateItem.year}:
               </h4>
               <button
                 onClick={() => setActiveCellPicker(null)}
@@ -1279,7 +1650,11 @@ export const PetugasView: React.FC = () => {
                 <button
                   key={item.code}
                   onClick={() =>
-                    handleSelectStatus(activeCellPicker.cleanerId, activeCellPicker.day, item.code)
+                    handleSelectStatus(
+                      activeCellPicker.cleanerId,
+                      activeCellPicker.dateItem,
+                      item.code
+                    )
                   }
                   className={`p-2 rounded-xl border text-xs flex flex-col items-center justify-center gap-0.5 hover:shadow-xs transition-all ${item.badgeClass}`}
                 >

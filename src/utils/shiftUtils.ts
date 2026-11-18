@@ -1,3 +1,5 @@
+import type { AttendanceBookPeriod, AttendanceStatusCode } from '../types';
+
 // Utility functions for Shift durations and Attendance calculations
 
 export interface ShiftDurationResult {
@@ -45,6 +47,137 @@ export function calculateShiftDuration(startTime: string, endTime: string): Shif
     minutes,
     totalHoursDecimal,
     text,
+  };
+}
+
+export interface PeriodDateItem {
+  date: Date;
+  day: number;        // 1 - 31
+  month: number;      // 1 - 12
+  year: number;
+  monthKey: string;   // "YYYY-MM"
+  isoDate: string;    // "YYYY-MM-DD"
+  shortLabel: string; // e.g. "26 Okt"
+  monthShort: string; // e.g. "Okt"
+  isWeekend: boolean;
+}
+
+const SHORT_MONTH_NAMES_ID = [
+  'Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun',
+  'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des',
+];
+
+export function getDaysInMonthCount(year: number, month1Based: number): number {
+  if (!year || !month1Based) return 31;
+  return new Date(year, month1Based, 0).getDate();
+}
+
+export function buildPeriodDates(
+  period: AttendanceBookPeriod,
+  maxDays = 62
+): {
+  dates: PeriodDateItem[];
+  isInvalidOrder: boolean;
+  isTruncated: boolean;
+  totalRawDays: number;
+} {
+  const safeOpenDay = Math.max(1, Math.min(period.openDay, getDaysInMonthCount(period.openYear, period.openMonth)));
+  const safeCloseDay = Math.max(1, Math.min(period.closeDay, getDaysInMonthCount(period.closeYear, period.closeMonth)));
+
+  const start = new Date(period.openYear, period.openMonth - 1, safeOpenDay);
+  const end = new Date(period.closeYear, period.closeMonth - 1, safeCloseDay);
+
+  if (start.getTime() > end.getTime()) {
+    return { dates: [], isInvalidOrder: true, isTruncated: false, totalRawDays: 0 };
+  }
+
+  const dates: PeriodDateItem[] = [];
+  const cursor = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+  let totalRawDays = 0;
+
+  while (cursor.getTime() <= end.getTime()) {
+    totalRawDays++;
+    if (dates.length < maxDays) {
+      const y = cursor.getFullYear();
+      const m = cursor.getMonth() + 1;
+      const d = cursor.getDate();
+      const monthKey = `${y}-${String(m).padStart(2, '0')}`;
+      const isoDate = `${monthKey}-${String(d).padStart(2, '0')}`;
+      const monthShort = SHORT_MONTH_NAMES_ID[m - 1] || '';
+      const dow = cursor.getDay();
+      dates.push({
+        date: new Date(y, m - 1, d),
+        day: d,
+        month: m,
+        year: y,
+        monthKey,
+        isoDate,
+        shortLabel: `${d} ${monthShort}`,
+        monthShort,
+        isWeekend: dow === 0 || dow === 6,
+      });
+    }
+    cursor.setDate(cursor.getDate() + 1);
+    if (totalRawDays > 400) break;
+  }
+
+  return {
+    dates,
+    isInvalidOrder: false,
+    isTruncated: totalRawDays > maxDays,
+    totalRawDays,
+  };
+}
+
+export function getCleanerAttendanceStatus(
+  attendanceByMonth: Record<string, Record<number, AttendanceStatusCode>> | undefined,
+  legacyAttendance: Record<number, AttendanceStatusCode> | undefined,
+  item: Pick<PeriodDateItem, 'day' | 'monthKey'>
+): AttendanceStatusCode {
+  const monthRecord = attendanceByMonth?.[item.monthKey];
+  if (monthRecord && monthRecord[item.day] !== undefined) {
+    return monthRecord[item.day];
+  }
+  if (!attendanceByMonth || Object.keys(attendanceByMonth).length === 0) {
+    return legacyAttendance?.[item.day] || '-';
+  }
+  return '-';
+}
+
+export function calculateWorkingDaysForPeriod(
+  attendanceByMonth: Record<string, Record<number, AttendanceStatusCode>> | undefined,
+  legacyAttendance: Record<number, AttendanceStatusCode> | undefined,
+  periodDates: PeriodDateItem[]
+): {
+  hadirCount: number;
+  lemburCount: number;
+  izinCount: number;
+  sakitCount: number;
+  alpaCount: number;
+  totalWorkingDays: number;
+} {
+  let hadirCount = 0;
+  let lemburCount = 0;
+  let izinCount = 0;
+  let sakitCount = 0;
+  let alpaCount = 0;
+
+  for (const item of periodDates) {
+    const status = getCleanerAttendanceStatus(attendanceByMonth, legacyAttendance, item);
+    if (status === 'H') hadirCount++;
+    else if (status === 'L') lemburCount++;
+    else if (status === 'I') izinCount++;
+    else if (status === 'S') sakitCount++;
+    else if (status === 'A') alpaCount++;
+  }
+
+  return {
+    hadirCount,
+    lemburCount,
+    izinCount,
+    sakitCount,
+    alpaCount,
+    totalWorkingDays: hadirCount + lemburCount * 2,
   };
 }
 

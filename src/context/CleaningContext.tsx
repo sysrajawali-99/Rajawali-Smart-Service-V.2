@@ -4708,15 +4708,10 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   const updateCleaner = (id: string, updates: Partial<Cleaner>) => {
-    let updated: Cleaner | undefined;
+    const existing = cleaners.find((c) => c.id === id);
+    const updated = existing ? { ...existing, ...updates } : undefined;
     setCleaners((prev) =>
-      prev.map((c) => {
-        if (c.id === id) {
-          updated = { ...c, ...updates };
-          return updated;
-        }
-        return c;
-      })
+      prev.map((c) => (c.id === id ? { ...c, ...updates } : c))
     );
     if (updated) {
       upsertRecord(COLLECTIONS.CLEANERS, updated).catch((err) => notifyServerError('memperbarui petugas', err));
@@ -4734,29 +4729,25 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     status: AttendanceStatusCode,
     monthPeriod?: string
   ) => {
-    let updated: Cleaner | undefined;
-    setCleaners((prev) =>
-      prev.map((c) => {
-        if (c.id !== cleanerId) return c;
-        const currentAtt = { ...(c.attendance || {}) };
-        currentAtt[day] = status;
-
-        const currentByMonth = { ...(c.attendanceByMonth || {}) };
-        if (monthPeriod) {
-          currentByMonth[monthPeriod] = {
-            ...(currentByMonth[monthPeriod] || {}),
-            [day]: status,
-          };
-        }
-
-        updated = {
-          ...c,
-          attendance: currentAtt,
-          attendanceByMonth: currentByMonth,
+    const existing = cleaners.find((c) => c.id === cleanerId);
+    const buildNext = (c: Cleaner): Cleaner => {
+      const currentAtt = { ...(c.attendance || {}) };
+      currentAtt[day] = status;
+      const currentByMonth = { ...(c.attendanceByMonth || {}) };
+      if (monthPeriod) {
+        currentByMonth[monthPeriod] = {
+          ...(currentByMonth[monthPeriod] || {}),
+          [day]: status,
         };
-        return updated;
-      })
-    );
+      }
+      return {
+        ...c,
+        attendance: currentAtt,
+        attendanceByMonth: currentByMonth,
+      };
+    };
+    const updated = existing ? buildNext(existing) : undefined;
+    setCleaners((prev) => prev.map((c) => (c.id === cleanerId ? buildNext(c) : c)));
     if (updated) {
       upsertRecord(COLLECTIONS.CLEANERS, updated).catch((err) => notifyServerError('memperbarui presensi petugas', err));
     }
@@ -4767,26 +4758,24 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     days: Record<number, AttendanceStatusCode>,
     monthPeriod?: string
   ) => {
-    let updated: Cleaner | undefined;
-    setCleaners((prev) =>
-      prev.map((c) => {
-        if (c.id !== cleanerId) return c;
-        const currentAtt = { ...(c.attendance || {}), ...days };
-        const currentByMonth = { ...(c.attendanceByMonth || {}) };
-        if (monthPeriod) {
-          currentByMonth[monthPeriod] = {
-            ...(currentByMonth[monthPeriod] || {}),
-            ...days,
-          };
-        }
-        updated = {
-          ...c,
-          attendance: currentAtt,
-          attendanceByMonth: currentByMonth,
+    const existing = cleaners.find((c) => c.id === cleanerId);
+    const buildNext = (c: Cleaner): Cleaner => {
+      const currentAtt = { ...(c.attendance || {}), ...days };
+      const currentByMonth = { ...(c.attendanceByMonth || {}) };
+      if (monthPeriod) {
+        currentByMonth[monthPeriod] = {
+          ...(currentByMonth[monthPeriod] || {}),
+          ...days,
         };
-        return updated;
-      })
-    );
+      }
+      return {
+        ...c,
+        attendance: currentAtt,
+        attendanceByMonth: currentByMonth,
+      };
+    };
+    const updated = existing ? buildNext(existing) : undefined;
+    setCleaners((prev) => prev.map((c) => (c.id === cleanerId ? buildNext(c) : c)));
     if (updated) {
       upsertRecord(COLLECTIONS.CLEANERS, updated).catch((err) => notifyServerError('memperbarui presensi petugas', err));
     }

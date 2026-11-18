@@ -296,6 +296,15 @@ export interface Complaint {
   extensionRequest?: ComplaintExtensionRequest;
 }
 
+export interface AttendanceBookPeriod {
+  openDay: number;    // 1 - 31
+  openMonth: number;  // 1 - 12
+  openYear: number;
+  closeDay: number;   // 1 - 31
+  closeMonth: number; // 1 - 12
+  closeYear: number;
+}
+
 export interface ProjectLocation {
   id: string;
   company_id?: string;
@@ -310,6 +319,7 @@ export interface ProjectLocation {
   status: 'active' | 'inactive';
   createdAt: string;
   shiftIds?: string[]; // Daftar ID shift yang aktif / diterapkan di proyek ini
+  attendancePeriod?: AttendanceBookPeriod;
 }
 
 export interface AppUser {
