@@ -740,5 +740,31 @@ export interface PhotoRecord {
   createdAt?: string;
 }
 
+export interface UploadedWorkScheduleEntry {
+  bulan: number; // 1-12
+  tahun: number;
+  nama: string;
+  jabatan: string;
+  area: string;
+  tanggal: number; // 1-31
+  shift: string; // 'P' | 'S' | 'OFF'
+}
+
+export interface UploadedWorkScheduleDocument {
+  id: string; // `${projectId || 'global'}_${tahun}_${String(bulan).padStart(2, '0')}`
+  projectId?: string;
+  company_id?: string;
+  companyId?: string;
+  bulan: number;
+  tahun: number;
+  daysCount: number;
+  fileName?: string;
+  entries: UploadedWorkScheduleEntry[];
+  updatedAt: string;
+  updatedBy?: string;
+  _rev?: string;
+  _baseRev?: string;
+}
+
 
 

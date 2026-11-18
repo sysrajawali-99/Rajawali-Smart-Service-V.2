@@ -18,15 +18,17 @@ import {
   UserCheck,
   Sparkles,
   Trash2,
+  Upload,
 } from 'lucide-react';
 import { useCleaning } from '../../context/CleaningContext';
 import { CleaningSchedule, Cleaner } from '../../types';
+import { UploadJadwalKerjaSection } from './UploadJadwalKerjaSection';
 
 export const JadwalCleaningView: React.FC = () => {
   const { schedules, areas, cleaners, shifts, updateCleaner, deleteSchedule } = useCleaning();
 
-  // Navigation tab: 'schedules' | 'roster'
-  const [activeMainTab, setActiveMainTab] = useState<'schedules' | 'roster'>('schedules');
+  // Navigation tab: 'schedules' | 'roster' | 'upload'
+  const [activeMainTab, setActiveMainTab] = useState<'schedules' | 'roster' | 'upload'>('schedules');
 
   // Frequency Filter for Schedules
   const [frequencyFilter, setFrequencyFilter] = useState<'all' | 'harian' | 'mingguan' | 'bulanan'>('all');
@@ -210,16 +212,20 @@ export const JadwalCleaningView: React.FC = () => {
               <Plus className="w-4 h-4" />
               <span>Tambah Jadwal Rutin</span>
             </button>
-          ) : (
+          ) : activeMainTab === 'roster' ? (
             <div className="text-xs text-slate-500 bg-sky-50 border border-sky-200 px-3 py-1.5 rounded-xl font-medium">
               Terhubung langsung dengan <span className="font-bold text-sky-900">Uraian Tugas Shift</span> & <span className="font-bold text-sky-900">Presensi</span>
+            </div>
+          ) : (
+            <div className="text-xs text-slate-500 bg-sky-50 border border-sky-200 px-3 py-1.5 rounded-xl font-medium">
+              Import Roster Bulanan (.xlsx, .xls, .csv) &amp; Rekap Shift Otomatis
             </div>
           )}
         </div>
       </div>
 
       {/* Main Tab Selector */}
-      <div className="flex items-center gap-2 border-b border-slate-200 pb-2 text-xs">
+      <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 pb-2 text-xs">
         <button
           onClick={() => setActiveMainTab('schedules')}
           className={`px-3.5 py-2 rounded-xl font-bold transition-all cursor-pointer flex items-center gap-2 ${
@@ -243,7 +249,22 @@ export const JadwalCleaningView: React.FC = () => {
           <Users className="w-4 h-4" />
           <span>Roster Petugas & Plotingan Kerja ({cleaners.length})</span>
         </button>
+
+        <button
+          onClick={() => setActiveMainTab('upload')}
+          className={`px-3.5 py-2 rounded-xl font-bold transition-all cursor-pointer flex items-center gap-2 ${
+            activeMainTab === 'upload'
+              ? 'bg-sky-600 text-white shadow-xs'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+          }`}
+        >
+          <Upload className="w-4 h-4" />
+          <span>Upload Jadwal Kerja</span>
+        </button>
       </div>
+
+      {/* TAB 3: UPLOAD JADWAL KERJA */}
+      {activeMainTab === 'upload' && <UploadJadwalKerjaSection />}
 
       {/* TAB 1: JADWAL RUTINITAS SOP */}
       {activeMainTab === 'schedules' && (

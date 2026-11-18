@@ -34,7 +34,8 @@
     "socket.io": "^4.8.4",
     "socket.io-client": "^4.8.4",
     "vite": "^6.2.3",
-    "web-push": "^3.6.7"
+    "web-push": "^3.6.7",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@types/bcryptjs": "^3.0.0",

@@ -36,6 +36,7 @@ export const COLLECTIONS = {
   CLEANERS: 'cleaners',
   SHIFTS: 'shifts',
   SCHEDULES: 'schedules',
+  UPLOADED_WORK_SCHEDULES: 'uploaded_work_schedules',
   INSPECTIONS: 'inspections',
   NOTIFICATIONS: 'notifications',
   PROJECTS: 'projects',

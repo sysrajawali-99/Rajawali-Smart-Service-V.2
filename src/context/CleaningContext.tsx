@@ -41,6 +41,8 @@ import {
   SpecialJobItem,
   Company,
   isSuperAdminRole,
+  UploadedWorkScheduleDocument,
+  UploadedWorkScheduleEntry,
 } from '../types';
 import { calculateShiftDuration } from '../utils/shiftUtils';
 import { normalizeFrequencyCode, getNextProgramDayStatus } from '../utils/mcpUtils';
@@ -251,6 +253,7 @@ interface CleaningContextType {
   cleaners: Cleaner[];
   shifts: Shift[];
   schedules: CleaningSchedule[];
+  uploadedWorkSchedules: UploadedWorkScheduleDocument[];
   tasks: CleaningTask[];
   inspections: QCInspection[];
   complaints: Complaint[];
@@ -405,6 +408,16 @@ interface CleaningContextType {
   // Delete helpers
   deleteSchedule: (id: string) => void;
   deleteComplaint: (id: string) => void;
+
+  // Upload Jadwal Kerja (Roster Bulanan Excel)
+  saveUploadedWorkSchedule: (payload: {
+    bulan: number;
+    tahun: number;
+    daysCount: number;
+    fileName?: string;
+    entries: UploadedWorkScheduleEntry[];
+  }) => Promise<UploadedWorkScheduleDocument>;
+  deleteUploadedWorkSchedule: (id: string) => Promise<void>;
 
   // Pengaturan Data Perusahaan & Kop Surat Dokumen PDF
   companyProfile: CompanyProfile;
@@ -1042,6 +1055,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const [cleaners, setCleaners] = useState<Cleaner[]>(INITIAL_CLEANERS);
   const [shifts, setShifts] = useState<Shift[]>(INITIAL_SHIFTS);
   const [schedules, setSchedules] = useState<CleaningSchedule[]>(INITIAL_SCHEDULES);
+  const [uploadedWorkSchedules, setUploadedWorkSchedules] = useState<UploadedWorkScheduleDocument[]>([]);
   const [tasks, setTasks] = useState<CleaningTask[]>(INITIAL_TASKS);
   const [inspections, setInspections] = useState<QCInspection[]>(INITIAL_INSPECTIONS);
   const [complaints, setComplaints] = useState<Complaint[]>(INITIAL_COMPLAINTS);
@@ -1343,6 +1357,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         remoteCleaners,
         remoteShifts,
         remoteSchedules,
+        remoteUploadedWorkSchedules,
         remoteChecklistLocs,
         remoteChecklistTpls,
         remoteDailyChecklists,
@@ -1368,6 +1383,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         pullCol<Cleaner>(COLLECTIONS.CLEANERS),
         pullCol<Shift>(COLLECTIONS.SHIFTS),
         pullCol<CleaningSchedule>(COLLECTIONS.SCHEDULES),
+        pullCol<UploadedWorkScheduleDocument>(COLLECTIONS.UPLOADED_WORK_SCHEDULES),
         pullCol<ChecklistLocation>(COLLECTIONS.CHECKLIST_LOCATIONS),
         pullCol<ChecklistTemplateItem>(COLLECTIONS.CHECKLIST_TEMPLATES),
         pullCol<DailyAreaChecklist>(COLLECTIONS.DAILY_CHECKLISTS),
@@ -1399,6 +1415,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         setCleaners(remoteCleaners);
         setShifts(remoteShifts);
         setSchedules(remoteSchedules);
+        setUploadedWorkSchedules(remoteUploadedWorkSchedules);
         setChecklistLocations(remoteChecklistLocs);
         setTasks(remoteTasks);
         setInspections(remoteInspections);
@@ -1468,6 +1485,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         applyDeltaCollection(remoteCleaners, setCleaners);
         applyDeltaCollection(remoteShifts, setShifts);
         applyDeltaCollection(remoteSchedules, setSchedules);
+        applyDeltaCollection(remoteUploadedWorkSchedules, setUploadedWorkSchedules);
         applyDeltaCollection(remoteChecklistLocs, setChecklistLocations);
         applyDeltaCollection(remoteChecklistTpls, setChecklistTemplates);
         applyDeltaCollection(remoteTasks, setTasks);
@@ -1740,6 +1758,9 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           case COLLECTIONS.SCHEDULES:
             setSchedules((prev) => keepOtherProject(prev));
             break;
+          case COLLECTIONS.UPLOADED_WORK_SCHEDULES:
+            setUploadedWorkSchedules((prev) => keepOtherProject(prev));
+            break;
           case COLLECTIONS.CHECKLIST_LOCATIONS:
             setChecklistLocations((prev) => keepOtherProject(prev));
             break;
@@ -1813,6 +1834,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           case COLLECTIONS.CLEANERS: setCleaners((prev) => prev.filter((c) => c.id !== id)); break;
           case COLLECTIONS.SHIFTS: setShifts((prev) => prev.filter((s) => s.id !== id)); break;
           case COLLECTIONS.SCHEDULES: setSchedules((prev) => prev.filter((s) => s.id !== id)); break;
+          case COLLECTIONS.UPLOADED_WORK_SCHEDULES: setUploadedWorkSchedules((prev) => prev.filter((u) => u.id !== id)); break;
           case COLLECTIONS.CHECKLIST_LOCATIONS: setChecklistLocations((prev) => prev.filter((l) => l.id !== id)); break;
           case COLLECTIONS.CHECKLIST_TEMPLATES: setChecklistTemplates((prev) => prev.filter((t) => t.id !== id)); break;
           case COLLECTIONS.DAILY_CHECKLISTS:
@@ -1887,6 +1909,13 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           case COLLECTIONS.SCHEDULES:
             setSchedules((prev) => {
               const idx = prev.findIndex((s) => s.id === id);
+              if (idx >= 0) { const next = [...prev]; next[idx] = { ...next[idx], ...data }; return next; }
+              return [...prev, data];
+            });
+            break;
+          case COLLECTIONS.UPLOADED_WORK_SCHEDULES:
+            setUploadedWorkSchedules((prev) => {
+              const idx = prev.findIndex((u) => u.id === id);
               if (idx >= 0) { const next = [...prev]; next[idx] = { ...next[idx], ...data }; return next; }
               return [...prev, data];
             });
@@ -2696,6 +2725,76 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const deleteComplaint = (id: string) => {
     setComplaints((prev) => prev.filter((c) => c.id !== id));
     deleteRecord(COLLECTIONS.COMPLAINTS, id).catch((err) => notifyServerError('menghapus komplain', err));
+  };
+
+  const saveUploadedWorkSchedule = async (payload: {
+    bulan: number;
+    tahun: number;
+    daysCount: number;
+    fileName?: string;
+    entries: UploadedWorkScheduleEntry[];
+  }): Promise<UploadedWorkScheduleDocument> => {
+    const projectKey = safeActiveProjectId || defaultProjectId || 'global';
+    const docId = `${projectKey}_${payload.tahun}_${String(payload.bulan).padStart(2, '0')}`;
+    const existing = uploadedWorkSchedules.find((d) => d.id === docId);
+    const activeProj = projects.find((p) => p.id === projectKey);
+    const compId = activeProj?.company_id || activeProj?.companyId || currentCompany?.id || 'comp-main';
+
+    const doc: UploadedWorkScheduleDocument = {
+      id: docId,
+      projectId: projectKey,
+      company_id: compId,
+      companyId: compId,
+      bulan: payload.bulan,
+      tahun: payload.tahun,
+      daysCount: payload.daysCount,
+      fileName: payload.fileName,
+      entries: payload.entries,
+      updatedAt: new Date().toISOString(),
+      updatedBy: currentUser?.name || 'Administrator',
+      ...(existing?._rev ? { _rev: existing._rev, _baseRev: existing._rev } : {}),
+    };
+
+    setUploadedWorkSchedules((prev) => {
+      const idx = prev.findIndex((item) => item.id === docId);
+      if (idx >= 0) {
+        const next = [...prev];
+        next[idx] = doc;
+        return next;
+      }
+      return [...prev, doc];
+    });
+
+    try {
+      const saved = await upsertWithConflictResolution(
+        COLLECTIONS.UPLOADED_WORK_SCHEDULES,
+        doc,
+        setUploadedWorkSchedules
+      );
+      setUploadedWorkSchedules((prev) => {
+        const idx = prev.findIndex((item) => item.id === docId);
+        if (idx >= 0) {
+          const next = [...prev];
+          next[idx] = saved;
+          return next;
+        }
+        return [...prev, saved];
+      });
+      return saved;
+    } catch (err) {
+      notifyServerError('menyimpan jadwal kerja upload', err);
+      throw err;
+    }
+  };
+
+  const deleteUploadedWorkSchedule = async (id: string): Promise<void> => {
+    setUploadedWorkSchedules((prev) => prev.filter((d) => d.id !== id));
+    try {
+      await deleteRecord(COLLECTIONS.UPLOADED_WORK_SCHEDULES, id);
+    } catch (err) {
+      notifyServerError('menghapus jadwal kerja upload', err);
+      throw err;
+    }
   };
 
   // Project Location CRUD
@@ -3601,6 +3700,9 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const filteredAreas = areas.filter((a) => (a.projectId || defaultProjectId) === safeActiveProjectId);
   const filteredCleaners = cleaners.filter((c) => (c.projectId || defaultProjectId) === safeActiveProjectId);
   const filteredSchedules = schedules.filter((s) => (s.projectId || defaultProjectId) === safeActiveProjectId);
+  const filteredUploadedWorkSchedules = uploadedWorkSchedules.filter(
+    (s) => (s.projectId || defaultProjectId) === safeActiveProjectId
+  );
   const filteredTasks = tasks.filter((t) => (t.projectId || defaultProjectId) === safeActiveProjectId);
   const filteredInspections = inspections.filter((i) => (i.projectId || defaultProjectId) === safeActiveProjectId);
   const filteredComplaints = complaints.filter((c) => (c.projectId || defaultProjectId) === safeActiveProjectId);
@@ -5611,6 +5713,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         cleaners: filteredCleaners,
         shifts,
         schedules: filteredSchedules,
+        uploadedWorkSchedules: filteredUploadedWorkSchedules,
         tasks: filteredTasks,
         inspections: filteredInspections,
         complaints: filteredComplaints,
@@ -5684,6 +5787,8 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         // Delete helpers
         deleteSchedule,
         deleteComplaint,
+        saveUploadedWorkSchedule,
+        deleteUploadedWorkSchedule,
 
         // Verifikasi / Approval Berjenjang Controller
         verifyTaskApproval,
