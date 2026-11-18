@@ -766,5 +766,37 @@ export interface UploadedWorkScheduleDocument {
   _baseRev?: string;
 }
 
+export interface UploadedMcpScheduleCell {
+  tanggal: number; // 1-31
+  nilai_asli: string;
+}
 
+export interface UploadedMcpRow {
+  lokasi_proyek: string;
+  bulan: number; // 1-12
+  tahun: number;
+  lokasi_kerja: string;
+  area_pekerjaan: string;
+  jenis_pekerjaan: string;
+  urutan: number;
+  jadwal: UploadedMcpScheduleCell[];
+  sheet?: string;
+}
 
+export interface UploadedMcpDocument {
+  id: string; // `${projectId || 'global'}_${locSlug}_${tahun}_${String(bulan).padStart(2, '0')}`
+  projectId?: string;
+  company_id?: string;
+  companyId?: string;
+  lokasi_proyek: string;
+  bulan: number;
+  tahun: number;
+  daysCount: number;
+  sheetNames?: string[];
+  fileName?: string;
+  rows: UploadedMcpRow[];
+  updatedAt: string;
+  updatedBy?: string;
+  _rev?: string;
+  _baseRev?: string;
+}

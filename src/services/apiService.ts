@@ -37,6 +37,7 @@ export const COLLECTIONS = {
   SHIFTS: 'shifts',
   SCHEDULES: 'schedules',
   UPLOADED_WORK_SCHEDULES: 'uploaded_work_schedules',
+  UPLOADED_MCP: 'uploaded_mcp_programs',
   INSPECTIONS: 'inspections',
   NOTIFICATIONS: 'notifications',
   PROJECTS: 'projects',

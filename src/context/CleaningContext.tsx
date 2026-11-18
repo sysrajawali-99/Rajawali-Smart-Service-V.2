@@ -43,6 +43,8 @@ import {
   isSuperAdminRole,
   UploadedWorkScheduleDocument,
   UploadedWorkScheduleEntry,
+  UploadedMcpDocument,
+  UploadedMcpRow,
 } from '../types';
 import { calculateShiftDuration } from '../utils/shiftUtils';
 import { normalizeFrequencyCode, getNextProgramDayStatus } from '../utils/mcpUtils';
@@ -51,6 +53,7 @@ import {
   resolveRowOperationalShift,
   resolveShift1AndShift2,
 } from '../utils/workScheduleExcel';
+import { normalizeLokasiProyekKey } from '../utils/mcpExcel';
 import {
   INITIAL_AREAS,
   INITIAL_CLEANERS,
@@ -259,6 +262,7 @@ interface CleaningContextType {
   shifts: Shift[];
   schedules: CleaningSchedule[];
   uploadedWorkSchedules: UploadedWorkScheduleDocument[];
+  uploadedMcpPrograms: UploadedMcpDocument[];
   tasks: CleaningTask[];
   inspections: QCInspection[];
   complaints: Complaint[];
@@ -427,6 +431,18 @@ interface CleaningContextType {
     referenceDay?: number
   ) => Promise<{ syncedCount: number; createdCount: number; updatedCount: number }>;
   deleteUploadedWorkSchedule: (id: string) => Promise<void>;
+
+  // Upload MCP (Master Cleaning Program Bulanan Excel)
+  saveUploadedMcpProgram: (payload: {
+    lokasi_proyek: string;
+    bulan: number;
+    tahun: number;
+    daysCount: number;
+    sheetNames?: string[];
+    fileName?: string;
+    rows: UploadedMcpRow[];
+  }) => Promise<UploadedMcpDocument>;
+  deleteUploadedMcpProgram: (id: string) => Promise<void>;
 
   // Pengaturan Data Perusahaan & Kop Surat Dokumen PDF
   companyProfile: CompanyProfile;
@@ -1065,6 +1081,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const [shifts, setShifts] = useState<Shift[]>(INITIAL_SHIFTS);
   const [schedules, setSchedules] = useState<CleaningSchedule[]>(INITIAL_SCHEDULES);
   const [uploadedWorkSchedules, setUploadedWorkSchedules] = useState<UploadedWorkScheduleDocument[]>([]);
+  const [uploadedMcpPrograms, setUploadedMcpPrograms] = useState<UploadedMcpDocument[]>([]);
   const [tasks, setTasks] = useState<CleaningTask[]>(INITIAL_TASKS);
   const [inspections, setInspections] = useState<QCInspection[]>(INITIAL_INSPECTIONS);
   const [complaints, setComplaints] = useState<Complaint[]>(INITIAL_COMPLAINTS);
@@ -1376,6 +1393,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         remoteDamage,
         remoteSpecial,
         remoteMcp,
+        remoteUploadedMcp,
         remoteTurnovers,
         remoteKlienItems,
         remoteKlienInspections,
@@ -1402,6 +1420,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         pullCol<FacilityDamageReport>(COLLECTIONS.DAMAGE_REPORTS),
         pullCol<SpecialJobItem>(COLLECTIONS.SPECIAL_JOBS),
         pullCol<MasterCleaningProgramItem>(COLLECTIONS.MASTER_PROGRAMS),
+        pullCol<UploadedMcpDocument>(COLLECTIONS.UPLOADED_MCP),
         pullCol<EmployeeTurnoverRecord>(COLLECTIONS.EMPLOYEE_TURNOVERS),
         pullCol<KlienChecklistItem>(COLLECTIONS.KLIEN_CHECKLIST_ITEMS),
         pullCol<KlienChecklistInspection>(COLLECTIONS.KLIEN_CHECKLIST_INSPECTIONS),
@@ -1437,6 +1456,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             frequency: normalizeFrequencyCode(p.frequency),
           }))
         );
+        setUploadedMcpPrograms(remoteUploadedMcp);
         setEmployeeTurnovers(remoteTurnovers);
         setKlienChecklistItems(remoteKlienItems);
         setKlienChecklistInspections(remoteKlienInspections);
@@ -1503,6 +1523,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         applyDeltaCollection(remoteDamage, setDamageReports);
         applyDeltaCollection(remoteSpecial, setSpecialJobs);
         applyDeltaCollection(remoteMcp, setMasterPrograms);
+        applyDeltaCollection(remoteUploadedMcp, setUploadedMcpPrograms);
         applyDeltaCollection(remoteTurnovers, setEmployeeTurnovers);
         applyDeltaCollection(remoteKlienItems, setKlienChecklistItems);
         applyDeltaCollection(remoteKlienInspections, setKlienChecklistInspections);
@@ -1807,6 +1828,9 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           case COLLECTIONS.MASTER_PROGRAMS:
             setMasterPrograms((prev) => keepOtherProject(prev));
             break;
+          case COLLECTIONS.UPLOADED_MCP:
+            setUploadedMcpPrograms((prev) => keepOtherProject(prev));
+            break;
           case COLLECTIONS.EMPLOYEE_TURNOVERS:
             setEmployeeTurnovers((prev) => keepOtherProject(prev));
             break;
@@ -1857,6 +1881,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           case COLLECTIONS.DAMAGE_REPORTS: setDamageReports((prev) => prev.filter((d) => d.id !== id)); break;
           case COLLECTIONS.SPECIAL_JOBS: setSpecialJobs((prev) => prev.filter((s) => s.id !== id)); break;
           case COLLECTIONS.MASTER_PROGRAMS: setMasterPrograms((prev) => prev.filter((m) => m.id !== id)); break;
+          case COLLECTIONS.UPLOADED_MCP: setUploadedMcpPrograms((prev) => prev.filter((m) => m.id !== id)); break;
           case COLLECTIONS.EMPLOYEE_TURNOVERS: setEmployeeTurnovers((prev) => prev.filter((e) => e.id !== id)); break;
           case COLLECTIONS.KLIEN_CHECKLIST_ITEMS: setKlienChecklistItems((prev) => prev.filter((k) => k.id !== id)); break;
           case COLLECTIONS.KLIEN_CHECKLIST_INSPECTIONS: setKlienChecklistInspections((prev) => prev.filter((k) => k.id !== id)); break;
@@ -1924,6 +1949,13 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             break;
           case COLLECTIONS.UPLOADED_WORK_SCHEDULES:
             setUploadedWorkSchedules((prev) => {
+              const idx = prev.findIndex((u) => u.id === id);
+              if (idx >= 0) { const next = [...prev]; next[idx] = { ...next[idx], ...data }; return next; }
+              return [...prev, data];
+            });
+            break;
+          case COLLECTIONS.UPLOADED_MCP:
+            setUploadedMcpPrograms((prev) => {
               const idx = prev.findIndex((u) => u.id === id);
               if (idx >= 0) { const next = [...prev]; next[idx] = { ...next[idx], ...data }; return next; }
               return [...prev, data];
@@ -2935,6 +2967,94 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
   };
 
+  const saveUploadedMcpProgram = async (payload: {
+    lokasi_proyek: string;
+    bulan: number;
+    tahun: number;
+    daysCount: number;
+    sheetNames?: string[];
+    fileName?: string;
+    rows: UploadedMcpRow[];
+  }): Promise<UploadedMcpDocument> => {
+    const projectKey = safeActiveProjectId || defaultProjectId || 'global';
+    const cleanLokasi = payload.lokasi_proyek.trim() || 'Default';
+    const locSlug = normalizeLokasiProyekKey(cleanLokasi);
+    const docId = `${projectKey}_${locSlug}_${payload.tahun}_${String(payload.bulan).padStart(2, '0')}`;
+    const existing = uploadedMcpPrograms.find((d) => d.id === docId);
+    const activeProj = projects.find((p) => p.id === projectKey);
+    const compId = activeProj?.company_id || activeProj?.companyId || currentCompany?.id || 'comp-main';
+
+    const normalizedRows: UploadedMcpRow[] = payload.rows.map((r, idx) => ({
+      lokasi_proyek: cleanLokasi,
+      bulan: payload.bulan,
+      tahun: payload.tahun,
+      lokasi_kerja: r.lokasi_kerja,
+      area_pekerjaan: r.area_pekerjaan,
+      jenis_pekerjaan: r.jenis_pekerjaan,
+      urutan: r.urutan ?? idx + 1,
+      jadwal: r.jadwal,
+      ...(r.sheet ? { sheet: r.sheet } : {}),
+    }));
+
+    const doc: UploadedMcpDocument = {
+      id: docId,
+      projectId: projectKey,
+      company_id: compId,
+      companyId: compId,
+      lokasi_proyek: cleanLokasi,
+      bulan: payload.bulan,
+      tahun: payload.tahun,
+      daysCount: payload.daysCount,
+      sheetNames: payload.sheetNames,
+      fileName: payload.fileName,
+      rows: normalizedRows,
+      updatedAt: new Date().toISOString(),
+      updatedBy: currentUser?.name || 'Administrator',
+      ...(existing?._rev ? { _rev: existing._rev, _baseRev: existing._rev } : {}),
+    };
+
+    setUploadedMcpPrograms((prev) => {
+      const idx = prev.findIndex((item) => item.id === docId);
+      if (idx >= 0) {
+        const next = [...prev];
+        next[idx] = doc;
+        return next;
+      }
+      return [...prev, doc];
+    });
+
+    try {
+      const saved = await upsertWithConflictResolution(
+        COLLECTIONS.UPLOADED_MCP,
+        doc,
+        setUploadedMcpPrograms
+      );
+      setUploadedMcpPrograms((prev) => {
+        const idx = prev.findIndex((item) => item.id === docId);
+        if (idx >= 0) {
+          const next = [...prev];
+          next[idx] = saved;
+          return next;
+        }
+        return [...prev, saved];
+      });
+      return saved;
+    } catch (err) {
+      notifyServerError('menyimpan upload MCP', err);
+      throw err;
+    }
+  };
+
+  const deleteUploadedMcpProgram = async (id: string): Promise<void> => {
+    setUploadedMcpPrograms((prev) => prev.filter((d) => d.id !== id));
+    try {
+      await deleteRecord(COLLECTIONS.UPLOADED_MCP, id);
+    } catch (err) {
+      notifyServerError('menghapus upload MCP', err);
+      throw err;
+    }
+  };
+
   // Project Location CRUD
   const addProject = (proj: Omit<ProjectLocation, 'id' | 'createdAt'>) => {
     const id = `proj-${Date.now()}`;
@@ -3840,6 +3960,9 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const filteredSchedules = schedules.filter((s) => (s.projectId || defaultProjectId) === safeActiveProjectId);
   const filteredUploadedWorkSchedules = uploadedWorkSchedules.filter(
     (s) => (s.projectId || defaultProjectId) === safeActiveProjectId
+  );
+  const filteredUploadedMcpPrograms = uploadedMcpPrograms.filter(
+    (m) => (m.projectId || defaultProjectId) === safeActiveProjectId
   );
   const filteredTasks = tasks.filter((t) => (t.projectId || defaultProjectId) === safeActiveProjectId);
   const filteredInspections = inspections.filter((i) => (i.projectId || defaultProjectId) === safeActiveProjectId);
@@ -5853,6 +5976,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         shifts,
         schedules: filteredSchedules,
         uploadedWorkSchedules: filteredUploadedWorkSchedules,
+        uploadedMcpPrograms: filteredUploadedMcpPrograms,
         tasks: filteredTasks,
         inspections: filteredInspections,
         complaints: filteredComplaints,
@@ -5929,6 +6053,8 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         saveUploadedWorkSchedule,
         syncUploadedScheduleToCleaners,
         deleteUploadedWorkSchedule,
+        saveUploadedMcpProgram,
+        deleteUploadedMcpProgram,
 
         // Verifikasi / Approval Berjenjang Controller
         verifyTaskApproval,

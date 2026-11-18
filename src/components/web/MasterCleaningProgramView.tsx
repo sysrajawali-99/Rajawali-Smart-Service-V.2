@@ -33,6 +33,7 @@ import { useCleaning } from '../../context/CleaningContext';
 import { MasterCleaningProgramItem, ProgramDayStatus, ProgramFrequencyCode } from '../../types';
 import { exportMasterCleaningProgramToPDF } from '../../utils/pdfExport';
 import { normalizeFrequencyCode, FREQUENCY_META, PROGRAM_STATUS_META } from '../../utils/mcpUtils';
+import { UploadMcpSection } from './UploadMcpSection';
 
 export const MasterCleaningProgramView: React.FC = () => {
   const {
@@ -56,6 +57,9 @@ export const MasterCleaningProgramView: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterFrequency, setFilterFrequency] = useState<string>('all');
   const [filterLocation, setFilterLocation] = useState<string>('all');
+
+  // Sub-menu tab: existing Master Cleaning Program vs new Upload MCP
+  const [activeSubTab, setActiveSubTab] = useState<'program' | 'upload_mcp'>('program');
 
   // Mobile vs Table View Mode
   const [viewMode, setViewMode] = useState<'cards' | 'table'>(() =>
@@ -409,35 +413,69 @@ export const MasterCleaningProgramView: React.FC = () => {
           </div>
         </div>
 
-        {/* Action buttons */}
-        <div className="flex flex-wrap items-center gap-2.5">
-          <button
-            onClick={handleDownloadPDF}
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-sky-700 hover:bg-sky-800 text-white text-xs font-semibold shadow-xs transition-colors"
-            title="Download PDF Master Cleaning Program Landscape Lengkap Kop Surat"
-          >
-            <FileDown className="w-3.5 h-3.5" />
-            <span>Download PDF MCP</span>
-          </button>
+        {/* Action buttons (only shown on Program Kerja MCP tab) */}
+        {activeSubTab === 'program' && (
+          <div className="flex flex-wrap items-center gap-2.5">
+            <button
+              onClick={handleDownloadPDF}
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-sky-700 hover:bg-sky-800 text-white text-xs font-semibold shadow-xs transition-colors"
+              title="Download PDF Master Cleaning Program Landscape Lengkap Kop Surat"
+            >
+              <FileDown className="w-3.5 h-3.5" />
+              <span>Download PDF MCP</span>
+            </button>
 
-          <button
-            onClick={handleExportCSV}
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold shadow-xs transition-colors"
-          >
-            <Download className="w-3.5 h-3.5 text-slate-500" />
-            <span>Ekspor Excel / CSV</span>
-          </button>
+            <button
+              onClick={handleExportCSV}
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold shadow-xs transition-colors"
+            >
+              <Download className="w-3.5 h-3.5 text-slate-500" />
+              <span>Ekspor Excel / CSV</span>
+            </button>
 
-          <button
-            onClick={handleOpenAddModal}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-xs font-semibold shadow-xs transition-colors"
-          >
-            <Plus className="w-4 h-4" />
-            <span>Tambah Program Kerja</span>
-          </button>
-        </div>
+            <button
+              onClick={handleOpenAddModal}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-xs font-semibold shadow-xs transition-colors"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Tambah Program Kerja</span>
+            </button>
+          </div>
+        )}
       </div>
 
+      {/* Sub-Menu Tabs */}
+      <div className="flex flex-wrap items-center gap-2 bg-white p-1.5 rounded-2xl border border-slate-200/80 shadow-xs w-fit">
+        <button
+          type="button"
+          onClick={() => setActiveSubTab('program')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-colors cursor-pointer ${
+            activeSubTab === 'program'
+              ? 'bg-teal-600 text-white shadow-xs'
+              : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+          }`}
+        >
+          <CalendarRange className="w-3.5 h-3.5" />
+          <span>Program Kerja MCP</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveSubTab('upload_mcp')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-colors cursor-pointer ${
+            activeSubTab === 'upload_mcp'
+              ? 'bg-teal-600 text-white shadow-xs'
+              : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+          }`}
+        >
+          <Table className="w-3.5 h-3.5" />
+          <span>Upload MCP (Master Cleaning Program)</span>
+        </button>
+      </div>
+
+      {activeSubTab === 'upload_mcp' ? (
+        <UploadMcpSection />
+      ) : (
+        <>
       {/* Summary KPI Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5">
         <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs">
@@ -1010,6 +1048,8 @@ export const MasterCleaningProgramView: React.FC = () => {
       </div>
     </div>
   )}
+        </>
+      )}
 
       {/* Add / Edit Modal */}
       {isAddModalOpen && (
