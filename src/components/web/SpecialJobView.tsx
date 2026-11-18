@@ -31,6 +31,7 @@ import {
   SpecialJobSourceType,
   SpecialJobStatus,
   MasterCleaningProgramItem,
+  isSuperAdminRole,
 } from '../../types';
 import { normalizeFrequencyCode } from '../../utils/mcpUtils';
 import { uploadPhoto } from '../../services/apiService';
@@ -63,7 +64,7 @@ export const SpecialJobView: React.FC<SpecialJobViewProps> = ({ readOnlyStatus =
   const [selectedYear, setSelectedYear] = useState<string>('all');
   const [locationFilter, setLocationFilter] = useState<string>('all');
   const [shiftFilter, setShiftFilter] = useState<string>('all');
-  const [dateFilter, setDateFilter] = useState<string>('2026-09-26');
+  const [dateFilter, setDateFilter] = useState<string>('');
 
   // Detail Modal
   const [selectedJob, setSelectedJob] = useState<SpecialJobItem | null>(null);
@@ -148,12 +149,12 @@ export const SpecialJobView: React.FC<SpecialJobViewProps> = ({ readOnlyStatus =
 
   // Supervisors list for Requestor dropdown / suggestion
   const supervisorUsers = useMemo(() => {
-    return users.filter((u) => u.role === 'supervisor' || u.role === 'admin');
+    return users.filter((u) => u.role === 'supervisor' || isSuperAdminRole(u.role));
   }, [users]);
 
   const defaultSupervisorName = useMemo(() => {
-    if (currentUser?.role === 'supervisor' || currentUser?.role === 'admin') {
-      return currentUser.name;
+    if (currentUser?.role === 'supervisor' || isSuperAdminRole(currentUser?.role)) {
+      return currentUser?.name || 'Supervisor Operasional';
     }
     const projSpv = supervisorUsers.find((u) =>
       u.assignedProjectIds?.includes(activeProject.id) && u.role === 'supervisor'
@@ -392,8 +393,8 @@ export const SpecialJobView: React.FC<SpecialJobViewProps> = ({ readOnlyStatus =
     setNewFloor(areas[0]?.floor || 'Lantai 1');
     setNewRequestedBy(defaultSupervisorName);
     setNewRequestReason('By Request Supervisor: Permintaan pengerjaan khusus area prioritas.');
-    setNewAssignedPic(cleaners[0]?.name || 'Asep Supriyadi');
-    setNewShiftName(shifts[0]?.name || 'Shift 1 ( satu )');
+    setNewAssignedPic(cleaners[0]?.name || '');
+    setNewShiftName(shifts[0]?.name || 'Shift 1');
     setNewPriority('high');
     setNewScheduledDate(new Date().toISOString().split('T')[0]);
     setNewScheduledTime('09:00 - 11:00 WIB');
@@ -571,7 +572,7 @@ export const SpecialJobView: React.FC<SpecialJobViewProps> = ({ readOnlyStatus =
       photoAfter:
         completionPhotoAfter ||
         completingJob.photoAfter ||
-        'https://images.unsplash.com/photo-1497366811353-6870744d04b2?w=600&auto=format&fit=crop&q=80',
+        '',
       completedAt: completedAtStr,
     });
 
@@ -841,10 +842,10 @@ export const SpecialJobView: React.FC<SpecialJobViewProps> = ({ readOnlyStatus =
               </label>
               <button
                 type="button"
-                onClick={() => setDateFilter(dateFilter ? '' : '2026-09-26')}
+                onClick={() => setDateFilter(dateFilter ? '' : new Date().toISOString().split('T')[0])}
                 className="hidden md:inline-block text-[10px] font-semibold text-slate-500 hover:text-sky-700 underline cursor-pointer"
               >
-                {dateFilter ? 'Semua Tanggal' : 'Default (26 Sep)'}
+                {dateFilter ? 'Semua Tanggal' : 'Hari Ini'}
               </button>
             </div>
             <div className="relative flex items-center">
@@ -1152,7 +1153,7 @@ export const SpecialJobView: React.FC<SpecialJobViewProps> = ({ readOnlyStatus =
                     </div>
                     {!readOnlyStatus &&
                       !job.verifiedBySupervisor &&
-                      (userRole === 'supervisor' || userRole === 'admin') && (
+                      (userRole === 'supervisor' || isSuperAdminRole(userRole)) && (
                         <button
                           type="button"
                           onClick={() => handleVerifyJob(job)}
@@ -1213,7 +1214,7 @@ export const SpecialJobView: React.FC<SpecialJobViewProps> = ({ readOnlyStatus =
                         </button>
                       )}
 
-                      {(userRole === 'admin' || userRole === 'supervisor') && (
+                      {(isSuperAdminRole(userRole) || userRole === 'supervisor') && (
                         <button
                           type="button"
                           onClick={() => {

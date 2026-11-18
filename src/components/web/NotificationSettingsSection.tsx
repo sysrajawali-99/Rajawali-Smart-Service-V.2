@@ -472,7 +472,7 @@ export const NotificationSettingsSection: React.FC = () => {
               triggerTopNotification({
                 category: 'qc_approved',
                 title: 'Inspeksi QC Disetujui!',
-                message: 'Inspeksi mutu kebersihan di Area Toilet Lt. 3 dinyatakan lolos dengan nilai 95/100 oleh Auditor QC Hendra Wijaya.',
+                message: 'Inspeksi mutu kebersihan di Area Toilet Lt. 3 dinyatakan lolos dengan nilai 95/100 oleh Auditor QC.',
                 targetTab: 'inspeksi',
               })
             }
@@ -496,7 +496,7 @@ export const NotificationSettingsSection: React.FC = () => {
               triggerTopNotification({
                 category: 'damage_report',
                 title: 'Laporan Kerusakan: DMG-2026-004',
-                message: 'Budi Santoso melaporkan kerusakan kran air patah dan bocor di Pantry Staff Lt. 2 (Prioritas: TINGGI).',
+                message: 'Petugas lapangan melaporkan kerusakan kran air patah dan bocor di Pantry Staff Lt. 2 (Prioritas: TINGGI).',
                 targetTab: 'kerusakan',
               })
             }

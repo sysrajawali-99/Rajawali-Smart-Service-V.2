@@ -16,7 +16,7 @@ import {
   X,
 } from 'lucide-react';
 import { useCleaning } from '../../context/CleaningContext';
-import { ProjectLocation } from '../../types';
+import { ProjectLocation, isSuperAdminRole } from '../../types';
 import { UserManagementSection } from './UserManagementSection';
 
 export const LokasiProyekView: React.FC = () => {
@@ -134,7 +134,7 @@ export const LokasiProyekView: React.FC = () => {
     setShowAddModal(false);
   };
 
-  const isSuperAdmin = userRole === 'admin';
+  const isSuperAdmin = isSuperAdminRole(userRole);
 
   return (
     <div className="space-y-6">
@@ -317,18 +317,16 @@ export const LokasiProyekView: React.FC = () => {
                         <span>Edit</span>
                       </button>
 
-                      {projects.length > 1 && (
-                        <button
-                          onClick={() => {
-                            deleteProject(proj.id);
-                            showToast(`Proyek "${proj.name}" berhasil dihapus.`);
-                          }}
-                          className="text-xs text-rose-500 hover:text-rose-700 font-medium flex items-center gap-1 cursor-pointer"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                          <span>Hapus</span>
-                        </button>
-                      )}
+                      <button
+                        onClick={() => {
+                          deleteProject(proj.id);
+                          showToast(`Proyek "${proj.name}" berhasil dihapus.`);
+                        }}
+                        className="text-xs text-rose-500 hover:text-rose-700 font-medium flex items-center gap-1 cursor-pointer"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>Hapus</span>
+                      </button>
                     </div>
                   )}
                 </div>

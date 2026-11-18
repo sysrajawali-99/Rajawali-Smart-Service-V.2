@@ -43,7 +43,7 @@ export const ComplaintView: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [areaFilter, setAreaFilter] = useState<string>('all');
   const [priorityFilter, setPriorityFilter] = useState<string>('all');
-  const [selectedComplaintDate, setSelectedComplaintDate] = useState<string>('2026-09-13');
+  const [selectedComplaintDate, setSelectedComplaintDate] = useState<string>('');
   const [search, setSearch] = useState('');
   const [showNewModal, setShowNewModal] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -97,16 +97,9 @@ export const ComplaintView: React.FC = () => {
       const [y, m, d] = selectedComplaintDate.split('-');
       const ddMmYyyy = d && m && y ? `${d}/${m}/${y}` : '';
       const rawCreated = (c.createdAt || '').toLowerCase();
-      if (
-        selectedComplaintDate === '2026-09-13' &&
-        (rawCreated.includes('hari ini') || rawCreated.includes('kemarin') || !rawCreated.match(/\d{4}/))
-      ) {
-        matchDate = true;
-      } else {
-        matchDate =
-          rawCreated.includes(selectedComplaintDate.toLowerCase()) ||
-          (Boolean(ddMmYyyy) && rawCreated.includes(ddMmYyyy.toLowerCase()));
-      }
+      matchDate =
+        rawCreated.includes(selectedComplaintDate.toLowerCase()) ||
+        (Boolean(ddMmYyyy) && rawCreated.includes(ddMmYyyy.toLowerCase()));
     }
 
     const matchSearch =
@@ -239,10 +232,10 @@ export const ComplaintView: React.FC = () => {
               </label>
               <button
                 type="button"
-                onClick={() => setSelectedComplaintDate(selectedComplaintDate ? '' : '2026-09-13')}
+                onClick={() => setSelectedComplaintDate(selectedComplaintDate ? '' : new Date().toISOString().split('T')[0])}
                 className="hidden md:inline-block text-[10px] font-semibold text-slate-500 hover:text-sky-700 underline cursor-pointer"
               >
-                {selectedComplaintDate ? 'Semua Tanggal' : 'Default (13 Sep)'}
+                {selectedComplaintDate ? 'Semua Tanggal' : 'Hari Ini'}
               </button>
             </div>
             <div className="relative flex items-center">

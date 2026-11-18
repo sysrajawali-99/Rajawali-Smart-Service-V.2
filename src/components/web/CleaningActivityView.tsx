@@ -35,13 +35,14 @@ const toDdMmYyyy = (isoDate: string): string => {
 
 // Helper: convert DD/MM/YYYY to YYYY-MM-DD for <input type="date">
 const toIsoDate = (ddMmYyyy?: string): string => {
-  if (!ddMmYyyy) return '2026-09-13';
+  const todayIso = new Date().toISOString().split('T')[0];
+  if (!ddMmYyyy) return todayIso;
   if (ddMmYyyy.includes('-')) return ddMmYyyy;
   const parts = ddMmYyyy.split('/');
   if (parts.length === 3) {
     return `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
   }
-  return '2026-09-13';
+  return todayIso;
 };
 
 export const CleaningActivityView: React.FC = () => {
@@ -67,7 +68,7 @@ export const CleaningActivityView: React.FC = () => {
   const [shiftFilter, setShiftFilter] = useState<string>('all');
   const [areaFilter, setAreaFilter] = useState<string>('all');
   const [dateFilterIso, setDateFilterIso] = useState<string>(''); // '' = Semua Tanggal, or YYYY-MM-DD
-  const [selectedMonth, setSelectedMonth] = useState<string>('2026-09');
+  const [selectedMonth, setSelectedMonth] = useState<string>(() => new Date().toISOString().slice(0, 7));
 
   // Preview & Notification states
   const [previewTask, setPreviewTask] = useState<CleaningTask | null>(null);
@@ -84,13 +85,13 @@ export const CleaningActivityView: React.FC = () => {
     shifts[0] ? `${shifts[0].name} (${shifts[0].startTime} - ${shifts[0].endTime})` : 'Shift 1 (Pagi)'
   );
   const [newTaskAreaName, setNewTaskAreaName] = useState<string>(
-    areas[0]?.name || checklistLocations[0]?.name || 'Toilet Pria & Wanita Lt. 2'
+    areas[0]?.name || checklistLocations[0]?.name || ''
   );
   const [newTaskFloor, setNewTaskFloor] = useState<string>(
-    areas[0]?.floor || checklistLocations[0]?.floor || 'Tower A - Lantai 2'
+    areas[0]?.floor || checklistLocations[0]?.floor || ''
   );
-  const [newTaskDateIso, setNewTaskDateIso] = useState<string>('2026-09-13');
-  const [newTaskCleanerId, setNewTaskCleanerId] = useState<string>(cleaners[0]?.id || 'cln-1');
+  const [newTaskDateIso, setNewTaskDateIso] = useState<string>(() => new Date().toISOString().split('T')[0]);
+  const [newTaskCleanerId, setNewTaskCleanerId] = useState<string>(cleaners[0]?.id || '');
   const [newTaskScheduledTime, setNewTaskScheduledTime] = useState<string>('08:00 WIB');
   const [newTaskDeadlineTime, setNewTaskDeadlineTime] = useState<string>('09:00 WIB');
   const [newTaskChecklistText, setNewTaskChecklistText] = useState<string>(
@@ -196,8 +197,9 @@ export const CleaningActivityView: React.FC = () => {
     e.preventDefault();
     const selectedCleaner = cleaners.find((c) => c.id === newTaskCleanerId) || cleaners[0];
     const matchedArea = areaOptions.find((a) => a.name === newTaskAreaName);
-    const formattedDate = toDdMmYyyy(newTaskDateIso || '2026-09-13');
-    const monthPeriod = (newTaskDateIso || '2026-09-13').slice(0, 7);
+    const todayIso = new Date().toISOString().split('T')[0];
+    const formattedDate = toDdMmYyyy(newTaskDateIso || todayIso);
+    const monthPeriod = (newTaskDateIso || todayIso).slice(0, 7);
 
     const checklistItems = newTaskChecklistText
       .split('\n')
@@ -214,7 +216,7 @@ export const CleaningActivityView: React.FC = () => {
       areaId: matchedArea?.id || `area-${Date.now()}`,
       areaName: newTaskAreaName,
       buildingFloor: newTaskFloor || matchedArea?.floor || activeProject.name,
-      cleanerId: selectedCleaner?.id || 'cln-1',
+      cleanerId: selectedCleaner?.id || '',
       cleanerName: selectedCleaner?.name || 'Petugas Kebersihan',
       shift: newTaskShift,
       taskDate: formattedDate,
@@ -306,9 +308,14 @@ export const CleaningActivityView: React.FC = () => {
               onChange={(e) => setSelectedMonth(e.target.value)}
               className="bg-transparent font-bold text-slate-800 text-xs focus:outline-hidden"
             >
-              <option value="2026-09">September 2026</option>
-              <option value="2026-08">Agustus 2026</option>
-              <option value="2026-07">Juli 2026</option>
+              {Array.from({ length: 6 }, (_, i) => {
+                const d = new Date();
+                d.setDate(1);
+                d.setMonth(d.getMonth() - i);
+                const val = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+                const lbl = d.toLocaleDateString('id-ID', { month: 'long', year: 'numeric' });
+                return <option key={val} value={val}>{lbl}</option>;
+              })}
             </select>
           </div>
         </div>
@@ -419,15 +426,18 @@ export const CleaningActivityView: React.FC = () => {
               </div>
               <button
                 type="button"
-                onClick={() => setDateFilterIso('2026-09-13')}
+                onClick={() => {
+                  const todayIso = new Date().toISOString().split('T')[0];
+                  setDateFilterIso(dateFilterIso === todayIso ? '' : todayIso);
+                }}
                 className={`px-2.5 py-2 rounded-xl text-[11px] font-bold border transition-colors shrink-0 cursor-pointer ${
-                  dateFilterIso === '2026-09-13'
+                  dateFilterIso === new Date().toISOString().split('T')[0]
                     ? 'bg-sky-600 text-white border-sky-600'
                     : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-200'
                 }`}
-                title="Pilih tanggal 13/09/2026"
+                title="Filter tanggal hari ini"
               >
-                13/09/2026
+                Hari Ini
               </button>
             </div>
             <p className="text-[10.5px] text-slate-500 truncate">

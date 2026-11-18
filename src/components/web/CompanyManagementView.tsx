@@ -26,7 +26,7 @@ import {
   Camera,
 } from 'lucide-react';
 import { useCleaning } from '../../context/CleaningContext';
-import { Company, CompanyStatus } from '../../types';
+import { Company, CompanyStatus, isSuperAdminRole } from '../../types';
 import { uploadCompanyLogo } from '../../services/apiService';
 import { resizeImageForLogo } from '../../utils/imageResizer';
 
@@ -41,7 +41,7 @@ export const CompanyManagementView: React.FC = () => {
     setActiveTab,
   } = useCleaning();
 
-  const isSuperAdmin = userRole === 'super_admin';
+  const isSuperAdmin = isSuperAdminRole(userRole);
 
   // State pencarian & filter
   const [searchQuery, setSearchQuery] = useState('');
@@ -492,7 +492,7 @@ export const CompanyManagementView: React.FC = () => {
                   const companyUsers = users.filter(
                     (u) => (u.company_id || u.companyId) === c.id
                   );
-                  const adminCount = companyUsers.filter((u) => u.role === 'admin_perusahaan' || u.role === 'admin').length;
+                  const adminCount = companyUsers.filter((u) => u.role === 'admin_perusahaan' || isSuperAdminRole(u.role)).length;
                   const totalUsers = companyUsers.length;
                   const isMainCompany = c.id === 'comp-main';
 

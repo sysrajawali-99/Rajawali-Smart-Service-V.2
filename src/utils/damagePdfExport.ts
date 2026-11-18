@@ -288,16 +288,16 @@ export const exportDamageSummaryToPDF = (options: ExportDamageSummaryOptions): v
   doc.text('Dilaporkan & Dibuat Oleh,', marginX + colW * 0.5, sigY, { align: 'center' });
   doc.text('Supervisor Cleaning / Operasional', marginX + colW * 0.5, sigY + 3.5, { align: 'center' });
   doc.setFont('helvetica', 'bold');
-  doc.text('( Hendra Wijaya )', marginX + colW * 0.5, sigY + 18, { align: 'center' });
+  doc.text('( Supervisor Operasional )', marginX + colW * 0.5, sigY + 18, { align: 'center' });
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(6.5);
-  doc.text('PT Rajawali Talenta Indonesia', marginX + colW * 0.5, sigY + 21, { align: 'center' });
+  doc.text(project.name || 'Tim Operasional', marginX + colW * 0.5, sigY + 21, { align: 'center' });
 
   doc.setFontSize(7.5);
   doc.text('Ditindaklanjuti & Diperiksa Oleh,', marginX + colW * 1.5, sigY, { align: 'center' });
   doc.text('Head of Engineering / MEP / Teknisi', marginX + colW * 1.5, sigY + 3.5, { align: 'center' });
   doc.setFont('helvetica', 'bold');
-  doc.text('( Bambang Irawan / Tim MEP )', marginX + colW * 1.5, sigY + 18, { align: 'center' });
+  doc.text('( Teknisi / Tim MEP )', marginX + colW * 1.5, sigY + 18, { align: 'center' });
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(6.5);
   doc.text('Maintenance & Engineering Dept', marginX + colW * 1.5, sigY + 21, { align: 'center' });
@@ -614,7 +614,7 @@ export const exportDamageWorkOrderToPDF = async (options: ExportDamageWorkOrderO
   doc.text('Pelaksana Perbaikan,', marginX + colW * 1.5, sigY, { align: 'center' });
   doc.text('Teknisi / Vendor Rekanan', marginX + colW * 1.5, sigY + 3.5, { align: 'center' });
   doc.setFont('helvetica', 'bold');
-  doc.text(`( ${report.technicianName || 'Bambang Irawan'} )`, marginX + colW * 1.5, sigY + 18, { align: 'center' });
+  doc.text(`( ${report.technicianName || 'Teknisi Pelaksana'} )`, marginX + colW * 1.5, sigY + 18, { align: 'center' });
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(6.5);
   doc.text(report.targetDepartment, marginX + colW * 1.5, sigY + 21, { align: 'center' });

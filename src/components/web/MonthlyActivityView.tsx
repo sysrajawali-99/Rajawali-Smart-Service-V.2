@@ -231,7 +231,7 @@ export const MonthlyActivityView: React.FC = () => {
     setFormWorkDescription('');
     setFormWorkMethod('');
     setFormLocation(areas[0]?.name || 'Facade Kaca & Kanopi Luar');
-    setFormPicName(cleaners[0]?.name || 'Asep Supriyadi');
+    setFormPicName(cleaners[0]?.name || '');
 
     // Default: set selected day as planned
     const days: Record<number, ProgramDayStatus> = {};

@@ -55,11 +55,13 @@ export const COLLECTIONS = {
 export type CollectionName = typeof COLLECTIONS[keyof typeof COLLECTIONS] | string;
 
 export interface RecordChangeEvent<T = any> {
-  action: 'upsert' | 'delete';
+  action: 'upsert' | 'delete' | 'bulk_delete';
   collection: string;
   id: string;
   data?: T;
   isDeleted?: boolean;
+  projectId?: string;
+  company_id?: string;
   timestamp: string;
   originSocketId?: string;
 }
@@ -146,6 +148,9 @@ export function setAuthToken(token: string | null): void {
     localStorage.removeItem('sco_auth_token');
     try {
       document.cookie = 'sco_auth_token=; path=/; max-age=0; SameSite=Lax';
+    } catch {}
+    try {
+      socket.emit('auth:leave');
     } catch {}
   }
 }
@@ -435,6 +440,31 @@ export async function deleteRecord(collection: string, id: string): Promise<bool
     throw new Error(`Gagal menghapus dari server (${collection}/${id}): ${errorText}`);
   }
   return true;
+}
+
+/**
+ * Bulk-delete records in a collection (optionally scoped to projectId).
+ */
+export async function deleteCollectionRecords(
+  collection: string,
+  projectId?: string
+): Promise<{ success: boolean; deletedCount: number }> {
+  const additionalHeaders: Record<string, string> = {};
+  if (socket?.id) {
+    additionalHeaders['x-socket-id'] = socket.id;
+  }
+  const query = projectId ? `?projectId=${encodeURIComponent(projectId)}` : '';
+  const res = await fetch(getApiUrl(`/api/records/${collection}${query}`), {
+    method: 'DELETE',
+    headers: getAuthHeaders(additionalHeaders),
+  });
+  if (!res.ok) {
+    const errorText = await res.text().catch(() => res.statusText);
+    console.error(`[API] Failed to bulk delete ${collection}:`, errorText);
+    throw new Error(`Gagal menghapus masal dari server (${collection}): ${errorText}`);
+  }
+  const data = await res.json().catch(() => ({}));
+  return { success: true, deletedCount: Number(data.deletedCount || 0) };
 }
 
 /**

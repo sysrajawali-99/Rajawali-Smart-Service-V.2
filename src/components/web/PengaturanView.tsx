@@ -35,7 +35,7 @@ import {
   Server,
 } from 'lucide-react';
 import { useCleaning } from '../../context/CleaningContext';
-import { ChecklistLocationCategory, DashboardKpiVisibilityConfig, ChecklistTemplateItem } from '../../types';
+import { ChecklistLocationCategory, DashboardKpiVisibilityConfig, ChecklistTemplateItem, isSuperAdminRole } from '../../types';
 import { UserManagementSection } from './UserManagementSection';
 import { CompanyProfileSettingsSection } from './CompanyProfileSettingsSection';
 import { SuperAdminBulkDeleteSection } from './SuperAdminBulkDeleteSection';
@@ -78,7 +78,7 @@ export const PengaturanView: React.FC = () => {
     auditLogs,
   } = useCleaning();
 
-  const isSuperAdmin = userRole === 'admin' || userRole === 'super_admin';
+  const isSuperAdmin = isSuperAdminRole(userRole);
 
   const [activeSubTab, setActiveSubTab] = useState<PengaturanSubTab>('all');
   const [deadlineAlertMins, setDeadlineAlertMins] = useState(15);
@@ -971,14 +971,14 @@ export const PengaturanView: React.FC = () => {
                   Matriks Hak Akses Pengguna (Role-Based Access Control)
                 </h3>
                 <p className="text-[11px] text-slate-500">
-                  {userRole === 'admin'
+                  {isSuperAdmin
                     ? 'Super Admin: Klik sakelar untuk mengaktifkan / menonaktifkan hak akses modul per role secara instan.'
                     : 'Pratinjau izin modul per role. Hanya Super Admin yang dapat mengubah konfigurasi ini.'}
                 </p>
               </div>
             </div>
 
-            {userRole === 'admin' && (
+            {isSuperAdmin && (
               <button
                 type="button"
                 onClick={() => {
@@ -1070,7 +1070,7 @@ export const PengaturanView: React.FC = () => {
 
                     {/* Supervisor Column */}
                     <td className="p-3 text-center">
-                      {userRole === 'admin' ? (
+                      {isSuperAdmin ? (
                         <button
                           type="button"
                           onClick={() => {
@@ -1102,7 +1102,7 @@ export const PengaturanView: React.FC = () => {
 
                     {/* Petugas Column */}
                     <td className="p-3 text-center">
-                      {userRole === 'admin' ? (
+                      {isSuperAdmin ? (
                         <button
                           type="button"
                           onClick={() => {
@@ -1134,7 +1134,7 @@ export const PengaturanView: React.FC = () => {
 
                     {/* Klien Column */}
                     <td className="p-3 text-center">
-                      {userRole === 'admin' ? (
+                      {isSuperAdmin ? (
                         <button
                           type="button"
                           onClick={() => {

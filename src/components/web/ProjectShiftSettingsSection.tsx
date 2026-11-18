@@ -23,7 +23,7 @@ import {
   Shield,
 } from 'lucide-react';
 import { useCleaning } from '../../context/CleaningContext';
-import { Shift, ShiftPlottingAllocation, ProjectLocation } from '../../types';
+import { Shift, ShiftPlottingAllocation, ProjectLocation, isSuperAdminRole } from '../../types';
 import { calculateShiftDuration } from '../../utils/shiftUtils';
 
 const COLOR_PRESETS = [
@@ -49,11 +49,11 @@ export const ProjectShiftSettingsSection: React.FC = () => {
     userRole,
   } = useCleaning();
 
-  const isSuperAdmin = userRole === 'admin' || userRole === 'super_admin';
+  const isSuperAdmin = isSuperAdminRole(userRole);
   const availableProjects = allProjects && allProjects.length > 0 ? allProjects : projects;
 
   // Selected project for configuring shifts
-  const [selectedProjectId, setSelectedProjectId] = useState<string>(activeProjectId || availableProjects[0]?.id || 'proj-1');
+  const [selectedProjectId, setSelectedProjectId] = useState<string>(activeProjectId || availableProjects[0]?.id || '');
 
   // Currently selected project object
   const currentProject = useMemo(() => {

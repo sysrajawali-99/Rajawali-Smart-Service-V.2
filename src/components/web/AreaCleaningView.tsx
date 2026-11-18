@@ -248,7 +248,7 @@ export const AreaCleaningView: React.FC = () => {
 
   // Helper: Find matching checklist location for an area
   const getChecklistForArea = (area: Area) => {
-    const fallbackProjId = activeProject?.id || 'proj-1793818532678';
+    const fallbackProjId = activeProject?.id || '';
     const targetProjectId = area.projectId || fallbackProjId;
     return checklistLocations.find(
       (l) =>

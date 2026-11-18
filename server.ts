@@ -79,7 +79,22 @@ app.use(
     origin: isOriginAllowed,
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'X-User-Id', 'x-user-id', 'X-UserId', 'x-userid'],
+    allowedHeaders: [
+      'Content-Type',
+      'Authorization',
+      'X-Requested-With',
+      'X-User-Id',
+      'x-user-id',
+      'X-UserId',
+      'x-userid',
+      'X-User-Role',
+      'x-user-role',
+      'X-Role',
+      'x-role',
+      'X-Socket-Id',
+      'x-socket-id',
+      'x-socketid',
+    ],
   })
 );
 app.use(express.json({ limit: '30mb' }));
@@ -129,6 +144,10 @@ function verifyAuthToken(token: string): any | null {
   } catch {
     return null;
   }
+}
+
+function isSuperRole(role?: string | null): boolean {
+  return role === 'super_admin' || role === 'admin';
 }
 
 function extractToken(req: Request): string | null {
@@ -190,7 +209,7 @@ app.get(['/uploads/:companyId/:filename', '/uploads/:filename'], async (req: Req
 
 
   const sessionCompanyId = verified.company_id || verified.companyId || 'comp-main';
-  const isSuper = verified.role === 'super_admin';
+  const isSuper = isSuperRole(verified.role);
 
   let targetCompany = '';
   let rawFilename = '';
@@ -314,12 +333,33 @@ const io = new SocketIOServer(httpServer, {
   maxHttpBufferSize: 20 * 1024 * 1024, // 20MB
 });
 
+const GLOBAL_REALTIME_COLLECTIONS = new Set([
+  'companies',
+  'company_profile',
+  'rbac_permissions',
+  'kpi_config',
+  'checklist_templates',
+]);
+
 function emitTenantRecordChange(eventName: string, payload: any) {
+  if (payload?.collection && GLOBAL_REALTIME_COLLECTIONS.has(payload.collection)) {
+    io.emit(eventName, payload);
+    return;
+  }
   const targetCompany = payload.company_id || payload.companyId || 'comp-main';
-  // Emit to isolated company room and super_admin observers
-  io.to(`company:${targetCompany}`).to('role:super_admin').emit(eventName, payload);
+  // Emit to isolated company room and super_admin observers (avoid duplicate room emissions)
   if (targetCompany === 'comp-main') {
-    io.to('company:comp-main').emit(eventName, payload);
+    io.to('company:comp-main').to('role:super_admin').emit(eventName, payload);
+  } else {
+    io.to(`company:${targetCompany}`).to('role:super_admin').emit(eventName, payload);
+  }
+}
+
+function leaveTenantAndRoleRooms(socket: any) {
+  for (const room of socket.rooms) {
+    if (typeof room === 'string' && (room.startsWith('company:') || room.startsWith('role:'))) {
+      socket.leave(room);
+    }
   }
 }
 
@@ -330,7 +370,7 @@ io.on('connection', (socket) => {
     if (verified) {
       const companyId = verified.company_id || verified.companyId || 'comp-main';
       socket.join(`company:${companyId}`);
-      if (verified.role === 'super_admin') {
+      if (isSuperRole(verified.role)) {
         socket.join('role:super_admin');
       }
     } else {
@@ -340,18 +380,26 @@ io.on('connection', (socket) => {
     socket.join('company:comp-main');
   }
 
-  // Allow client to join authenticated company room dynamically
+  // Allow client to switch/join authenticated company & role room dynamically
   socket.on('auth:join', (data: { token?: string }) => {
+    leaveTenantAndRoleRooms(socket);
     if (data?.token) {
       const verified = verifyAuthToken(data.token);
       if (verified) {
         const companyId = verified.company_id || verified.companyId || 'comp-main';
         socket.join(`company:${companyId}`);
-        if (verified.role === 'super_admin') {
+        if (isSuperRole(verified.role)) {
           socket.join('role:super_admin');
         }
+        return;
       }
     }
+    socket.join('company:comp-main');
+  });
+
+  socket.on('auth:leave', () => {
+    leaveTenantAndRoleRooms(socket);
+    socket.join('company:comp-main');
   });
 
   socket.emit('backend:status', {
@@ -715,7 +763,7 @@ async function getCompanyById(companyId: string): Promise<any | null> {
   if (companyId === 'comp-main') {
     return {
       id: 'comp-main',
-      nama: 'Perusahaan Utama',
+      nama: 'Smart Cleaning Operations',
       slug: 'utama',
       status: 'aktif',
     };
@@ -737,24 +785,21 @@ function resolveSessionCompanyId(req: Request): string {
 
 function isSessionSuperAdmin(req: Request): boolean {
   const user = (req as any).user;
-  if (user?.role === 'super_admin' || user?.role === 'admin') {
-    return true;
+  if (user) {
+    return isSuperRole(user.role);
   }
   const clientRole = ((req.headers['x-user-role'] || req.headers['x-role']) as string) || '';
-  if (clientRole === 'super_admin' || clientRole === 'admin') {
+  if (isSuperRole(clientRole)) {
     return true;
   }
   const clientUserId = ((req.headers['x-user-id'] || req.headers['x-userid']) as string) || '';
   if (clientUserId) {
-    if (clientUserId === 'usr-admin' || clientUserId.includes('admin') || clientUserId.includes('super')) {
-      return true;
-    }
     const memUser = memoryStore.get('users')?.get(clientUserId);
-    if (memUser && (memUser.role === 'super_admin' || memUser.role === 'admin')) {
+    if (memUser && isSuperRole(memUser.role)) {
       return true;
     }
     const initUser = INITIAL_USERS.find((u: any) => u.id === clientUserId);
-    if (initUser && (initUser.role === 'super_admin' || initUser.role === 'admin')) {
+    if (initUser && isSuperRole(initUser.role)) {
       return true;
     }
   }
@@ -777,7 +822,7 @@ app.use('/api', async (req: Request, res: Response, next: NextFunction) => {
 
 
       // Requirement 4: Perusahaan berstatus ditangguhkan / diarsipkan: sesi ditolak (kecuali pada saat autentikasi login)
-      if (verified.role !== 'super_admin' && verified.role !== 'admin' && !req.path.includes('/auth/login') && !req.originalUrl?.includes('/auth/login')) {
+      if (!isSuperRole(verified.role) && !req.path.includes('/auth/login') && !req.originalUrl?.includes('/auth/login')) {
         const company = await getCompanyById(companyId);
         if (company) {
           if (company.status === 'ditangguhkan') {
@@ -1055,7 +1100,7 @@ app.get('/api/auth/me', async (req: Request, res: Response) => {
   }
 
   const userCompanyId = payload.company_id || payload.companyId || 'comp-main';
-  if (payload.role !== 'super_admin') {
+  if (!isSuperRole(payload.role)) {
     const company = await getCompanyById(userCompanyId);
     if (company && (company.status === 'ditangguhkan' || company.status === 'diarsipkan')) {
       return res.status(403).json({
@@ -1067,7 +1112,14 @@ app.get('/api/auth/me', async (req: Request, res: Response) => {
   }
 
   const users = await getUsersList();
-  const user = users.find((u) => u.id === payload.userId) || {
+  const matchedInDb = users.find((u) => u.id === payload.userId);
+  if (users.length > 0 && !matchedInDb) {
+    return res.status(401).json({
+      authenticated: false,
+      error: 'Akun pengguna telah dihapus atau tidak ditemukan.',
+    });
+  }
+  const user = matchedInDb || {
     id: payload.userId,
     name: payload.name,
     role: payload.role,
@@ -1130,7 +1182,13 @@ app.get('/api/status', async (_req: Request, res: Response) => {
 });
 
 // Endpoint Sinkronisasi Real-Time dari Server VPS Live (Metode 1)
-app.post('/api/sync/live-vps', async (_req: Request, res: Response) => {
+app.post('/api/sync/live-vps', async (req: Request, res: Response) => {
+  if (!isSessionSuperAdmin(req)) {
+    return res.status(403).json({
+      success: false,
+      error: 'Akses ditolak: Hanya Super Administrator yang dapat menjalankan sinkronisasi VPS Live.',
+    });
+  }
   try {
     const result = await syncFromLiveServer();
     loadMemoryStoreFromDisk();
@@ -1326,7 +1384,7 @@ app.post('/api/records/:collection', async (req: Request, res: Response) => {
   // Task 4.2 & 4.3: Pembuatan pengguna & pencegahan kenaikan hak melebihi haknya
   if (collection === 'users') {
     if (!isSuper) {
-      if (data.role === 'super_admin') {
+      if (isSuperRole(data.role)) {
         return res.status(403).json({ error: 'Akses ditolak: Anda tidak memiliki izin untuk membuat akun Super Administrator.' });
       }
       if (data.role === 'admin_perusahaan') {
@@ -1396,10 +1454,10 @@ app.put('/api/records/:collection/:id', async (req: Request, res: Response) => {
   // Cek apakah data eksisting milik perusahaan lain (Requirement 3: 404 bukan 403)
   const existing = await getDbRecord(collection, id);
 
-  // Requirement 5: Audit log bersifat permanen dan append-only (hanya boleh dibuat baru, tidak dapat diubah)
+  // Audit log append-only untuk non-Super Admin; Super Admin memiliki kendali penuh
   if (collection === 'audit_logs') {
-    if (existing) {
-      return res.status(403).json({ error: 'Audit log bersifat permanen dan tidak dapat diubah dari aplikasi.' });
+    if (existing && !isSuper) {
+      return res.status(403).json({ error: 'Audit log bersifat permanen dan tidak dapat diubah oleh peran ini.' });
     }
     let detailsText = '';
     if (typeof data.details === 'string' && data.details.trim()) {
@@ -1453,11 +1511,11 @@ app.put('/api/records/:collection/:id', async (req: Request, res: Response) => {
   delete data._baseRev;
   delete data._rev;
 
-  // Task 4.2 & 4.3: Menolak menurunkan Super Admin terakhir dan validasi eskalasi hak
+  // Menolak menurunkan Super Admin terakhir dan validasi eskalasi hak
   if (collection === 'users') {
-    if (existing && existing.role === 'super_admin' && data.role && data.role !== 'super_admin') {
+    if (existing && isSuperRole(existing.role) && data.role && !isSuperRole(data.role)) {
       const allUsers = await getUsersList();
-      const otherSuperAdmins = allUsers.filter((u: any) => u.role === 'super_admin' && u.id !== id);
+      const otherSuperAdmins = allUsers.filter((u: any) => isSuperRole(u.role) && u.id !== id);
       if (otherSuperAdmins.length === 0) {
         return res.status(400).json({
           error: 'Aplikasi menolak menurunkan Super Admin terakhir. Harus ada setidaknya satu Super Administrator aktif.',
@@ -1466,7 +1524,7 @@ app.put('/api/records/:collection/:id', async (req: Request, res: Response) => {
     }
 
     if (!isSuper) {
-      if (data.role === 'super_admin') {
+      if (isSuperRole(data.role)) {
         return res.status(403).json({ error: 'Akses ditolak: Anda tidak dapat menaikkan hak akses menjadi Super Administrator.' });
       }
       if (data.role === 'admin_perusahaan' && (req as any).user?.role !== 'admin_perusahaan') {
@@ -1531,18 +1589,117 @@ app.put('/api/records/:collection/:id', async (req: Request, res: Response) => {
   }
 });
 
+// 3b. DELETE /api/records/:collection -> hapus masal data dalam satu koleksi (opsional ?projectId=...)
+app.delete('/api/records/:collection', async (req: Request, res: Response) => {
+  const { collection } = req.params;
+  const projectId = typeof req.query.projectId === 'string' && req.query.projectId.trim() ? req.query.projectId.trim() : undefined;
+  const sessionCompanyId = resolveSessionCompanyId(req);
+  const isSuper = isSessionSuperAdmin(req);
+
+  if (!isSuper) {
+    if (collection !== 'notifications' || !(req as any).user) {
+      return res.status(403).json({
+        error: 'Akses ditolak: Hanya Super Administrator yang diizinkan menghapus masal data sistem.',
+      });
+    }
+  }
+
+  if (collection === 'users') {
+    return res.status(400).json({
+      error: 'Penghapusan masal pengguna ditolak untuk menjaga akun Super Administrator aktif.',
+    });
+  }
+
+  try {
+    let deletedCount = 0;
+    const colMap = memoryStore.get(collection);
+    const updatedAtMap = memoryStoreUpdatedAt.get(collection);
+
+    if (colMap) {
+      for (const [id, rec] of Array.from(colMap.entries())) {
+        if (projectId && rec?.projectId !== projectId) continue;
+        if (!isSuper) {
+          const recCompany = rec?.company_id || rec?.companyId || 'comp-main';
+          if (recCompany !== sessionCompanyId) continue;
+        }
+        colMap.delete(id);
+        updatedAtMap?.delete(id);
+        deletedCount++;
+      }
+    }
+
+    if (!useMemoryFallback && pool) {
+      try {
+        if (projectId) {
+          if (isSuper) {
+            const delRes = await pool.query(
+              "DELETE FROM records WHERE collection = $1 AND data->>'projectId' = $2",
+              [collection, projectId]
+            );
+            deletedCount = Math.max(deletedCount, delRes.rowCount || 0);
+          } else {
+            const delRes = await pool.query(
+              "DELETE FROM records WHERE collection = $1 AND data->>'projectId' = $2 AND COALESCE(data->>'company_id', data->>'companyId', 'comp-main') = $3",
+              [collection, projectId, sessionCompanyId]
+            );
+            deletedCount = Math.max(deletedCount, delRes.rowCount || 0);
+          }
+        } else {
+          if (isSuper) {
+            const delRes = await pool.query('DELETE FROM records WHERE collection = $1', [collection]);
+            deletedCount = Math.max(deletedCount, delRes.rowCount || 0);
+          } else {
+            const delRes = await pool.query(
+              "DELETE FROM records WHERE collection = $1 AND COALESCE(data->>'company_id', data->>'companyId', 'comp-main') = $2",
+              [collection, sessionCompanyId]
+            );
+            deletedCount = Math.max(deletedCount, delRes.rowCount || 0);
+          }
+        }
+      } catch (pgErr) {
+        console.warn(`[DELETE /api/records/${collection}] Postgres bulk delete warning:`, pgErr);
+      }
+    }
+
+    scheduleSaveMemoryStore();
+
+    const originSocketId = ((req.headers['x-socket-id'] || req.headers['x-socketid']) as string) || undefined;
+    const payload = {
+      action: 'bulk_delete' as const,
+      collection,
+      id: '*',
+      projectId,
+      company_id: sessionCompanyId,
+      isDeleted: true,
+      timestamp: new Date().toISOString(),
+      originSocketId,
+    };
+
+    if (isSuper) {
+      io.emit('record:change', payload);
+    } else {
+      emitTenantRecordChange('record:change', payload);
+    }
+
+    return res.json({ success: true, collection, projectId, deletedCount });
+  } catch (err: any) {
+    console.error(`[DELETE /api/records/${collection}] Error:`, err);
+    return res.status(500).json({ error: 'Gagal menghapus masal data', details: err?.message });
+  }
+});
+
 // 4. DELETE /api/records/:collection/:id -> hapus satu data
 app.delete('/api/records/:collection/:id', async (req: Request, res: Response) => {
   const { collection, id } = req.params;
   const sessionCompanyId = resolveSessionCompanyId(req);
   const isSuper = isSessionSuperAdmin(req);
 
-  // Requirement 5: Audit log tidak bisa diedit/dihapus dari aplikasi
-  if (collection === 'audit_logs') {
-    return res.status(403).json({ error: 'Audit log bersifat permanen dan tidak dapat dihapus dari aplikasi.' });
+  // Audit log hanya dapat dihapus oleh Super Administrator
+  if (collection === 'audit_logs' && !isSuper) {
+    return res.status(403).json({ error: 'Akses ditolak: Hanya Super Administrator yang dapat menghapus audit log.' });
   }
 
-  // Task 4.1 & 4.3: Hanya Super Admin yang bisa menghapus perusahaan
+  // Hanya Super Admin yang bisa menghapus perusahaan (kecuali jangkar sistem comp-main)
   if (collection === 'companies') {
     if (!isSuper) {
       return res.status(403).json({ error: 'Akses ditolak: Hanya Super Administrator yang diizinkan menghapus perusahaan.' });
@@ -1552,8 +1709,8 @@ app.delete('/api/records/:collection/:id', async (req: Request, res: Response) =
     }
   }
 
-  if (collection === 'company_profile') {
-    return res.status(403).json({ error: 'Operasi ditolak: Profil perusahaan global tidak dapat dihapus.' });
+  if (collection === 'company_profile' && !isSuper) {
+    return res.status(403).json({ error: 'Akses ditolak: Hanya Super Administrator yang dapat menghapus profil perusahaan.' });
   }
 
   const existing = await getDbRecord(collection, id);
@@ -1561,10 +1718,10 @@ app.delete('/api/records/:collection/:id', async (req: Request, res: Response) =
     return res.status(404).json({ error: 'Data tidak ditemukan' });
   }
 
-  // Task 4.2: Aplikasi menolak menghapus Super Admin terakhir
-  if (collection === 'users' && existing.role === 'super_admin') {
+  // Aplikasi menolak menghapus Super Admin terakhir agar tidak terkunci permanen
+  if (collection === 'users' && isSuperRole(existing.role)) {
     const allUsers = await getUsersList();
-    const remainingSuperAdmins = allUsers.filter((u: any) => u.role === 'super_admin' && u.id !== id);
+    const remainingSuperAdmins = allUsers.filter((u: any) => isSuperRole(u.role) && u.id !== id);
     if (remainingSuperAdmins.length === 0) {
       return res.status(400).json({
         error: 'Aplikasi menolak menghapus Super Admin terakhir. Harus ada setidaknya satu Super Administrator aktif.',
@@ -1656,12 +1813,18 @@ app.all(['/api/companies/:id/status'], async (req: Request, res: Response) => {
   await upsertDbRecord('companies', id, company);
   scheduleSaveMemoryStore();
 
-  io.emit('record:upsert', {
+  const originSocketId = ((req.headers['x-socket-id'] || req.headers['x-socketid']) as string) || undefined;
+  const companyPayload = {
+    action: 'upsert' as const,
     collection: 'companies',
     id,
     data: company,
     company_id: id,
-  });
+    timestamp: new Date().toISOString(),
+    originSocketId,
+  };
+  io.emit('record:change', companyPayload);
+  io.emit('record:upsert', companyPayload);
   io.emit('company:status_changed', { id, status, company });
 
   await addAuditLog({
@@ -1764,21 +1927,38 @@ app.post('/api/companies/:id/logo', (req: Request, res: Response) => {
     await upsertDbRecord('companies', id, company);
     scheduleSaveMemoryStore();
 
+    const originSocketId = ((req.headers['x-socket-id'] || req.headers['x-socketid']) as string) || undefined;
+
     // Jika ini perusahaan utama atau perusahaan sesi aktif, sinkronkan juga ke profil perusahaan
     if (id === 'comp-main' || id === resolveSessionCompanyId(req)) {
       let prof = (await getDbRecord('company_profile', 'main')) || {};
+      prof.id = 'main';
       prof.logoUrl = logoUrl;
       prof.updatedAt = new Date().toISOString();
       await upsertDbRecord('company_profile', 'main', prof);
       io.emit('company_profile:update', prof);
+      io.emit('record:change', {
+        action: 'upsert',
+        collection: 'company_profile',
+        id: 'main',
+        data: prof,
+        company_id: 'comp-main',
+        timestamp: prof.updatedAt,
+        originSocketId,
+      });
     }
 
-    io.emit('record:upsert', {
+    const logoCompanyPayload = {
+      action: 'upsert' as const,
       collection: 'companies',
       id,
       data: company,
       company_id: id,
-    });
+      timestamp: new Date().toISOString(),
+      originSocketId,
+    };
+    io.emit('record:change', logoCompanyPayload);
+    io.emit('record:upsert', logoCompanyPayload);
     io.emit('company:logo_updated', { id, logoUrl });
 
     await addAuditLog({
@@ -1826,12 +2006,18 @@ app.all(['/api/companies/:id'], async (req: Request, res: Response, next: NextFu
   await upsertDbRecord('companies', id, updated);
   scheduleSaveMemoryStore();
 
-  io.emit('record:upsert', {
+  const originSocketId = ((req.headers['x-socket-id'] || req.headers['x-socketid']) as string) || undefined;
+  const updatedCompanyPayload = {
+    action: 'upsert' as const,
     collection: 'companies',
     id,
     data: updated,
     company_id: id,
-  });
+    timestamp: new Date().toISOString(),
+    originSocketId,
+  };
+  io.emit('record:change', updatedCompanyPayload);
+  io.emit('record:upsert', updatedCompanyPayload);
 
   if (updated.logo !== undefined) {
     io.emit('company:logo_updated', { id, logoUrl: updated.logo });
@@ -1839,6 +2025,7 @@ app.all(['/api/companies/:id'], async (req: Request, res: Response, next: NextFu
 
   if (id === 'comp-main') {
     let prof = (await getDbRecord('company_profile', 'main')) || {};
+    prof.id = 'main';
     if (updated.logo !== undefined) prof.logoUrl = updated.logo;
     if (updated.nama) prof.companyName = updated.nama;
     if (updated.tagline) prof.tagline = updated.tagline;
@@ -1851,6 +2038,15 @@ app.all(['/api/companies/:id'], async (req: Request, res: Response, next: NextFu
     prof.updatedAt = new Date().toISOString();
     await upsertDbRecord('company_profile', 'main', prof);
     io.emit('company_profile:update', prof);
+    io.emit('record:change', {
+      action: 'upsert',
+      collection: 'company_profile',
+      id: 'main',
+      data: prof,
+      company_id: 'comp-main',
+      timestamp: prof.updatedAt,
+      originSocketId,
+    });
   }
 
   if (updated.status && updated.status !== oldStatus) {
@@ -1891,12 +2087,18 @@ app.post('/api/companies', async (req: Request, res: Response) => {
   await upsertDbRecord('companies', id, newCompany);
   scheduleSaveMemoryStore();
 
-  io.emit('record:upsert', {
+  const originSocketId = ((req.headers['x-socket-id'] || req.headers['x-socketid']) as string) || undefined;
+  const newCompanyPayload = {
+    action: 'upsert' as const,
     collection: 'companies',
     id,
     data: newCompany,
     company_id: id,
-  });
+    timestamp: new Date().toISOString(),
+    originSocketId,
+  };
+  io.emit('record:change', newCompanyPayload);
+  io.emit('record:upsert', newCompanyPayload);
 
   await addAuditLog({
     action: 'CREATE_COMPANY',
@@ -1977,8 +2179,7 @@ app.post('/api/upload', (req: Request, res: Response) => {
 
 // 6. POST /api/pwa/update-icons -> Batch write all 11 generated PWA icons to public/icons/ (Restricted strictly to Super Admin)
 app.post('/api/pwa/update-icons', async (req: Request, res: Response) => {
-  const user = (req as any).user;
-  if (!user || user.role !== 'super_admin') {
+  if (!isSessionSuperAdmin(req)) {
     return res.status(403).json({ error: 'Akses ditolak: Hanya Super Administrator yang diizinkan memperbarui ikon PWA' });
   }
   try {
@@ -2169,7 +2370,7 @@ app.post('/api/push/subscribe', async (req: Request, res: Response) => {
     userName,
     company_id: sessionCompanyId,
     companyId: sessionCompanyId,
-    projectId: projectId || (user?.assignedProjectIds?.[0] || 'proj-1'),
+    projectId: projectId || user?.assignedProjectIds?.[0] || '',
     userAgent: userAgent || req.headers['user-agent'] || '',
     subscribedAt: new Date().toISOString(),
   };
@@ -2408,8 +2609,8 @@ app.post('/api/sync/checklist', async (req: Request, res: Response) => {
             id: targetChecklistId,
             company_id: sessionCompanyId,
             companyId: sessionCompanyId,
-            projectId: projectId || 'proj-1',
-            locationId: locationId || 'loc-1',
+            projectId: projectId || '',
+            locationId: locationId || '',
             locationName: req.body?.locationName || 'Area Lokasi',
             category: req.body?.category || 'toilet',
             date: dateStr,
@@ -2638,7 +2839,7 @@ async function runTaskNotificationScheduler() {
         }
       }
 
-      const projectId = task.projectId || 'proj-1';
+      const projectId = task.projectId || '';
       const taskCompany = task.company_id || task.companyId || 'comp-main';
 
       // 1. Reminder: 15 minutes before scheduled start time
@@ -2825,9 +3026,56 @@ async function runTaskNotificationScheduler() {
 // Run task notification scheduler every 5 minutes
 setInterval(runTaskNotificationScheduler, 5 * 60 * 1000);
 
+async function ensureMinimumBootstrapData() {
+  try {
+    const existingUsers = await getUsersList();
+    const hasSuperAdmin = existingUsers.some((u: any) => isSuperRole(u.role));
+    if (!hasSuperAdmin) {
+      const defaultAdmin = INITIAL_USERS[0] || {
+        id: 'usr-admin',
+        name: 'Super Administrator',
+        username: 'superadmin',
+        email: 'superadmin@cleaningops.com',
+        role: 'super_admin',
+        company_id: 'comp-main',
+        companyId: 'comp-main',
+        assignedProjectIds: [],
+      };
+      const hashedAdmin = {
+        ...defaultAdmin,
+        role: 'super_admin',
+        assignedProjectIds: Array.isArray(defaultAdmin.assignedProjectIds) ? defaultAdmin.assignedProjectIds : [],
+        password: bcrypt.hashSync(defaultAdmin.password || 'admin123', 10),
+        company_id: 'comp-main',
+        companyId: 'comp-main',
+      };
+      await upsertDbRecord('users', hashedAdmin.id, hashedAdmin);
+      scheduleSaveMemoryStore();
+    }
+
+    const mainComp = await getDbRecord('companies', 'comp-main');
+    if (!mainComp) {
+      await upsertDbRecord('companies', 'comp-main', {
+        id: 'comp-main',
+        nama: 'Smart Cleaning Operations',
+        slug: 'utama',
+        status: 'aktif',
+        warna: '#0284c7',
+        company_id: 'comp-main',
+        companyId: 'comp-main',
+        createdAt: new Date().toISOString(),
+      });
+      scheduleSaveMemoryStore();
+    }
+  } catch (err) {
+    console.warn('[Bootstrap] Notice ensuring minimum bootstrap data:', err);
+  }
+}
+
 // Start Server & Vite / Production Static Serving
 async function startServer() {
   await initDatabase();
+  await ensureMinimumBootstrapData();
 
   const isProduction = process.env.NODE_ENV === 'production';
 

@@ -404,9 +404,13 @@ export const DashboardView: React.FC = () => {
                   </div>
                   <div className="space-y-2.5">
                     {checklistLocations.slice(0, 3).map((loc) => {
+                      const todayDdMmYyyy = (() => {
+                        const now = new Date();
+                        return `${String(now.getDate()).padStart(2, '0')}/${String(now.getMonth() + 1).padStart(2, '0')}/${now.getFullYear()}`;
+                      })();
                       const todayChecklist = dailyChecklists.find(
-                        (d) => d.locationId === loc.id && d.date === '2026-09-13'
-                      );
+                        (d) => d.locationId === loc.id && d.date === todayDdMmYyyy
+                      ) || dailyChecklists.find((d) => d.locationId === loc.id);
                       const cleanCount =
                         todayChecklist?.hourlySlots.filter((s) => s.status === 'clean').length || 0;
                       const issueCount =

@@ -1336,7 +1336,7 @@ export const PetugasView: React.FC = () => {
                   required
                   value={cleanerFormName}
                   onChange={(e) => setCleanerFormName(e.target.value)}
-                  placeholder="Contoh: Asep Supriyadi, Budi Santoso..."
+                  placeholder="Masukkan nama lengkap petugas"
                   className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-sky-500 focus:outline-none"
                 />
               </div>

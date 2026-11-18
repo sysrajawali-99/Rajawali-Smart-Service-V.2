@@ -55,7 +55,7 @@ export const LaporanReportView: React.FC = () => {
 
 
   // Month period filter
-  const [selectedMonth, setSelectedMonth] = useState<string>('2026-09');
+  const [selectedMonth, setSelectedMonth] = useState<string>(() => new Date().toISOString().slice(0, 7));
 
   // Modal / preview state
   const [previewTask, setPreviewTask] = useState<CleaningTask | null>(null);
@@ -183,16 +183,15 @@ export const LaporanReportView: React.FC = () => {
   };
 
   const getMonthLabel = (m: string) => {
-    switch (m) {
-      case '2026-09':
-        return 'September 2026';
-      case '2026-08':
-        return 'Agustus 2026';
-      case '2026-07':
-        return 'Juli 2026';
-      default:
-        return m;
+    const parts = m.split('-');
+    if (parts.length === 2) {
+      const yr = Number(parts[0]);
+      const mo = Number(parts[1]) - 1;
+      if (!isNaN(yr) && !isNaN(mo)) {
+        return new Date(yr, mo, 1).toLocaleDateString('id-ID', { month: 'long', year: 'numeric' });
+      }
     }
+    return m;
   };
 
   return (
@@ -223,9 +222,14 @@ export const LaporanReportView: React.FC = () => {
               onChange={(e) => setSelectedMonth(e.target.value)}
               className="bg-transparent font-bold text-slate-800 text-xs focus:outline-hidden cursor-pointer"
             >
-              <option value="2026-09">September 2026</option>
-              <option value="2026-08">Agustus 2026</option>
-              <option value="2026-07">Juli 2026</option>
+              {Array.from({ length: 6 }, (_, i) => {
+                const d = new Date();
+                d.setDate(1);
+                d.setMonth(d.getMonth() - i);
+                const val = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+                const lbl = d.toLocaleDateString('id-ID', { month: 'long', year: 'numeric' });
+                return <option key={val} value={val}>{lbl}</option>;
+              })}
             </select>
           </div>
 
@@ -639,7 +643,7 @@ export const LaporanReportView: React.FC = () => {
           <div className="pt-8 border-t-2 border-slate-200 grid grid-cols-3 gap-6 text-center text-xs print:pt-4">
             <div>
               <p className="text-slate-500 mb-14">Dibuat Oleh (Supervisor):</p>
-              <p className="font-bold text-slate-900">Hendra Wijaya</p>
+              <p className="font-bold text-slate-900">{activeProject?.managerName || 'Supervisor Operasional'}</p>
               <p className="text-[10px] text-slate-400">Supervisor Operasional Lapangan</p>
             </div>
             <div>
@@ -781,9 +785,13 @@ export const LaporanReportView: React.FC = () => {
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {checklistLocations.map((loc) => {
+                    const todayDdMmYyyy = (() => {
+                      const now = new Date();
+                      return `${String(now.getDate()).padStart(2, '0')}/${String(now.getMonth() + 1).padStart(2, '0')}/${now.getFullYear()}`;
+                    })();
                     const todayChecklist = dailyChecklists.find(
-                      (d) => d.locationId === loc.id && d.date === '2026-09-13'
-                    );
+                      (d) => d.locationId === loc.id && d.date === todayDdMmYyyy
+                    ) || dailyChecklists.find((d) => d.locationId === loc.id);
                     const cleanCount =
                       todayChecklist?.hourlySlots.filter((s) => s.status === 'clean').length || 0;
                     const issueCount =

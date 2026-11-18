@@ -885,7 +885,7 @@ export const exportMonthlyReportToPDF = async (
   doc.text('Diverifikasi Oleh,', marginX + colWidth * 1.5, sigY, { align: 'center' });
   doc.text('Quality Control (QC)', marginX + colWidth * 1.5, sigY + 4, { align: 'center' });
   doc.setFont('helvetica', 'bold');
-  doc.text(`( ${options.verifierName || 'Agus Prasetyo (QC)'} )`, marginX + colWidth * 1.5, sigY + 20, { align: 'center' });
+  doc.text(`( ${options.verifierName || 'Quality Control (QC)'} )`, marginX + colWidth * 1.5, sigY + 20, { align: 'center' });
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(6.5);
   doc.text('Facility QC Inspector', marginX + colWidth * 1.5, sigY + 23.5, { align: 'center' });
@@ -1119,7 +1119,7 @@ export const exportMasterCleaningProgramToPDF = (
   doc.text('Diverifikasi Oleh,', marginX + colW * 1.5, sigY, { align: 'center' });
   doc.text('Quality Control (QC)', marginX + colW * 1.5, sigY + 3.5, { align: 'center' });
   doc.setFont('helvetica', 'bold');
-  doc.text(`( ${options.verifierName || 'Agus Prasetyo (QC)'} )`, marginX + colW * 1.5, sigY + 18, { align: 'center' });
+  doc.text(`( ${options.verifierName || 'Quality Control (QC)'} )`, marginX + colW * 1.5, sigY + 18, { align: 'center' });
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(6);
   doc.text('Facility QC Inspector', marginX + colW * 1.5, sigY + 21, { align: 'center' });
@@ -1396,7 +1396,7 @@ export const exportDailyActivityToPDF = (
   doc.text('Diverifikasi Oleh,', marginX + colW * 1.5, sigY, { align: 'center' });
   doc.text('Quality Control (QC)', marginX + colW * 1.5, sigY + 4, { align: 'center' });
   doc.setFont('helvetica', 'bold');
-  doc.text(`( ${options.verifierName || 'Agus Prasetyo (QC)'} )`, marginX + colW * 1.5, sigY + 19, { align: 'center' });
+  doc.text(`( ${options.verifierName || 'Quality Control (QC)'} )`, marginX + colW * 1.5, sigY + 19, { align: 'center' });
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(6.5);
   doc.text('Facility QC Inspector', marginX + colW * 1.5, sigY + 22.5, { align: 'center' });
@@ -1418,7 +1418,7 @@ export const exportDailyActivityToPDF = (
     doc.setFontSize(6);
     doc.setTextColor(148, 163, 184);
     doc.text(
-      `Dokumen Resmi Daily Activity  •  PT Rajawali Talenta Indonesia  •  ${project.name}  •  Tgl ${day} ${monthName} ${year}  •  Halaman ${p} dari ${totalPages}`,
+      `Dokumen Resmi Daily Activity  •  Smart Cleaning Operations  •  ${project.name}  •  Tgl ${day} ${monthName} ${year}  •  Halaman ${p} dari ${totalPages}`,
       pageWidth / 2,
       pageHeight - 6,
       { align: 'center' }
@@ -1679,7 +1679,7 @@ export const exportWeeklyActivityToPDF = (
   doc.text('Diverifikasi Oleh,', marginX + colW * 1.5, sigY, { align: 'center' });
   doc.text('Quality Control (QC)', marginX + colW * 1.5, sigY + 4, { align: 'center' });
   doc.setFont('helvetica', 'bold');
-  doc.text(`( ${options.verifierName || 'Agus Prasetyo (QC)'} )`, marginX + colW * 1.5, sigY + 19, { align: 'center' });
+  doc.text(`( ${options.verifierName || 'Quality Control (QC)'} )`, marginX + colW * 1.5, sigY + 19, { align: 'center' });
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(6.5);
   doc.text('Facility QC Inspector', marginX + colW * 1.5, sigY + 22.5, { align: 'center' });
@@ -1701,7 +1701,7 @@ export const exportWeeklyActivityToPDF = (
     doc.setFontSize(6);
     doc.setTextColor(148, 163, 184);
     doc.text(
-      `Dokumen Resmi Weekly Activity  •  PT Rajawali Talenta Indonesia  •  ${project.name}  •  Minggu ${selectedWeek} (${monthName} ${year})  •  Halaman ${p} dari ${totalPages}`,
+      `Dokumen Resmi Weekly Activity  •  Smart Cleaning Operations  •  ${project.name}  •  Minggu ${selectedWeek} (${monthName} ${year})  •  Halaman ${p} dari ${totalPages}`,
       pageWidth / 2,
       pageHeight - 6,
       { align: 'center' }
@@ -1931,7 +1931,7 @@ export const exportMonthlyActivityToPDF = (
   doc.text('Dibuat Oleh,', marginX + colW * 0.5, sigY, { align: 'center' });
   doc.text('Supervisor Cleaning Service', marginX + colW * 0.5, sigY + 3.5, { align: 'center' });
   doc.setFont('helvetica', 'bold');
-  doc.text('( Hendra Wijaya )', marginX + colW * 0.5, sigY + 18, { align: 'center' });
+  doc.text('( Supervisor Operasional )', marginX + colW * 0.5, sigY + 18, { align: 'center' });
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(6);
   doc.text('Operational Team', marginX + colW * 0.5, sigY + 21, { align: 'center' });
@@ -1940,7 +1940,7 @@ export const exportMonthlyActivityToPDF = (
   doc.text('Diverifikasi Oleh,', marginX + colW * 1.5, sigY, { align: 'center' });
   doc.text('Quality Control (QC)', marginX + colW * 1.5, sigY + 3.5, { align: 'center' });
   doc.setFont('helvetica', 'bold');
-  doc.text('( Agus Prasetyo )', marginX + colW * 1.5, sigY + 18, { align: 'center' });
+  doc.text('( Quality Control )', marginX + colW * 1.5, sigY + 18, { align: 'center' });
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(6);
   doc.text('Facility QC Inspector', marginX + colW * 1.5, sigY + 21, { align: 'center' });
@@ -1962,7 +1962,7 @@ export const exportMonthlyActivityToPDF = (
     doc.setFontSize(6);
     doc.setTextColor(140, 150, 160);
     doc.text(
-      `Dokumen Resmi Monthly Activity  •  PT Rajawali Talenta Indonesia  •  ${project.name}  •  Periode ${monthName} ${year}  •  Halaman ${p} dari ${totalPages}`,
+      `Dokumen Resmi Monthly Activity  •  Smart Cleaning Operations  •  ${project.name}  •  Periode ${monthName} ${year}  •  Halaman ${p} dari ${totalPages}`,
       pageWidth / 2,
       pageHeight - 6,
       { align: 'center' }
@@ -2333,7 +2333,7 @@ export const exportKlienActivityReportToPDF = (
   doc.text('Dibuat Oleh,', marginX + colW * 0.5, sigY, { align: 'center' });
   doc.text('Supervisor Cleaning Service', marginX + colW * 0.5, sigY + 4, { align: 'center' });
   doc.setFont('helvetica', 'bold');
-  doc.text('( Hendra Wijaya )', marginX + colW * 0.5, sigY + 19, { align: 'center' });
+  doc.text('( Supervisor Operasional )', marginX + colW * 0.5, sigY + 19, { align: 'center' });
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(6.5);
   doc.text('Operational Team', marginX + colW * 0.5, sigY + 22.5, { align: 'center' });
@@ -2342,7 +2342,7 @@ export const exportKlienActivityReportToPDF = (
   doc.text('Diverifikasi Oleh,', marginX + colW * 1.5, sigY, { align: 'center' });
   doc.text('Quality Control (QC)', marginX + colW * 1.5, sigY + 4, { align: 'center' });
   doc.setFont('helvetica', 'bold');
-  doc.text('( Agus Prasetyo )', marginX + colW * 1.5, sigY + 19, { align: 'center' });
+  doc.text('( Quality Control )', marginX + colW * 1.5, sigY + 19, { align: 'center' });
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(6.5);
   doc.text('Facility QC Inspector', marginX + colW * 1.5, sigY + 22.5, { align: 'center' });
@@ -2364,7 +2364,7 @@ export const exportKlienActivityReportToPDF = (
     doc.setFontSize(6);
     doc.setTextColor(148, 163, 184);
     doc.text(
-      `Dokumen Resmi Activity Report Klien Mode  •  PT Rajawali Talenta Indonesia  •  ${scopeLabel}  •  Halaman ${p} dari ${totalPages}`,
+      `Dokumen Resmi Activity Report Klien Mode  •  Smart Cleaning Operations  •  ${scopeLabel}  •  Halaman ${p} dari ${totalPages}`,
       pageWidth / 2,
       pageHeight - 6,
       { align: 'center' }

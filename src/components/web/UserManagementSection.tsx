@@ -24,7 +24,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { useCleaning } from '../../context/CleaningContext';
-import { AppUser, UserRole } from '../../types';
+import { AppUser, UserRole, isSuperAdminRole } from '../../types';
 
 export const UserManagementSection: React.FC = () => {
   const {
@@ -40,7 +40,7 @@ export const UserManagementSection: React.FC = () => {
     currentUser,
   } = useCleaning();
 
-  const isSuperAdmin = userRole === 'admin' || userRole === 'super_admin';
+  const isSuperAdmin = isSuperAdminRole(userRole);
 
   // Search and Role Filter states
   const [searchQuery, setSearchQuery] = useState('');
@@ -129,7 +129,7 @@ export const UserManagementSection: React.FC = () => {
   const countSpv = users.filter((u) => u.role === 'supervisor').length;
   const countServiceManager = users.filter((u) => u.role === 'service_manager').length;
   const countAdminPerusahaan = users.filter((u) => u.role === 'admin_perusahaan').length;
-  const countAdmin = users.filter((u) => u.role === 'admin' || u.role === 'super_admin').length;
+  const countAdmin = users.filter((u) => isSuperAdminRole(u.role)).length;
 
   // Filtered users
   const filteredUsers = useMemo(() => {
@@ -137,8 +137,7 @@ export const UserManagementSection: React.FC = () => {
       const matchRole =
         roleFilter === 'all' ||
         u.role === roleFilter ||
-        (roleFilter === 'super_admin' && (u.role === 'admin' || u.role === 'super_admin')) ||
-        (roleFilter === 'admin' && (u.role === 'admin' || u.role === 'super_admin'));
+        (isSuperAdminRole(roleFilter) && isSuperAdminRole(u.role));
       const q = searchQuery.trim().toLowerCase();
       if (!q) return matchRole;
 
@@ -206,7 +205,7 @@ export const UserManagementSection: React.FC = () => {
       return;
     }
 
-    if (addForm.role !== 'admin' && addForm.assignedProjectIds.length === 0) {
+    if (!isSuperAdminRole(addForm.role) && addForm.role !== 'admin_perusahaan' && addForm.assignedProjectIds.length === 0) {
       alert('Harap pilih minimal 1 lokasi proyek yang dapat diakses oleh pengguna ini.');
       return;
     }
@@ -236,7 +235,7 @@ export const UserManagementSection: React.FC = () => {
       company_id: targetCompanyId,
       companyId: targetCompanyId,
       assignedProjectIds:
-        addForm.role === 'admin' || addForm.role === 'super_admin' ? projects.map((p) => p.id) : addForm.assignedProjectIds,
+        isSuperAdminRole(addForm.role) ? projects.map((p) => p.id) : addForm.assignedProjectIds,
     });
 
     showToast(`Pengguna baru ${newUser.name} (${newUser.role}) berhasil ditambahkan!`);
@@ -266,13 +265,9 @@ export const UserManagementSection: React.FC = () => {
     }
 
     // Task 4.2: Menolak menurunkan Super Admin terakhir
-    if (
-      (editingUser.role === 'super_admin' || editingUser.role === 'admin') &&
-      editForm.role !== 'super_admin' &&
-      editForm.role !== 'admin'
-    ) {
+    if (isSuperAdminRole(editingUser.role) && !isSuperAdminRole(editForm.role)) {
       const remainingSuperAdmins = users.filter(
-        (u) => (u.role === 'super_admin' || u.role === 'admin') && u.id !== editingUser.id
+        (u) => isSuperAdminRole(u.role) && u.id !== editingUser.id
       );
       if (remainingSuperAdmins.length === 0) {
         alert('Aplikasi menolak menurunkan Super Admin terakhir. Harus ada setidaknya satu Super Administrator aktif.');
@@ -290,7 +285,7 @@ export const UserManagementSection: React.FC = () => {
       return;
     }
 
-    if (editForm.role !== 'admin' && editForm.role !== 'super_admin' && editForm.assignedProjectIds.length === 0) {
+    if (!isSuperAdminRole(editForm.role) && editForm.role !== 'admin_perusahaan' && editForm.assignedProjectIds.length === 0) {
       alert('Harap pilih minimal 1 lokasi proyek yang diizinkan untuk pengguna ini.');
       return;
     }
@@ -307,7 +302,7 @@ export const UserManagementSection: React.FC = () => {
       company_id: targetCompanyId,
       companyId: targetCompanyId,
       assignedProjectIds:
-        editForm.role === 'admin' || editForm.role === 'super_admin' ? projects.map((p) => p.id) : editForm.assignedProjectIds,
+        isSuperAdminRole(editForm.role) ? projects.map((p) => p.id) : editForm.assignedProjectIds,
     });
 
     showToast(`Perubahan data akun ${editForm.name} berhasil disimpan.`);
@@ -319,9 +314,9 @@ export const UserManagementSection: React.FC = () => {
     if (!deleteTargetUser || !isSuperAdmin) return;
 
     // Task 4.2: Menolak menghapus Super Admin terakhir
-    if (deleteTargetUser.role === 'super_admin' || deleteTargetUser.role === 'admin') {
+    if (isSuperAdminRole(deleteTargetUser.role)) {
       const remainingSuperAdmins = users.filter(
-        (u) => (u.role === 'super_admin' || u.role === 'admin') && u.id !== deleteTargetUser.id
+        (u) => isSuperAdminRole(u.role) && u.id !== deleteTargetUser.id
       );
       if (remainingSuperAdmins.length === 0) {
         alert('Aplikasi menolak menghapus Super Admin terakhir. Harus ada setidaknya satu Super Administrator aktif.');
@@ -599,7 +594,8 @@ export const UserManagementSection: React.FC = () => {
               </tr>
             ) : (
               filteredUsers.map((u) => {
-                const isAdmin = u.role === 'admin' || u.role === 'super_admin' || u.role === 'admin_perusahaan';
+                const isSuperUser = isSuperAdminRole(u.role);
+                const isAdmin = isSuperUser || u.role === 'admin_perusahaan';
                 const assignedCount = u.assignedProjectIds?.length || 0;
                 const isAllAssigned = assignedCount === projects.length;
 
@@ -610,7 +606,7 @@ export const UserManagementSection: React.FC = () => {
                       <div className="flex items-start gap-2.5">
                         <div
                           className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs shrink-0 ${
-                            u.role === 'admin'
+                            isSuperUser
                               ? 'bg-indigo-100 text-indigo-700'
                               : u.role === 'supervisor'
                               ? 'bg-amber-100 text-amber-700'
@@ -784,15 +780,15 @@ export const UserManagementSection: React.FC = () => {
                           </button>
                           <button
                             type="button"
-                            disabled={isAdmin && users.filter((x) => x.role === 'admin').length <= 1}
+                            disabled={isSuperUser && users.filter((x) => isSuperAdminRole(x.role)).length <= 1}
                             onClick={() => setDeleteTargetUser(u)}
                             className={`p-1.5 rounded-lg transition-colors ${
-                              isAdmin && users.filter((x) => x.role === 'admin').length <= 1
+                              isSuperUser && users.filter((x) => isSuperAdminRole(x.role)).length <= 1
                                 ? 'text-slate-300 cursor-not-allowed'
                                 : 'text-slate-400 hover:text-rose-600 hover:bg-rose-50 cursor-pointer'
                             }`}
                             title={
-                              isAdmin && users.filter((x) => x.role === 'admin').length <= 1
+                              isSuperUser && users.filter((x) => isSuperAdminRole(x.role)).length <= 1
                                 ? 'Akun Super Admin utama tidak dapat dihapus'
                                 : `Hapus Akun ${u.name}`
                             }
@@ -1032,7 +1028,7 @@ export const UserManagementSection: React.FC = () => {
                   <input
                     type="text"
                     required
-                    placeholder="Contoh: Budi Santoso"
+                    placeholder="Nama lengkap pengguna"
                     value={addForm.name}
                     onChange={(e) => setAddForm({ ...addForm, name: e.target.value })}
                     className="w-full text-xs px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-500 focus:outline-hidden"
@@ -1252,7 +1248,7 @@ export const UserManagementSection: React.FC = () => {
               <div>
                 <label className="block font-bold text-slate-800 mb-1.5">Peran / Role</label>
                 <select
-                  value={editForm.role}
+                  value={isSuperAdminRole(editForm.role) ? 'super_admin' : editForm.role}
                   onChange={(e) => setEditForm({ ...editForm, role: e.target.value as UserRole })}
                   className="w-full text-xs px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-semibold text-slate-800 focus:bg-white focus:ring-2 focus:ring-blue-500 focus:outline-hidden"
                 >

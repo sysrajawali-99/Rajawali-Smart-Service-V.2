@@ -1404,14 +1404,11 @@ export const ShiftView: React.FC = () => {
           </div>
           <div>
             <h4 className="font-bold text-amber-900 text-xs">
-              Catatan Serah Terima Shift & Pengawasan Lapangan (Handover Log):
+              Panduan Serah Terima Shift &amp; Pengawasan Lapangan (Handover):
             </h4>
             <p className="text-amber-800 mt-1 leading-relaxed">
-              "Shift 1 Pagi ke Shift 2 Midle/Siang: Area Toilet Lt. 2 kran wastafel no. 2 masih dalam pemantauan teknisi gedung. Pantry Lt. LG sudah restock sabun & tisu 100%. Plotingan petugas dapat disesuaikan langsung di tengah shift jika terjadi peningkatan volume tamu di lantai lobby."
+              Pastikan setiap pergantian shift mencatat kondisi area prioritas, kelengkapan alat kerja, dan ketersediaan bahan kimia/consumables untuk tim shift berikutnya. Plotingan petugas dapat disesuaikan langsung oleh Supervisor atau Admin kapan saja.
             </p>
-            <span className="text-[10px] text-amber-600 font-semibold mt-1 block">
-              Dibuat oleh: Hendra Wijaya (Supervisor Lapangan) • Terakhir diperbarui 14:10 WIB
-            </span>
           </div>
         </div>
       </div>

@@ -21,7 +21,7 @@ import {
   Info,
 } from 'lucide-react';
 import { useCleaning } from '../../context/CleaningContext';
-import { CompanyProfile, DEFAULT_COMPANY_PROFILE, Company } from '../../types';
+import { CompanyProfile, DEFAULT_COMPANY_PROFILE, Company, isSuperAdminRole } from '../../types';
 import { uploadPhoto, uploadCompanyLogo, getFullUploadUrl } from '../../services/apiService';
 import { updateDocumentFavicon, updateDocumentTitle } from '../../utils/dynamicFavicon';
 
@@ -38,7 +38,7 @@ export const CompanyProfileSettingsSection: React.FC = () => {
     users,
   } = useCleaning();
 
-  const isSuperAdmin = userRole === 'admin' || userRole === 'super_admin';
+  const isSuperAdmin = isSuperAdminRole(userRole);
 
   // Perusahaan yang sedang dipilih untuk diatur oleh Super Admin
   const [selectedCompanyId, setSelectedCompanyId] = useState<string>(() => {

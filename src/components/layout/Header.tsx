@@ -16,7 +16,7 @@ import {
   Database,
 } from 'lucide-react';
 import { useCleaning } from '../../context/CleaningContext';
-import { UserRole } from '../../types';
+import { UserRole, isSuperAdminRole } from '../../types';
 import { getActiveAppIcon } from '../../utils/dynamicFavicon';
 import { getFullUploadUrl } from '../../services/apiService';
 import { SupabaseStatusModal } from '../modals/SupabaseStatusModal';
@@ -75,9 +75,9 @@ export const Header: React.FC = () => {
       desc: 'Koordinator regu kerja lapangan & kontrol pembagian shift',
     },
     admin: {
-      title: 'Administrator',
+      title: 'Super Administrator',
       color: 'bg-indigo-100 text-indigo-800 border-indigo-200',
-      desc: 'Akses penuh ke semua lokasi proyek & hak akses pengguna',
+      desc: 'Akses penuh ke semua lokasi proyek & seluruh perusahaan',
     },
     supervisor: {
       title: 'Supervisor / Pengawas',
@@ -217,7 +217,7 @@ export const Header: React.FC = () => {
                     <span className="text-slate-500 hidden sm:inline truncate max-w-[100px]">{activeProject.city}</span>
                   </>
                 )}
-                {userRole === 'admin' || userRole === 'super_admin' || userRole === 'admin_perusahaan' ? (
+                {isSuperAdminRole(userRole) || userRole === 'admin_perusahaan' ? (
                   <ChevronDown className="w-3 h-3 text-slate-400 group-hover:text-slate-700 shrink-0" />
                 ) : (
                   <span className="hidden sm:inline-flex items-center gap-0.5 px-1 py-0.2 rounded text-[9px] bg-slate-100 text-slate-600 font-medium shrink-0">
@@ -233,10 +233,10 @@ export const Header: React.FC = () => {
                   <div className="px-3 pb-2 border-b border-slate-100 flex items-center justify-between">
                     <div>
                       <p className="text-[11px] font-bold text-slate-700 uppercase tracking-wider">
-                        {userRole === 'admin' || userRole === 'super_admin' || userRole === 'admin_perusahaan' ? 'Pilih Lokasi Proyek' : 'Lokasi Proyek Anda'}
+                        {isSuperAdminRole(userRole) || userRole === 'admin_perusahaan' ? 'Pilih Lokasi Proyek' : 'Lokasi Proyek Anda'}
                       </p>
                       <p className="text-[11px] text-slate-400">
-                        {userRole === 'admin' || userRole === 'super_admin' || userRole === 'admin_perusahaan'
+                        {isSuperAdminRole(userRole) || userRole === 'admin_perusahaan'
                           ? 'Super Admin memiliki akses semua lokasi'
                           : 'Ditentukan secara khusus oleh Super Admin'}
                       </p>
@@ -275,7 +275,7 @@ export const Header: React.FC = () => {
                     )}
                   </div>
 
-                  {userRole === 'admin' && (
+                  {isSuperAdminRole(userRole) && (
                     <div className="px-3 pt-2 border-t border-slate-100">
                       <button
                         onClick={() => {
@@ -304,7 +304,7 @@ export const Header: React.FC = () => {
         {/* Right Side: Role Selector / User Info, Notifications, Reload & Logout */}
         <div className="flex items-center gap-2 sm:gap-2.5 shrink-0">
           {/* Super Admin Switcher OR Non-Admin User Info (Desktop only lg:; hidden on mobile & tablet, available inside bell) */}
-          {userRole === 'admin' || userRole === 'super_admin' ? (
+          {isSuperAdminRole(userRole) ? (
             <div className="relative hidden lg:block">
               <button
                 id="header-role-switcher"
@@ -341,7 +341,7 @@ export const Header: React.FC = () => {
                         const matchingUser = users.find((u) => u.role === role);
                         if (matchingUser) {
                           setActiveUserId(matchingUser.id);
-                          if (matchingUser.role !== 'admin') {
+                          if (!isSuperAdminRole(matchingUser.role)) {
                             const userProjs = matchingUser.assignedProjectIds || [];
                             if (userProjs.length > 0) {
                               setActiveProjectId(userProjs[0]);
@@ -399,7 +399,7 @@ export const Header: React.FC = () => {
           )}
 
           {/* Database VPS & Realtime Status Button (Hanya Super Admin & Admin) */}
-          {(userRole === 'admin' || userRole === 'super_admin') && (
+          {isSuperAdminRole(userRole) && (
             <button
               onClick={() => setShowSupabaseModal(true)}
               className={`hidden lg:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-semibold transition-colors cursor-pointer shadow-2xs ${
@@ -461,7 +461,7 @@ export const Header: React.FC = () => {
                   </div>
 
                   {/* Role / User Switcher */}
-                  {userRole === 'admin' || userRole === 'super_admin' ? (
+                  {isSuperAdminRole(userRole) ? (
                     <div className="flex items-center justify-between gap-2 p-2 rounded-lg bg-indigo-50/80 border border-indigo-200">
                       <div className="flex items-center gap-2 min-w-0">
                         <ShieldCheck className="w-4 h-4 text-indigo-600 shrink-0" />
@@ -470,20 +470,20 @@ export const Header: React.FC = () => {
                             Super Admin
                           </span>
                           <span className="font-semibold text-indigo-950 text-xs leading-tight block truncate">
-                            {currentUser?.name || 'Administrator'}
+                            {currentUser?.name || 'Super Administrator'}
                           </span>
                         </div>
                       </div>
                       <select
                         aria-label="Pilih Role Simulasi"
-                        value={userRole}
+                        value={isSuperAdminRole(userRole) ? 'super_admin' : userRole}
                         onChange={(e) => {
                           const role = e.target.value as UserRole;
                           setUserRole(role);
                           const matchingUser = users.find((u) => u.role === role);
                           if (matchingUser) {
                             setActiveUserId(matchingUser.id);
-                            if (matchingUser.role !== 'admin' && matchingUser.role !== 'super_admin') {
+                            if (!isSuperAdminRole(matchingUser.role)) {
                               const userProjs = matchingUser.assignedProjectIds || [];
                               if (userProjs.length > 0) setActiveProjectId(userProjs[0]);
                             }
@@ -492,8 +492,10 @@ export const Header: React.FC = () => {
                         className="text-xs font-semibold bg-white border border-indigo-200 rounded-md px-2 py-1 text-indigo-900 cursor-pointer shadow-2xs focus:outline-none focus:ring-1 focus:ring-indigo-500 shrink-0"
                       >
                         <option value="super_admin">Super Administrator</option>
-                        <option value="admin">Administrator</option>
+                        <option value="admin_perusahaan">Admin Perusahaan</option>
+                        <option value="service_manager">Service Manager</option>
                         <option value="supervisor">Supervisor</option>
+                        <option value="team_leader">Team Leader</option>
                         <option value="petugas">Petugas</option>
                         <option value="klien">Klien</option>
                       </select>
@@ -513,8 +515,8 @@ export const Header: React.FC = () => {
                   )}
 
                   {/* Database VPS & Logout Row */}
-                  <div className={`grid ${userRole === 'admin' || userRole === 'super_admin' ? 'grid-cols-2' : 'grid-cols-1'} gap-2`}>
-                    {(userRole === 'admin' || userRole === 'super_admin') && (
+                  <div className={`grid ${isSuperAdminRole(userRole) ? 'grid-cols-2' : 'grid-cols-1'} gap-2`}>
+                    {isSuperAdminRole(userRole) && (
                       <button
                         onClick={() => {
                           setShowNotifDropdown(false);
@@ -578,7 +580,7 @@ export const Header: React.FC = () => {
                         <span>Atur Push</span>
                       </button>
                     )}
-                    {(userRole === 'admin' || userRole === 'super_admin' || userRole === 'supervisor') && (
+                    {(isSuperAdminRole(userRole) || userRole === 'supervisor') && (
                       <button
                         onClick={triggerDeadlinePushNotification}
                         className="text-[11px] text-amber-600 hover:text-amber-800 font-medium hover:underline flex items-center gap-1 cursor-pointer"

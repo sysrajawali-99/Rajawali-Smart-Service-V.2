@@ -22,6 +22,7 @@ import {
 import { useCleaning } from '../../context/CleaningContext';
 import { generateAllPwaIcons, PWA_ICON_CONFIGS, PwaIconItem, DEFAULT_PWA_ICONS } from '../../utils/pwaIconGenerator';
 import { updateDocumentFavicon, updateDocumentTitle } from '../../utils/dynamicFavicon';
+import { getAuthHeaders } from '../../services/apiService';
 
 export type { PwaIconItem };
 
@@ -125,7 +126,7 @@ export const PwaBrandingSection: React.FC = () => {
         try {
           const res = await fetch('/api/pwa/update-icons', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
             body: JSON.stringify({ icons: generatedList }),
           });
 
@@ -244,7 +245,7 @@ export const PwaBrandingSection: React.FC = () => {
         try {
           await fetch('/api/pwa/update-icons', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
             body: JSON.stringify({ icons: generatedList }),
           });
         } catch {}

@@ -182,9 +182,9 @@ export const DamageReportView: React.FC = () => {
     impact: '',
     actionTaken: '',
     targetDepartment: 'Building Management & Engineering (MEP)',
-    reporterName: currentUser?.name || 'Asep Supriyadi',
+    reporterName: currentUser?.name || '',
     reporterRole: 'Petugas Kebersihan',
-    reporterPhone: '0812-3456-7890',
+    reporterPhone: '',
     photoBefore: '',
     costEstimate: '',
   });
@@ -373,9 +373,7 @@ export const DamageReportView: React.FC = () => {
       reporterRole: newReport.reporterRole,
       reporterPhone: newReport.reporterPhone,
       costEstimate: costNum,
-      photoBefore:
-        newReport.photoBefore ||
-        'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?w=600&auto=format&fit=crop&q=80',
+      photoBefore: newReport.photoBefore || '',
       reportDate: new Date().toISOString().split('T')[0],
       status: 'dilaporkan',
     });
@@ -387,18 +385,18 @@ export const DamageReportView: React.FC = () => {
       itemName: '',
       category: 'sanitair',
       areaId: areas[0]?.id || '',
-      locationName: areas[0]?.name || 'Toilet Zona A Pria',
-      floor: areas[0]?.floor || 'Lantai GF',
-      zone: areas[0]?.zone || 'Zona A Sanitair',
+      locationName: areas[0]?.name || '',
+      floor: areas[0]?.floor || '',
+      zone: areas[0]?.zone || '',
       damageLevel: 'sedang',
       priority: 'medium',
       chronology: '',
       impact: '',
       actionTaken: '',
       targetDepartment: 'Building Management & Engineering (MEP)',
-      reporterName: currentUser?.name || 'Asep Supriyadi',
+      reporterName: currentUser?.name || '',
       reporterRole: 'Petugas Kebersihan',
-      reporterPhone: '0812-3456-7890',
+      reporterPhone: '',
       photoBefore: '',
       costEstimate: '',
     });
@@ -1700,7 +1698,7 @@ export const DamageReportView: React.FC = () => {
                 </label>
                 <input
                   type="text"
-                  placeholder="Contoh: Bambang Irawan (Engineering MEP)"
+                  placeholder="Masukkan nama teknisi / PIC pelaksana"
                   value={resolveForm.technicianName}
                   onChange={(e) =>
                     setResolveForm({ ...resolveForm, technicianName: e.target.value })

@@ -25,6 +25,7 @@ import {
   ChevronRight,
 } from 'lucide-react';
 import { useCleaning } from '../../context/CleaningContext';
+import { isSuperAdminRole } from '../../types';
 
 interface MenuItem {
   id: string;
@@ -381,7 +382,7 @@ export const Sidebar: React.FC = () => {
           )}
 
           {/* Super Admin: Manajemen Multi-Perusahaan */}
-          {userRole === 'super_admin' && (
+          {isSuperAdminRole(userRole) && (
             <div>
               <button
                 id="sidebar-nav-companies"
@@ -562,7 +563,7 @@ export const Sidebar: React.FC = () => {
               </p>
               <p className="text-[10px] text-slate-400 capitalize truncate">
                 Role:{' '}
-                {userRole === 'super_admin' || userRole === 'admin'
+                {isSuperAdminRole(userRole)
                   ? 'Super Admin'
                   : userRole === 'admin_perusahaan'
                   ? 'Admin Perusahaan'

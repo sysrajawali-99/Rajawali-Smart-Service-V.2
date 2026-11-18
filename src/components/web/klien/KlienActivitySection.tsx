@@ -99,8 +99,8 @@ export const KlienActivitySection: React.FC = () => {
   // 4 Mode Kartu State
   const [activeCardMode, setActiveCardMode] = useState<KlienActivityCardMode>('daily_activity');
 
-  // Filter Tanggal (dd/mm/yyyy) State - Default 2026-09-26 (26/09/2026)
-  const [selectedDateIso, setSelectedDateIso] = useState<string>('2026-09-26');
+  // Filter Tanggal (dd/mm/yyyy) State - Default Hari Ini
+  const [selectedDateIso, setSelectedDateIso] = useState<string>(() => new Date().toISOString().split('T')[0]);
 
   const selectedDateDdMmYyyy = useMemo(
     () => formatIsoToDdMmYyyy(selectedDateIso),

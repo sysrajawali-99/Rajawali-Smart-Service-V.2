@@ -16,9 +16,13 @@ import {
   Users,
   Clock,
   Bell,
+  History,
+  Sparkles,
+  CheckCheck,
   X,
 } from 'lucide-react';
 import { useCleaning } from '../../context/CleaningContext';
+import { isSuperAdminRole } from '../../types';
 
 interface SubmenuDeleteOption {
   key: string;
@@ -33,6 +37,7 @@ export const SuperAdminBulkDeleteSection: React.FC = () => {
   const {
     userRole,
     activeProject,
+    projects,
     bulkDeleteSubmenuData,
     dailyChecklists,
     areas,
@@ -44,6 +49,9 @@ export const SuperAdminBulkDeleteSection: React.FC = () => {
     cleaners,
     shifts,
     schedules,
+    specialJobs,
+    klienChecklistItems,
+    auditLogs,
     notifications,
   } = useCleaning();
 
@@ -146,6 +154,34 @@ export const SuperAdminBulkDeleteSection: React.FC = () => {
       icon: Calendar,
     },
     {
+      key: 'special-job',
+      title: 'Special Job & Pekerjaan Khusus',
+      description: 'Menghapus seluruh daftar permintaan dan realisasi pekerjaan khusus (Special Job).',
+      category: 'Aktivitas & Program',
+      icon: Sparkles,
+    },
+    {
+      key: 'klien_checklist',
+      title: 'Checklist Klien (Portal Klien)',
+      description: 'Menghapus seluruh item dan hasil inspeksi kebersihan pada Portal Klien.',
+      category: 'Ceklist & Area',
+      icon: CheckCheck,
+    },
+    {
+      key: 'proyek',
+      title: 'Master Lokasi Proyek',
+      description: 'Menghapus seluruh data lokasi proyek gedung terdaftar dalam sistem.',
+      category: 'Personil & Jadwal',
+      icon: Building2,
+    },
+    {
+      key: 'audit_logs',
+      title: 'Log Aktivitas & Audit Trail',
+      description: 'Mengosongkan seluruh rekaman riwayat audit sistem di server.',
+      category: 'Personil & Jadwal',
+      icon: History,
+    },
+    {
       key: 'notifikasi',
       title: 'Notifikasi & Riwayat Audit',
       description: 'Mengosongkan seluruh lonceng pemberitahuan peringatan dan log aktivitas sistem.',
@@ -164,54 +200,68 @@ export const SuperAdminBulkDeleteSection: React.FC = () => {
 
   // Helper to get estimated item count for display
   const getItemCount = (key: string): number => {
-    const projId = activeProject?.id || 'proj-1';
+    const projId = activeProject?.id || '';
     switch (key) {
       case 'ceklist':
         return scope === 'active_project'
-          ? dailyChecklists.filter((d) => d.projectId === projId).length
+          ? dailyChecklists.filter((d) => !projId || d.projectId === projId).length
           : dailyChecklists.length;
       case 'area':
         return scope === 'active_project'
-          ? areas.filter((a) => !a.projectId || a.projectId === projId).length
+          ? areas.filter((a) => !projId || !a.projectId || a.projectId === projId).length
           : areas.length;
       case 'master-program':
         return scope === 'active_project'
-          ? masterPrograms.filter((m) => m.projectId === projId).length
+          ? masterPrograms.filter((m) => !projId || m.projectId === projId).length
           : masterPrograms.length;
       case 'activity':
         return scope === 'active_project'
-          ? tasks.filter((t) => !t.projectId || t.projectId === projId).length
+          ? tasks.filter((t) => !projId || !t.projectId || t.projectId === projId).length
           : tasks.length;
       case 'daily-activity':
         return scope === 'active_project'
-          ? tasks.filter((t) => (!t.projectId || t.projectId === projId) && t.status === 'completed').length
+          ? tasks.filter((t) => (!projId || !t.projectId || t.projectId === projId) && t.status === 'completed').length
           : tasks.filter((t) => t.status === 'completed').length;
       case 'monthly-activity':
         return tasks.filter((t) => t.exportedToMonthlyReport).length;
       case 'inspeksi':
         return scope === 'active_project'
-          ? inspections.filter((i) => !i.projectId || i.projectId === projId).length
+          ? inspections.filter((i) => !projId || !i.projectId || i.projectId === projId).length
           : inspections.length;
       case 'kerusakan':
         return scope === 'active_project'
-          ? damageReports.filter((d) => !d.projectId || d.projectId === projId).length
+          ? damageReports.filter((d) => !projId || !d.projectId || d.projectId === projId).length
           : damageReports.length;
       case 'complaint':
         return scope === 'active_project'
-          ? complaints.filter((c) => !c.projectId || c.projectId === projId).length
+          ? complaints.filter((c) => !projId || !c.projectId || c.projectId === projId).length
           : complaints.length;
+      case 'special-job':
+        return scope === 'active_project'
+          ? specialJobs.filter((j) => !projId || !j.projectId || j.projectId === projId).length
+          : specialJobs.length;
+      case 'klien_checklist':
+        return scope === 'active_project'
+          ? klienChecklistItems.filter((k) => !projId || !k.projectId || k.projectId === projId).length
+          : klienChecklistItems.length;
+      case 'proyek':
+        return scope === 'active_project'
+          ? projects.filter((p) => !projId || p.id === projId).length
+          : projects.length;
       case 'petugas_presensi':
         return cleaners.length;
       case 'petugas':
         return scope === 'active_project'
-          ? cleaners.filter((c) => !c.projectId || c.projectId === projId).length
+          ? cleaners.filter((c) => !projId || !c.projectId || c.projectId === projId).length
           : cleaners.length;
       case 'shift':
         return shifts.length;
       case 'jadwal':
         return scope === 'active_project'
-          ? schedules.filter((s) => !s.projectId || s.projectId === projId).length
+          ? schedules.filter((s) => !projId || !s.projectId || s.projectId === projId).length
           : schedules.length;
+      case 'audit_logs':
+        return auditLogs.length;
       case 'notifikasi':
         return notifications.length;
       case 'all_operational':
@@ -222,7 +272,8 @@ export const SuperAdminBulkDeleteSection: React.FC = () => {
           getItemCount('activity') +
           getItemCount('inspeksi') +
           getItemCount('kerusakan') +
-          getItemCount('complaint')
+          getItemCount('complaint') +
+          getItemCount('special-job')
         );
       default:
         return 0;
@@ -251,7 +302,7 @@ export const SuperAdminBulkDeleteSection: React.FC = () => {
   };
 
   // If user is not Super Admin, show restricted card
-  if (userRole !== 'admin') {
+  if (!isSuperAdminRole(userRole)) {
     return (
       <div
         id="section-bulk-delete-restricted"

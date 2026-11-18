@@ -91,7 +91,7 @@ export const JadwalCleaningView: React.FC = () => {
       areaId: newAreaId,
       areaName: area?.name || 'Area Gedung',
       cleanerId: newCleanerId,
-      cleanerName: cleaner?.name || 'Asep Supriyadi',
+      cleanerName: cleaner?.name || 'Petugas',
       frequency: newFrequency,
       timeSlot: newTimeSlot,
       shiftId: cleaner?.shiftId || 'shift-1',

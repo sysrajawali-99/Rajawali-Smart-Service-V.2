@@ -40,6 +40,7 @@ import {
   KlienChecklistInspection,
   SpecialJobItem,
   Company,
+  isSuperAdminRole,
 } from '../types';
 import { calculateShiftDuration } from '../utils/shiftUtils';
 import { normalizeFrequencyCode, getNextProgramDayStatus } from '../utils/mcpUtils';
@@ -63,6 +64,7 @@ import {
   INITIAL_AUDIT_LOGS,
   INITIAL_EMPLOYEE_TURNOVERS,
   INITIAL_KLIEN_CHECKLIST_ITEMS,
+  DEFAULT_KLIEN_CHECKLIST_TEMPLATES,
   INITIAL_KLIEN_CHECKLIST_INSPECTIONS,
   INITIAL_SPECIAL_JOBS,
   generate24HourSlots,
@@ -79,6 +81,7 @@ import {
   getRecords,
   upsertRecord,
   deleteRecord,
+  deleteCollectionRecords,
   onRecordChange,
   onServerReconnect,
   fetchServerStatus,
@@ -89,6 +92,7 @@ import {
   apiUpdateCompanyStatus,
   apiUpdateCompany,
   getAuthToken,
+  getAuthHeaders,
   setAuthToken,
 } from '../services/apiService';
 import {
@@ -489,14 +493,14 @@ const CleaningContext = createContext<CleaningContextType | undefined>(undefined
 export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   // 1. Roles & View mode
   const [userRole, setUserRole] = useState<UserRole>(() => {
-    return (localStorage.getItem('sco_role') as UserRole) || 'admin';
+    return (localStorage.getItem('sco_role') as UserRole) || 'super_admin';
   });
   const [viewMode, setViewMode] = useState<ViewMode>('web');
   const [mobileMenuOpen, setMobileMenuOpen] = useState<boolean>(false);
   const toggleMobileMenu = () => setMobileMenuOpen((prev) => !prev);
-  const [activeCleanerId, setActiveCleanerId] = useState<string>('cln-1');
+  const [activeCleanerId, setActiveCleanerId] = useState<string>('');
   const [activeTab, setActiveTab] = useState<string>('dashboard');
-  const [selectedTaskId, setSelectedTaskId] = useState<string | null>('task-101');
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [selectedChecklistLocationId, setSelectedChecklistLocationId] = useState<string | null>(null);
 
   // Error notification helper for server operations
@@ -508,7 +512,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       message: `${actionDesc}: ${err?.message || 'Koneksi ke backend bermasalah'}.`,
       timestamp: nowStr,
       type: 'urgent',
-      targetRole: ['admin', 'supervisor', 'petugas', 'klien'],
+      targetRole: ['super_admin', 'admin', 'supervisor', 'petugas', 'klien'],
       read: false,
     };
     setNotifications((prev) => [notif, ...prev]);
@@ -758,10 +762,11 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       message: `${count} catatan ceklis sementara telah berhasil disinkronkan ke basis data server.`,
       timestamp: nowTime,
       type: 'success',
-      targetRole: ['petugas', 'supervisor', 'admin'],
+      targetRole: ['petugas', 'supervisor', 'super_admin', 'admin'],
       read: false,
     };
     setNotifications((prev) => [syncNotif, ...prev]);
+    upsertRecord(COLLECTIONS.NOTIFICATIONS, syncNotif).catch(() => {});
   };
 
   const setIsOnline = (online: boolean) => {
@@ -797,12 +802,12 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const [companies, setCompanies] = useState<Company[]>([
     {
       id: 'comp-main',
-      nama: 'PT RAJAWALI TALENTA INDONESIA',
+      nama: 'Smart Cleaning Operations',
       slug: 'utama',
       logo: '',
       warna: '#0284c7',
       status: 'aktif',
-      createdAt: '2026-10-07T06:30:04.913Z',
+      createdAt: new Date().toISOString(),
     },
   ]);
 
@@ -894,7 +899,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const [activeProjectId, setActiveProjectIdState] = useState<string>(() => {
     const saved = localStorage.getItem('sco_active_project_id');
-    return saved || 'proj-1793818532678';
+    return saved || '';
   });
 
   // 3. Users & Project Assignments
@@ -912,6 +917,8 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   // Active Company Determination based on authenticated user
   const userCompanyId = currentUser?.companyId || (currentUser as any)?.company_id || 'comp-main';
+  const userCompanyIdRef = useRef<string>(userCompanyId);
+  userCompanyIdRef.current = userCompanyId;
   const currentCompany = companies.find((c) => c.id === userCompanyId);
 
   // Dynamic Company Profile: Reflects the active logged-in user's company branding
@@ -948,12 +955,11 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   }, [effectiveCompanyProfile?.logoUrl, effectiveCompanyProfile?.companyName]);
 
   const isAdminOrSuper =
-    userRole === 'admin' ||
-    userRole === 'super_admin' ||
+    isSuperAdminRole(userRole) ||
     userRole === 'admin_perusahaan' ||
     userRole === 'service_manager';
 
-  const defaultProjectId = projects[0]?.id || 'proj-1793818532678';
+  const defaultProjectId = projects[0]?.id || '';
 
   const allowedProjects = useMemo(() => {
     if (isAdminOrSuper) return projects;
@@ -962,12 +968,10 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       const filtered = projects.filter((p) => userProjs.includes(p.id));
       if (filtered.length > 0) return filtered;
     }
-    // Defensive fallback: If user is non-admin but assignedProjectIds hasn't been set yet or projects is still matching,
-    // fallback to available projects so area and task data is NEVER completely empty!
     return projects;
   }, [isAdminOrSuper, projects, currentUser?.assignedProjectIds]);
 
-  // If activeProjectId is not in allowedProjects, automatically select first allowed
+  // If activeProjectId is not in allowedProjects, automatically select first allowed (or '' when empty)
   const safeActiveProjectId = useMemo(() => {
     if (allowedProjects.some((p) => p.id === activeProjectId)) {
       return activeProjectId;
@@ -977,18 +981,38 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   // Synchronize state and localStorage if safeActiveProjectId diverged
   useEffect(() => {
-    if (safeActiveProjectId && safeActiveProjectId !== activeProjectId) {
+    if (safeActiveProjectId !== activeProjectId) {
       setActiveProjectIdState(safeActiveProjectId);
-      localStorage.setItem('sco_active_project_id', safeActiveProjectId);
+      if (safeActiveProjectId) {
+        localStorage.setItem('sco_active_project_id', safeActiveProjectId);
+      } else {
+        localStorage.removeItem('sco_active_project_id');
+      }
     }
   }, [safeActiveProjectId, activeProjectId]);
 
   const setActiveProjectId = (id: string) => {
-    // Only allow setting if admin OR if id is in allowedProjects
-    if (isAdminOrSuper || allowedProjects.some((p) => p.id === id)) {
+    if (!id || isAdminOrSuper || allowedProjects.some((p) => p.id === id)) {
       setActiveProjectIdState(id);
-      localStorage.setItem('sco_active_project_id', id);
+      if (id) {
+        localStorage.setItem('sco_active_project_id', id);
+      } else {
+        localStorage.removeItem('sco_active_project_id');
+      }
     }
+  };
+
+  const EMPTY_PROJECT_PLACEHOLDER: ProjectLocation = {
+    id: '',
+    code: '-',
+    name: 'Belum Ada Proyek',
+    address: '',
+    city: '',
+    totalFloors: 0,
+    managerName: '-',
+    clientName: '-',
+    status: 'active',
+    createdAt: '',
   };
 
   const activeProject =
@@ -996,7 +1020,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     projects.find((p) => p.id === safeActiveProjectId) ||
     allowedProjects[0] ||
     projects[0] ||
-    INITIAL_PROJECTS[0];
+    EMPTY_PROJECT_PLACEHOLDER;
 
   const visibleProjects = isAdminOrSuper ? projects : allowedProjects;
 
@@ -1255,69 +1279,71 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           setCompanies(remoteCompanies);
         }
 
+        // Server adalah sumber kebenaran utama (authoritative state):
+        // Data operasional langsung mengikuti isi server termasuk jika kosong ([]).
+        setProjects(remoteProjects);
+        setAreas(remoteAreas);
+        setCleaners(remoteCleaners);
+        setShifts(remoteShifts);
+        setSchedules(remoteSchedules);
+        setChecklistLocations(remoteChecklistLocs);
+        setTasks(remoteTasks);
+        setInspections(remoteInspections);
+        setComplaints(remoteComplaints);
+        setDamageReports(remoteDamage);
+        setSpecialJobs(remoteSpecial);
+        setMasterPrograms(
+          remoteMcp.map((p) => ({
+            ...p,
+            frequency: normalizeFrequencyCode(p.frequency),
+          }))
+        );
+        setEmployeeTurnovers(remoteTurnovers);
+        setKlienChecklistItems(remoteKlienItems);
+        setKlienChecklistInspections(remoteKlienInspections);
+        setNotifications(remoteNotifs);
+        setAuditLogs(remoteAuditLogs.map(normalizeAuditLog));
+
+        // Koleksi struktur dasar: seed otomatis hanya bila benar-benar kosong di server
+        if (remoteUsers.length > 0) {
+          setUsers(remoteUsers);
+        } else {
+          setUsers(INITIAL_USERS);
+        }
+
         await Promise.all([
-          loadOrSeedCollection(COLLECTIONS.PROJECTS, remoteProjects, INITIAL_PROJECTS, setProjects),
-          loadOrSeedCollection(COLLECTIONS.USERS, remoteUsers, INITIAL_USERS, setUsers),
           loadOrSeedCollection(COLLECTIONS.RBAC_PERMISSIONS, remoteRbac, DEFAULT_RBAC_PERMISSIONS, setRbacPermissions),
-          loadOrSeedCollection(COLLECTIONS.AREAS, remoteAreas, INITIAL_AREAS, setAreas),
-          loadOrSeedCollection(COLLECTIONS.CLEANERS, remoteCleaners, INITIAL_CLEANERS, setCleaners),
-          loadOrSeedCollection(COLLECTIONS.SHIFTS, remoteShifts, INITIAL_SHIFTS, setShifts),
-          loadOrSeedCollection(COLLECTIONS.SCHEDULES, remoteSchedules, INITIAL_SCHEDULES, setSchedules),
-          loadOrSeedCollection(COLLECTIONS.CHECKLIST_LOCATIONS, remoteChecklistLocs, INITIAL_CHECKLIST_LOCATIONS, setChecklistLocations),
           loadOrSeedCollection(COLLECTIONS.CHECKLIST_TEMPLATES, remoteChecklistTpls, INITIAL_CHECKLIST_TEMPLATES, setChecklistTemplates),
-          loadOrSeedCollection(COLLECTIONS.TASKS, remoteTasks, INITIAL_TASKS, setTasks),
-          loadOrSeedCollection(COLLECTIONS.INSPECTIONS, remoteInspections, INITIAL_INSPECTIONS, setInspections),
-          loadOrSeedCollection(COLLECTIONS.COMPLAINTS, remoteComplaints, INITIAL_COMPLAINTS, setComplaints),
-          loadOrSeedCollection(COLLECTIONS.DAMAGE_REPORTS, remoteDamage, INITIAL_DAMAGE_REPORTS, setDamageReports),
-          loadOrSeedCollection(COLLECTIONS.SPECIAL_JOBS, remoteSpecial, INITIAL_SPECIAL_JOBS, setSpecialJobs),
-          loadOrSeedCollection(COLLECTIONS.MASTER_PROGRAMS, remoteMcp, INITIAL_MASTER_PROGRAMS, setMasterPrograms),
-          loadOrSeedCollection(COLLECTIONS.EMPLOYEE_TURNOVERS, remoteTurnovers, INITIAL_EMPLOYEE_TURNOVERS, setEmployeeTurnovers),
-          loadOrSeedCollection(COLLECTIONS.KLIEN_CHECKLIST_ITEMS, remoteKlienItems, INITIAL_KLIEN_CHECKLIST_ITEMS, setKlienChecklistItems),
-          loadOrSeedCollection(COLLECTIONS.KLIEN_CHECKLIST_INSPECTIONS, remoteKlienInspections, INITIAL_KLIEN_CHECKLIST_INSPECTIONS, setKlienChecklistInspections),
-          loadOrSeedCollection(COLLECTIONS.NOTIFICATIONS, remoteNotifs, INITIAL_NOTIFICATIONS, setNotifications),
-          loadOrSeedCollection(COLLECTIONS.AUDIT_LOGS, remoteAuditLogs.map(normalizeAuditLog), INITIAL_AUDIT_LOGS.map(normalizeAuditLog), setAuditLogs),
         ]);
 
-        // Daily Checklists full pull
-        if (remoteDailyChecklists.length > 0) {
-          const serverMap = new Map(remoteDailyChecklists.map((c) => [c.id, c]));
-          setDailyChecklists((prevLocal) => {
-            const merged: DailyAreaChecklist[] = [];
-            if (!initialSyncDone.current) {
-              merged.push(...remoteDailyChecklists);
-              for (const loc of prevLocal) {
-                if (!serverMap.has(loc.id)) merged.push(loc);
-              }
-            } else {
-              for (const rem of remoteDailyChecklists) {
-                if (dirtyChecklistIdsRef.current.has(rem.id)) {
-                  const dirty = prevLocal.find((d) => d.id === rem.id);
-                  if (dirty) {
-                    merged.push(dirty);
-                    continue;
-                  }
-                }
-                merged.push(rem);
-              }
-              for (const loc of prevLocal) {
-                if (!serverMap.has(loc.id)) merged.push(loc);
+        // Daily Checklists full pull: ikuti server, pertahankan hanya perubahan lokal yang belum tersinkron (dirty)
+        const serverChecklistMap = new Map(remoteDailyChecklists.map((c) => [c.id, c]));
+        setDailyChecklists((prevLocal) => {
+          const merged: DailyAreaChecklist[] = [];
+          for (const rem of remoteDailyChecklists) {
+            if (dirtyChecklistIdsRef.current.has(rem.id)) {
+              const dirty = prevLocal.find((d) => d.id === rem.id);
+              if (dirty) {
+                merged.push(dirty);
+                continue;
               }
             }
-            for (const item of merged) {
-              if (!dirtyChecklistIdsRef.current.has(item.id)) {
-                checklistSnapshotRef.current.set(item.id, JSON.stringify(item));
-              }
-            }
-            return merged;
-          });
-        } else if (INITIAL_DAILY_CHECKLISTS && INITIAL_DAILY_CHECKLISTS.length > 0) {
-          console.debug(`[Seed] Koleksi 'daily_checklists' kosong di server. Menyemai data awal...`);
-          setDailyChecklists(INITIAL_DAILY_CHECKLISTS);
-          for (const item of INITIAL_DAILY_CHECKLISTS) {
-            checklistSnapshotRef.current.set(item.id, JSON.stringify(item));
-            upsertRecord(COLLECTIONS.DAILY_CHECKLISTS, item).catch(() => {});
+            merged.push(rem);
           }
-        }
+          for (const dirtyId of dirtyChecklistIdsRef.current) {
+            if (!serverChecklistMap.has(dirtyId)) {
+              const dirtyDoc = prevLocal.find((d) => d.id === dirtyId);
+              if (dirtyDoc) merged.push(dirtyDoc);
+            }
+          }
+          checklistSnapshotRef.current.clear();
+          for (const item of merged) {
+            if (!dirtyChecklistIdsRef.current.has(item.id)) {
+              checklistSnapshotRef.current.set(item.id, JSON.stringify(item));
+            }
+          }
+          return merged;
+        });
         initialSyncDone.current = true;
       } else {
         // Delta pull: Gabungkan per id (ganti bila id sama, tambah bila baru)
@@ -1384,25 +1410,17 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         }
       }
 
-      // Company profile & KPI config:
+      // Company profile & KPI config: ikuti server secara penuh
       if (remoteProfile.length > 0) {
         setCompanyProfile(remoteProfile[0]);
         try {
           localStorage.setItem('jti_company_profile', JSON.stringify(remoteProfile[0]));
         } catch {}
       } else if (isFullPull) {
+        setCompanyProfile(DEFAULT_COMPANY_PROFILE);
         try {
-          const saved = localStorage.getItem('jti_company_profile');
-          if (saved) {
-            const parsed = JSON.parse(saved);
-            setCompanyProfile(parsed);
-            upsertRecord(COLLECTIONS.COMPANY_PROFILE, { ...parsed, id: 'main' }).catch(() => {});
-          } else {
-            upsertRecord(COLLECTIONS.COMPANY_PROFILE, { ...DEFAULT_COMPANY_PROFILE, id: 'main' }).catch(() => {});
-          }
-        } catch {
-          upsertRecord(COLLECTIONS.COMPANY_PROFILE, { ...DEFAULT_COMPANY_PROFILE, id: 'main' }).catch(() => {});
-        }
+          localStorage.removeItem('jti_company_profile');
+        } catch {}
       }
 
       if (remoteKpi.length > 0) {
@@ -1411,18 +1429,10 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           localStorage.setItem('jti_kpi_config', JSON.stringify(remoteKpi[0]));
         } catch {}
       } else if (isFullPull) {
+        setKpiConfig(DEFAULT_KPI_VISIBILITY_OFF);
         try {
-          const saved = localStorage.getItem('jti_kpi_config');
-          if (saved) {
-            const parsed = JSON.parse(saved);
-            setKpiConfig(parsed);
-            upsertRecord(COLLECTIONS.KPI_CONFIG, { ...parsed, id: 'main' }).catch(() => {});
-          } else {
-            upsertRecord(COLLECTIONS.KPI_CONFIG, { ...DEFAULT_KPI_VISIBILITY_OFF, id: 'main' }).catch(() => {});
-          }
-        } catch {
-          upsertRecord(COLLECTIONS.KPI_CONFIG, { ...DEFAULT_KPI_VISIBILITY_OFF, id: 'main' }).catch(() => {});
-        }
+          localStorage.removeItem('jti_kpi_config');
+        } catch {}
       }
 
       const nowStr = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB';
@@ -1437,10 +1447,10 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       if (isFullPull) {
         cacheOfflineData({
           templates: remoteChecklistTpls?.length ? remoteChecklistTpls : INITIAL_CHECKLIST_TEMPLATES,
-          areas: remoteAreas?.length ? remoteAreas : INITIAL_AREAS,
-          locations: remoteChecklistLocs?.length ? remoteChecklistLocs : INITIAL_CHECKLIST_LOCATIONS,
-          checklists: remoteDailyChecklists?.length ? remoteDailyChecklists : INITIAL_DAILY_CHECKLISTS,
-          tasks: remoteTasks?.length ? remoteTasks : INITIAL_TASKS,
+          areas: remoteAreas || [],
+          locations: remoteChecklistLocs || [],
+          checklists: remoteDailyChecklists || [],
+          tasks: remoteTasks || [],
         }).catch(() => {});
       }
 
@@ -1592,7 +1602,94 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     // 5. Real-time updates without page refresh via Socket.IO
     const unsubscribeChanges = onRecordChange((evt) => {
       if (!isMounted) return;
-      const { collection, id, data, isDeleted, action } = evt;
+      const { collection, id, data, isDeleted, action, projectId: evtProjectId } = evt;
+
+      if (action === 'bulk_delete') {
+        const keepOtherProject = <T extends { projectId?: string }>(items: T[]) =>
+          evtProjectId ? items.filter((item) => item.projectId && item.projectId !== evtProjectId) : [];
+
+        switch (collection) {
+          case COLLECTIONS.PROJECTS:
+            setProjects([]);
+            break;
+          case COLLECTIONS.RBAC_PERMISSIONS:
+            setRbacPermissions(DEFAULT_RBAC_PERMISSIONS);
+            break;
+          case COLLECTIONS.AREAS:
+            setAreas((prev) => keepOtherProject(prev));
+            break;
+          case COLLECTIONS.CLEANERS:
+            setCleaners((prev) => keepOtherProject(prev));
+            break;
+          case COLLECTIONS.SHIFTS:
+            setShifts((prev) => keepOtherProject(prev));
+            break;
+          case COLLECTIONS.SCHEDULES:
+            setSchedules((prev) => keepOtherProject(prev));
+            break;
+          case COLLECTIONS.CHECKLIST_LOCATIONS:
+            setChecklistLocations((prev) => keepOtherProject(prev));
+            break;
+          case COLLECTIONS.CHECKLIST_TEMPLATES:
+            setChecklistTemplates([]);
+            break;
+          case COLLECTIONS.DAILY_CHECKLISTS:
+            setDailyChecklists((prev) => {
+              const remaining = evtProjectId ? prev.filter((dc) => dc.projectId !== evtProjectId) : [];
+              const remainingIds = new Set(remaining.map((dc) => dc.id));
+              for (const k of Array.from(checklistSnapshotRef.current.keys())) {
+                if (!remainingIds.has(k)) checklistSnapshotRef.current.delete(k);
+              }
+              for (const k of Array.from(dirtyChecklistIdsRef.current)) {
+                if (!remainingIds.has(k)) dirtyChecklistIdsRef.current.delete(k);
+              }
+              return remaining;
+            });
+            break;
+          case COLLECTIONS.TASKS:
+            setTasks((prev) => keepOtherProject(prev));
+            break;
+          case COLLECTIONS.INSPECTIONS:
+            setInspections((prev) => keepOtherProject(prev));
+            break;
+          case COLLECTIONS.COMPLAINTS:
+            setComplaints((prev) => keepOtherProject(prev));
+            break;
+          case COLLECTIONS.DAMAGE_REPORTS:
+            setDamageReports((prev) => keepOtherProject(prev));
+            break;
+          case COLLECTIONS.SPECIAL_JOBS:
+            setSpecialJobs((prev) => keepOtherProject(prev));
+            break;
+          case COLLECTIONS.MASTER_PROGRAMS:
+            setMasterPrograms((prev) => keepOtherProject(prev));
+            break;
+          case COLLECTIONS.EMPLOYEE_TURNOVERS:
+            setEmployeeTurnovers((prev) => keepOtherProject(prev));
+            break;
+          case COLLECTIONS.KLIEN_CHECKLIST_ITEMS:
+            setKlienChecklistItems((prev) => keepOtherProject(prev));
+            break;
+          case COLLECTIONS.KLIEN_CHECKLIST_INSPECTIONS:
+            setKlienChecklistInspections((prev) => keepOtherProject(prev));
+            break;
+          case COLLECTIONS.NOTIFICATIONS:
+            setNotifications((prev) => keepOtherProject(prev));
+            break;
+          case COLLECTIONS.AUDIT_LOGS:
+            setAuditLogs((prev) => keepOtherProject(prev));
+            break;
+          case COLLECTIONS.COMPANY_PROFILE:
+            setCompanyProfile(DEFAULT_COMPANY_PROFILE);
+            try { localStorage.removeItem('jti_company_profile'); } catch {}
+            break;
+          case COLLECTIONS.KPI_CONFIG:
+            setKpiConfig(DEFAULT_KPI_VISIBILITY_OFF);
+            try { localStorage.removeItem('jti_kpi_config'); } catch {}
+            break;
+        }
+        return;
+      }
 
       if (action === 'delete' || isDeleted) {
         switch (collection) {
@@ -1622,6 +1719,10 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           case COLLECTIONS.NOTIFICATIONS: setNotifications((prev) => prev.filter((n) => n.id !== id)); break;
           case COLLECTIONS.AUDIT_LOGS: setAuditLogs((prev) => prev.filter((a) => a.id !== id)); break;
           case COLLECTIONS.COMPANIES: setCompanies((prev) => prev.filter((c) => c.id !== id)); break;
+          case COLLECTIONS.COMPANY_PROFILE:
+            setCompanyProfile(DEFAULT_COMPANY_PROFILE);
+            try { localStorage.removeItem('jti_company_profile'); } catch {}
+            break;
         }
         return;
       }
@@ -1835,7 +1936,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       setCompanies((prev) =>
         prev.map((c) => (c.id === payload.id ? { ...c, logo: payload.logoUrl } : c))
       );
-      if (payload.id === 'comp-main' || payload.id === userCompanyId) {
+      if (payload.id === 'comp-main' || payload.id === userCompanyIdRef.current) {
         setCompanyProfile((prev) => ({ ...prev, logoUrl: payload.logoUrl }));
         try {
           const saved = localStorage.getItem('jti_company_profile');
@@ -1928,10 +2029,10 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   const clearAuditLogs = () => {
-    for (const log of auditLogs) {
-      deleteRecord(COLLECTIONS.AUDIT_LOGS, log.id).catch(() => {});
-    }
     setAuditLogs([]);
+    deleteCollectionRecords(COLLECTIONS.AUDIT_LOGS).catch((err) =>
+      notifyServerError('menghapus log audit', err)
+    );
   };
 
   // Controller Verification / Approval for Tasks
@@ -1943,27 +2044,25 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     const nowStr = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB';
     const verifierName = currentUser?.name || 'Pengawas/Controller';
 
-    let affectedTask: CleaningTask | undefined;
-
-    setTasks((prev) =>
-      prev.map((t) => {
-        if (t.id === taskId) {
-          affectedTask = {
-            ...t,
-            status: action === 'approved' ? 'completed' : 'in_progress',
-            controllerApprovalStatus: action,
-            controllerApprovedBy: verifierName,
-            controllerApprovedAt: nowStr,
-            controllerRejectionReason: action === 'rejected' ? notes : undefined,
-            remarks: action === 'rejected' && notes ? `[Catatan Controller: ${notes}] ${t.remarks || ''}` : t.remarks,
-          };
-          return affectedTask;
+    const existingTask = tasks.find((t) => t.id === taskId);
+    const prevApprovalStatus = existingTask?.controllerApprovalStatus || 'pending';
+    const affectedTask: CleaningTask | undefined = existingTask
+      ? {
+          ...existingTask,
+          status: action === 'approved' ? 'completed' : 'in_progress',
+          controllerApprovalStatus: action,
+          controllerApprovedBy: verifierName,
+          controllerApprovedAt: nowStr,
+          controllerRejectionReason: action === 'rejected' ? notes : undefined,
+          remarks:
+            action === 'rejected' && notes
+              ? `[Catatan Controller: ${notes}] ${existingTask.remarks || ''}`
+              : existingTask.remarks,
         }
-        return t;
-      })
-    );
+      : undefined;
 
     if (affectedTask) {
+      setTasks((prev) => prev.map((t) => (t.id === taskId ? affectedTask : t)));
       upsertRecord(COLLECTIONS.TASKS, affectedTask).catch((err) =>
         notifyServerError('verifikasi approval tugas', err)
       );
@@ -1978,7 +2077,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         : `Laporan pengerjaan "${affectedTask?.areaName || 'Area'}" DITOLAK oleh Controller ${verifierName}. Alasan: "${notes || 'Pekerjaan belum memenuhi standar'}". Segera lakukan perbaikan!`,
       timestamp: nowStr,
       type: action === 'approved' ? 'success' : 'warning',
-      targetRole: ['petugas', 'admin', 'supervisor'],
+      targetRole: ['petugas', 'super_admin', 'admin', 'supervisor'],
       read: false,
       taskId: taskId,
       projectId: affectedTask?.projectId || safeActiveProjectId,
@@ -2008,7 +2107,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       details: action === 'approved'
         ? `Controller ${verifierName} MENYETUJUI laporan tugas (${affectedTask?.areaName || taskId}). Catatan: "${notes || '-'}"`
         : `Controller ${verifierName} MENOLAK laporan tugas (${affectedTask?.areaName || taskId}) dan meminta perbaikan. Alasan: "${notes || '-'}"`,
-      previousState: affectedTask?.controllerApprovalStatus || 'pending',
+      previousState: prevApprovalStatus,
       newState: action,
     });
   };
@@ -2017,7 +2116,6 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const checkOverdueAreasAndTasks = (): { overdueTasksCount: number; overdueChecklistsCount: number } => {
     const now = new Date();
     const currentHour = now.getHours();
-    const todayStr = '2026-09-13'; // Standard baseline or today's date
     const nowStr = now.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB';
 
     let overdueChecklistsCount = 0;
@@ -2050,7 +2148,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         message: `Terdeteksi ${overdueChecklistsCount} slot checklist area dan ${overdueTasksCount} jadwal tugas belum diselesaikan melewati waktu yang ditentukan.`,
         timestamp: nowStr,
         type: 'warning',
-        targetRole: ['admin', 'supervisor', 'petugas'],
+        targetRole: ['super_admin', 'admin', 'supervisor', 'petugas'],
         read: false,
         projectId: safeActiveProjectId,
       };
@@ -2083,7 +2181,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           message: `Terdapat ${pendingCount} slot inspeksi checklist yang belum diisi oleh petugas melewati batas jam jadwal. Segera tindak lanjuti!`,
           timestamp: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB',
           type: 'warning',
-          targetRole: ['admin', 'supervisor'],
+          targetRole: ['super_admin', 'admin', 'supervisor'],
           read: false,
           projectId: safeActiveProjectId,
         };
@@ -2123,6 +2221,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
               setUserRole(res.user.role);
               localStorage.setItem('sco_role', res.user.role);
             }
+            pullAllDataFromServer(true).catch(() => {});
           }
         })
         .catch(() => {});
@@ -2158,22 +2257,25 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
         const userProjs = apiRes.user.assignedProjectIds || [];
         const isUserAdmin =
-          apiRes.user.role === 'admin' ||
-          apiRes.user.role === 'super_admin' ||
+          isSuperAdminRole(apiRes.user.role) ||
           apiRes.user.role === 'admin_perusahaan' ||
           apiRes.user.role === 'service_manager';
 
         let nextProjId = '';
         if (isUserAdmin) {
-          nextProjId = projects[0]?.id || 'proj-1793818532678';
+          nextProjId = projects[0]?.id || '';
         } else if (userProjs.length > 0) {
           nextProjId = userProjs[0];
         } else {
-          nextProjId = projects[0]?.id || 'proj-1793818532678';
+          nextProjId = projects[0]?.id || '';
         }
 
         setActiveProjectIdState(nextProjId);
-        localStorage.setItem('sco_active_project_id', nextProjId);
+        if (nextProjId) {
+          localStorage.setItem('sco_active_project_id', nextProjId);
+        } else {
+          localStorage.removeItem('sco_active_project_id');
+        }
 
         localStorage.setItem('sco_auth_state', 'true');
         localStorage.setItem('sco_active_user_id', apiRes.user.id);
@@ -2185,9 +2287,9 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           setActiveTab('dashboard');
         }
 
+        pullAllDataFromServer(true).catch(() => {});
         return { success: true };
       } else if (apiRes && !apiRes.success && apiRes.error) {
-        // Backend menolak (password salah atau perusahaan ditangguhkan/diarsipkan)
         return { success: false, message: apiRes.error || 'Email atau kata sandi salah' };
       }
     } catch {
@@ -2200,7 +2302,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         (u.username && u.username.toLowerCase() === cleanId) ||
         (u.email && u.email.toLowerCase() === cleanId) ||
         ((cleanId === 'admin' || cleanId === 'superadmin' || cleanId === 'administrator') &&
-          (u.role === 'admin' || u.role === 'super_admin' || u.id === 'usr-admin'))
+          (isSuperAdminRole(u.role) || u.id === 'usr-admin'))
     );
 
     if (!matchedUser) {
@@ -2209,7 +2311,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
     // Cek status perusahaan pengguna: jika ditangguhkan / diarsipkan, tolak dengan pesan umum
     const uCompId = matchedUser.companyId || (matchedUser as any).company_id || 'comp-main';
-    if (matchedUser.role !== 'super_admin' && matchedUser.role !== 'admin') {
+    if (!isSuperAdminRole(matchedUser.role)) {
       const userComp = companies.find((c) => c.id === uCompId);
       if (userComp && (userComp.status === 'ditangguhkan' || userComp.status === 'diarsipkan')) {
         return { success: false, message: 'Username, email, atau kata sandi tidak sesuai.' };
@@ -2217,7 +2319,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
 
     const defaultRolePass =
-      matchedUser.role === 'admin' || matchedUser.role === 'super_admin' || matchedUser.id === 'usr-admin'
+      isSuperAdminRole(matchedUser.role) || matchedUser.id === 'usr-admin'
         ? 'admin123'
         : matchedUser.role === 'supervisor'
         ? 'spv123'
@@ -2228,7 +2330,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     const isPassValid =
       matchedUser.password === cleanPass ||
       cleanPass === defaultRolePass ||
-      ((matchedUser.role === 'admin' || matchedUser.role === 'super_admin') &&
+      (isSuperAdminRole(matchedUser.role) &&
         (cleanPass === 'admin' || cleanPass === 'superadmin'));
 
     if (!isPassValid) {
@@ -2241,29 +2343,34 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
     const userProjs = matchedUser.assignedProjectIds || [];
     const isUserAdmin =
-      matchedUser.role === 'admin' ||
-      matchedUser.role === 'super_admin' ||
+      isSuperAdminRole(matchedUser.role) ||
       matchedUser.role === 'admin_perusahaan' ||
       matchedUser.role === 'service_manager';
 
     let nextProjId = '';
     if (isUserAdmin) {
-      nextProjId = projects[0]?.id || 'proj-1793818532678';
+      nextProjId = projects[0]?.id || '';
     } else if (userProjs.length > 0) {
       nextProjId = userProjs[0];
     } else {
-      nextProjId = projects[0]?.id || 'proj-1793818532678';
+      nextProjId = projects[0]?.id || '';
     }
 
     setActiveProjectIdState(nextProjId);
-    localStorage.setItem('sco_active_project_id', nextProjId);
+    if (nextProjId) {
+      localStorage.setItem('sco_active_project_id', nextProjId);
+    } else {
+      localStorage.removeItem('sco_active_project_id');
+    }
 
     localStorage.setItem('sco_auth_state', 'true');
     localStorage.setItem('sco_active_user_id', matchedUser.id);
     localStorage.setItem('sco_role', matchedUser.role);
 
     // Kirim request login ke backend di latar belakang jika tersedia
-    apiLogin({ identifier: cleanId, password: cleanPass }).catch(() => {});
+    apiLogin({ identifier: cleanId, password: cleanPass })
+      .then(() => pullAllDataFromServer(true).catch(() => {}))
+      .catch(() => {});
 
     if (matchedUser.role === 'klien') {
       setActiveTab('klien-mode');
@@ -2294,22 +2401,25 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
         const userProjs = apiRes.user.assignedProjectIds || [];
         const isUserAdmin =
-          apiRes.user.role === 'admin' ||
-          apiRes.user.role === 'super_admin' ||
+          isSuperAdminRole(apiRes.user.role) ||
           apiRes.user.role === 'admin_perusahaan' ||
           apiRes.user.role === 'service_manager';
 
         let nextProjId = '';
         if (isUserAdmin) {
-          nextProjId = projects[0]?.id || 'proj-1793818532678';
+          nextProjId = projects[0]?.id || '';
         } else if (userProjs.length > 0) {
           nextProjId = userProjs[0];
         } else {
-          nextProjId = projects[0]?.id || 'proj-1793818532678';
+          nextProjId = projects[0]?.id || '';
         }
 
         setActiveProjectIdState(nextProjId);
-        localStorage.setItem('sco_active_project_id', nextProjId);
+        if (nextProjId) {
+          localStorage.setItem('sco_active_project_id', nextProjId);
+        } else {
+          localStorage.removeItem('sco_active_project_id');
+        }
 
         localStorage.setItem('sco_auth_state', 'true');
         localStorage.setItem('sco_active_user_id', apiRes.user.id);
@@ -2321,6 +2431,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           setActiveTab('dashboard');
         }
 
+        pullAllDataFromServer(true).catch(() => {});
         return { success: true };
       }
     } catch {}
@@ -2336,31 +2447,36 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
     const userProjs = matchedUser.assignedProjectIds || [];
     const isUserAdmin =
-      matchedUser.role === 'admin' ||
-      matchedUser.role === 'super_admin' ||
+      isSuperAdminRole(matchedUser.role) ||
       matchedUser.role === 'admin_perusahaan' ||
       matchedUser.role === 'service_manager';
 
     let nextProjId = '';
     if (isUserAdmin) {
-      nextProjId = projects[0]?.id || 'proj-1793818532678';
+      nextProjId = projects[0]?.id || '';
     } else if (userProjs.length > 0) {
       nextProjId = userProjs[0];
     } else {
-      nextProjId = projects[0]?.id || 'proj-1793818532678';
+      nextProjId = projects[0]?.id || '';
     }
 
     setActiveProjectIdState(nextProjId);
-    localStorage.setItem('sco_active_project_id', nextProjId);
+    if (nextProjId) {
+      localStorage.setItem('sco_active_project_id', nextProjId);
+    } else {
+      localStorage.removeItem('sco_active_project_id');
+    }
 
     localStorage.setItem('sco_auth_state', 'true');
     localStorage.setItem('sco_active_user_id', matchedUser.id);
     localStorage.setItem('sco_role', matchedUser.role);
 
     // Call backend API login asynchronously to retrieve and persist Bearer token
-    apiLogin({ userId }).catch((err) => {
-      console.warn('[Instant Login Token] Backend token issuance notice:', err);
-    });
+    apiLogin({ userId })
+      .then(() => pullAllDataFromServer(true).catch(() => {}))
+      .catch((err) => {
+        console.warn('[Instant Login Token] Backend token issuance notice:', err);
+      });
 
     if (matchedUser.role === 'klien') {
       setActiveTab('klien-mode');
@@ -2382,16 +2498,11 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   const updateRbacPermission = (moduleId: string, role: UserRole, allowed: boolean) => {
-    if (role === 'admin') return; // Super admin always has full access
-    let updatedPerm: RoleModulePermission | undefined;
+    if (isSuperAdminRole(role)) return; // Super admin always has full access
+    const existing = rbacPermissions.find((p) => p.moduleId === moduleId);
+    const updatedPerm: RoleModulePermission | undefined = existing ? { ...existing, [role]: allowed } : undefined;
     setRbacPermissions((prev) =>
-      prev.map((perm) => {
-        if (perm.moduleId === moduleId) {
-          updatedPerm = { ...perm, [role]: allowed };
-          return updatedPerm;
-        }
-        return perm;
-      })
+      prev.map((perm) => (perm.moduleId === moduleId ? { ...perm, [role]: allowed } : perm))
     );
     if (updatedPerm) {
       upsertRecord(COLLECTIONS.RBAC_PERMISSIONS, updatedPerm).catch((err) =>
@@ -2410,17 +2521,16 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   const hasAccess = (role: UserRole, moduleId: string): boolean => {
-    // Menu manajemen perusahaan HANYA untuk super_admin
+    // Menu manajemen perusahaan untuk Super Administrator (super_admin dan admin adalah sama)
     if (moduleId === 'perusahaan' || moduleId === 'companies') {
-      return role === 'super_admin';
+      return isSuperAdminRole(role);
     }
     // Peruntukan Klien: HANYA bisa membuka KLIEN MODE (dan sub-tab klien), seluruh menu lainnya ditutup
     if (role === 'klien') {
       return moduleId === 'klien-mode' || moduleId.startsWith('klien-');
     }
     if (
-      role === 'admin' ||
-      role === 'super_admin' ||
+      isSuperAdminRole(role) ||
       role === 'admin_perusahaan' ||
       role === 'service_manager'
     ) {
@@ -2457,7 +2567,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         : `Server tidak terjangkau. Menggunakan data memori saat ini per ${nowTime}.`,
       timestamp: nowTime,
       type: serverSuccess ? 'info' : 'warning',
-      targetRole: ['admin', 'supervisor', 'petugas', 'klien'],
+      targetRole: ['super_admin', 'admin', 'supervisor', 'petugas', 'klien'],
       read: false,
     };
     setNotifications((prev) => [reloadNotif, ...prev]);
@@ -2487,43 +2597,37 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setProjects((prev) => [...prev, newProj]);
     upsertRecord(COLLECTIONS.PROJECTS, newProj).catch((err) => notifyServerError('menambah proyek', err));
 
-    // Give super admin access automatically
-    setUsers((prev) => {
-      const updated = prev.map((u) =>
-        u.role === 'admin'
-          ? { ...u, assignedProjectIds: [...(u.assignedProjectIds || []), id] }
+    // Give super admin access automatically (both super_admin and admin)
+    const updatedAdmins = users
+      .filter((u) => isSuperAdminRole(u.role))
+      .map((u) => ({ ...u, assignedProjectIds: Array.from(new Set([...(u.assignedProjectIds || []), id])) }));
+    setUsers((prev) =>
+      prev.map((u) =>
+        isSuperAdminRole(u.role)
+          ? { ...u, assignedProjectIds: Array.from(new Set([...(u.assignedProjectIds || []), id])) }
           : u
-      );
-      updated.filter((u) => u.role === 'admin').forEach((adminUser) => {
-        upsertRecord(COLLECTIONS.USERS, adminUser).catch((e) => notifyServerError('memperbarui akses admin', e));
-      });
-      return updated;
+      )
+    );
+    updatedAdmins.forEach((adminUser) => {
+      upsertRecord(COLLECTIONS.USERS, adminUser).catch((e) => notifyServerError('memperbarui akses admin', e));
     });
   };
 
   const updateProject = (id: string, updates: Partial<ProjectLocation>) => {
-    let updatedProj: ProjectLocation | undefined;
-    setProjects((prev) =>
-      prev.map((p) => {
-        if (p.id === id) {
-          updatedProj = { ...p, ...updates };
-          return updatedProj;
-        }
-        return p;
-      })
-    );
+    const existing = projects.find((p) => p.id === id);
+    const updatedProj = existing ? { ...existing, ...updates } : undefined;
+    setProjects((prev) => prev.map((p) => (p.id === id ? { ...p, ...updates } : p)));
     if (updatedProj) {
       upsertRecord(COLLECTIONS.PROJECTS, updatedProj).catch((err) => notifyServerError('memperbarui proyek', err));
     }
   };
 
   const deleteProject = (id: string) => {
-    if (projects.length <= 1) return;
-    setProjects((prev) => prev.filter((p) => p.id !== id));
+    const remaining = projects.filter((p) => p.id !== id);
+    setProjects(remaining);
     deleteRecord(COLLECTIONS.PROJECTS, id).catch((err) => notifyServerError('menghapus proyek', err));
     if (safeActiveProjectId === id) {
-      const remaining = projects.filter((p) => p.id !== id);
-      setActiveProjectId(remaining[0]?.id || 'proj-1');
+      setActiveProjectId(remaining[0]?.id || '');
     }
   };
 
@@ -2594,16 +2698,16 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           (userData.assignedProjectIds && userData.assignedProjectIds[0]) || safeActiveProjectId;
         const newCleanerId = `cln-${Date.now()}`;
         const newNik = `CLN-${new Date().getFullYear()}-${String(cleaners.length + 1).padStart(3, '0')}`;
+        const firstShift = shifts[0];
         const newCleanerItem: Cleaner = {
           id: newCleanerId,
           projectId: firstProjId,
           nik: newNik,
           name: userData.name,
-          phone: userData.phone || '0812-3456-7890',
-          photoUrl:
-            'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80',
-          shiftId: 'shift-1',
-          shiftName: 'Pagi (06:00 - 14:00)',
+          phone: userData.phone || '',
+          photoUrl: '',
+          shiftId: firstShift?.id || '',
+          shiftName: firstShift ? `${firstShift.name} (${firstShift.startTime} - ${firstShift.endTime})` : '-',
           assignedAreas: [],
           status: 'active',
           rating: 5,
@@ -2623,13 +2727,12 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     const target = users.find((u) => u.id === userId);
     if (
       target &&
-      (target.role === 'super_admin' || target.role === 'admin') &&
+      isSuperAdminRole(target.role) &&
       updates.role &&
-      updates.role !== 'super_admin' &&
-      updates.role !== 'admin'
+      !isSuperAdminRole(updates.role)
     ) {
       const remainingSuperAdmins = users.filter(
-        (u) => (u.role === 'super_admin' || u.role === 'admin') && u.id !== userId
+        (u) => isSuperAdminRole(u.role) && u.id !== userId
       );
       if (remainingSuperAdmins.length === 0) {
         notifyServerError(
@@ -2640,15 +2743,9 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       }
     }
 
-    let updatedUser: AppUser | undefined;
+    const updatedUser = target ? { ...target, ...updates } : undefined;
     setUsers((prev) =>
-      prev.map((u) => {
-        if (u.id === userId) {
-          updatedUser = { ...u, ...updates };
-          return updatedUser;
-        }
-        return u;
-      })
+      prev.map((u) => (u.id === userId ? { ...u, ...updates } : u))
     );
     if (updatedUser) {
       upsertRecord(COLLECTIONS.USERS, updatedUser).catch((err) => notifyServerError('memperbarui pengguna', err));
@@ -2660,9 +2757,9 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     if (!target) {
       return { success: false, message: 'Pengguna tidak ditemukan.' };
     }
-    if (target.role === 'super_admin' || target.role === 'admin') {
+    if (isSuperAdminRole(target.role)) {
       const remainingSuperAdmins = users.filter(
-        (u) => (u.role === 'super_admin' || u.role === 'admin') && u.id !== userId
+        (u) => isSuperAdminRole(u.role) && u.id !== userId
       );
       if (remainingSuperAdmins.length === 0) {
         return {
@@ -2675,9 +2772,9 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setUsers((prev) => prev.filter((u) => u.id !== userId));
     deleteRecord(COLLECTIONS.USERS, userId).catch((err) => notifyServerError('menghapus pengguna', err));
 
-    // If deleting current active user, fallback safely to an admin
+    // If deleting current active user, fallback safely to an active super admin
     if (activeUserId === userId) {
-      const fallback = users.find((u) => u.role === 'admin' && u.id !== userId) || users[0];
+      const fallback = users.find((u) => isSuperAdminRole(u.role) && u.id !== userId) || users.find((u) => u.id !== userId);
       if (fallback) {
         setActiveUserId(fallback.id);
         setUserRole(fallback.role);
@@ -2742,7 +2839,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     // Check if matching checklist location already exists
     const existing = checklistLocations.find(
       (l) =>
-        (l.projectId || 'proj-1') === targetProjectId &&
+        (l.projectId || '') === targetProjectId &&
         (l.areaId === area.id ||
           l.name.trim().toLowerCase() === area.name.trim().toLowerCase() ||
           (l.code && area.code && l.code.trim().toUpperCase() === area.code.trim().toUpperCase()))
@@ -2794,7 +2891,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       const targetProjectId = area.projectId || safeActiveProjectId;
       const alreadyExists = currentLocs.some(
         (l) =>
-          (l.projectId || 'proj-1') === targetProjectId &&
+          (l.projectId || '') === targetProjectId &&
           (l.areaId === area.id ||
             l.name.trim().toLowerCase() === area.name.trim().toLowerCase() ||
             (l.code && area.code && l.code.trim().toUpperCase() === area.code.trim().toUpperCase()))
@@ -2989,7 +3086,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             slot.checkedBy ||
             (currentUser?.name?.split(' ')[0]
               ? `${currentUser.name.split(' ')[0]} (Petugas)`
-              : 'Asep S. (Petugas)'),
+              : 'Petugas'),
         };
       });
 
@@ -3210,7 +3307,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     checkedByArg?: string
   ) => {
     let targetHours: number[] = [];
-    let checkedBy = 'Asep S.';
+    let checkedBy = currentUser?.name || 'Petugas';
 
     if (Array.isArray(startHourOrHours)) {
       targetHours = startHourOrHours;
@@ -3443,29 +3540,34 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       message: `${job.requestedBy} menugaskan Special Job "${job.title}" di ${job.location} kepada ${job.assignedPicName}.`,
       timestamp: nowStr,
       type: job.priority === 'urgent' ? 'urgent' : 'info',
-      targetRole: ['admin', 'supervisor', 'petugas', 'klien'],
+      targetRole: ['super_admin', 'admin', 'supervisor', 'petugas', 'klien'],
       read: false,
       projectId: job.projectId || safeActiveProjectId,
     };
     setNotifications((prev) => [notif, ...prev]);
+    upsertRecord(COLLECTIONS.NOTIFICATIONS, notif).catch(() => {});
 
     return newJob;
   };
 
   const updateSpecialJob = (id: string, updates: Partial<SpecialJobItem>) => {
+    const existing = specialJobs.find((j) => j.id === id);
+    const updated = existing ? { ...existing, ...updates } : undefined;
     setSpecialJobs((prev) =>
-      prev.map((j) => {
-        if (j.id !== id) return j;
-        const updated = { ...j, ...updates };
-        upsertRecord(COLLECTIONS.SPECIAL_JOBS, updated);
-        return updated;
-      })
+      prev.map((j) => (j.id === id ? { ...j, ...updates } : j))
     );
+    if (updated) {
+      upsertRecord(COLLECTIONS.SPECIAL_JOBS, updated).catch((err) =>
+        notifyServerError('memperbarui special job', err)
+      );
+    }
   };
 
   const deleteSpecialJob = (id: string) => {
     setSpecialJobs((prev) => prev.filter((j) => j.id !== id));
-    deleteRecord(COLLECTIONS.SPECIAL_JOBS, id);
+    deleteRecord(COLLECTIONS.SPECIAL_JOBS, id).catch((err) =>
+      notifyServerError('menghapus special job', err)
+    );
   };
 
   const addEmployeeTurnover = (record: Omit<EmployeeTurnoverRecord, 'id' | 'createdAt'>) => {
@@ -3516,14 +3618,20 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   const resetKlienChecklistItems = () => {
-    const defaults = INITIAL_KLIEN_CHECKLIST_ITEMS.map((item) => ({
+    if (!safeActiveProjectId) return;
+    const defaults: KlienChecklistItem[] = DEFAULT_KLIEN_CHECKLIST_TEMPLATES.map((item) => ({
       ...item,
+      id: `${item.id}-${safeActiveProjectId}`,
       projectId: safeActiveProjectId,
     }));
+    const oldItems = klienChecklistItems.filter((item) => (item.projectId || '') === safeActiveProjectId);
     setKlienChecklistItems((prev) => [
-      ...prev.filter((item) => (item.projectId || 'proj-1') !== safeActiveProjectId),
+      ...prev.filter((item) => (item.projectId || '') !== safeActiveProjectId),
       ...defaults,
     ]);
+    oldItems.forEach((item) => {
+      deleteRecord(COLLECTIONS.KLIEN_CHECKLIST_ITEMS, item.id).catch(() => {});
+    });
     defaults.forEach((item) => {
       upsertRecord(COLLECTIONS.KLIEN_CHECKLIST_ITEMS, item).catch(() => {});
     });
@@ -3792,6 +3900,8 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
   };
 
+    const currentMonthPeriod = new Date().toISOString().slice(0, 7);
+
   const exportTaskToMonthlyReport = (taskId: string, targetMonth?: string) => {
     const todayStr = new Date().toLocaleDateString('id-ID', {
       day: '2-digit',
@@ -3799,67 +3909,51 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       year: 'numeric',
     });
 
-    let updatedTask: CleaningTask | undefined;
-    setTasks((prev) => {
-      const task = prev.find((t) => t.id === taskId);
-      if (!task) return prev;
-      const month = targetMonth || task.monthPeriod || '2026-09';
-      const existingInMonth = prev.filter(
-        (t) => (t.monthPeriod === month || (!t.monthPeriod && month === '2026-09')) && t.exportedToMonthlyReport
-      );
-      const nextOrder = existingInMonth.length + 1;
+    const task = tasks.find((t) => t.id === taskId);
+    if (!task) return;
+    const month = targetMonth || task.monthPeriod || currentMonthPeriod;
+    const existingInMonth = tasks.filter(
+      (t) => (t.monthPeriod === month || (!t.monthPeriod && month === currentMonthPeriod)) && t.exportedToMonthlyReport
+    );
+    const nextOrder = existingInMonth.length + 1;
+    const updatedTask: CleaningTask = {
+      ...task,
+      exportedToMonthlyReport: true,
+      monthPeriod: month,
+      monthlyOrderNo: task.monthlyOrderNo || nextOrder,
+      monthlyReportExportDate: todayStr,
+    };
 
-      return prev.map((t) => {
-        if (t.id === taskId) {
-          updatedTask = {
-            ...t,
-            exportedToMonthlyReport: true,
-            monthPeriod: month,
-            monthlyOrderNo: t.monthlyOrderNo || nextOrder,
-            monthlyReportExportDate: todayStr,
-          };
-          return updatedTask;
-        }
-        return t;
-      });
-    });
-    if (updatedTask) {
-      upsertRecord(COLLECTIONS.TASKS, updatedTask).catch((err) => notifyServerError('ekspor tugas ke laporan bulanan', err));
-    }
+    setTasks((prev) => prev.map((t) => (t.id === taskId ? updatedTask : t)));
+    upsertRecord(COLLECTIONS.TASKS, updatedTask).catch((err) => notifyServerError('ekspor tugas ke laporan bulanan', err));
   };
 
   const removeTaskFromMonthlyReport = (taskId: string) => {
-    let targetMonth = '2026-09';
-    let affectedTasks: CleaningTask[] = [];
+    const target = tasks.find((t) => t.id === taskId);
+    const month = target?.monthPeriod || currentMonthPeriod;
 
-    setTasks((prev) => {
-      const target = prev.find((t) => t.id === taskId);
-      const month = target?.monthPeriod || '2026-09';
-      targetMonth = month;
+    const updated = tasks.map((t) =>
+      t.id === taskId
+        ? {
+            ...t,
+            exportedToMonthlyReport: false,
+            monthlyOrderNo: undefined,
+          }
+        : t
+    );
 
-      const updated = prev.map((t) =>
-        t.id === taskId
-          ? {
-              ...t,
-              exportedToMonthlyReport: false,
-              monthlyOrderNo: undefined,
-            }
-          : t
-      );
-
-      let counter = 1;
-      const result = updated.map((t) => {
-        if (t.monthPeriod === month && t.exportedToMonthlyReport) {
-          const item = { ...t, monthlyOrderNo: counter };
-          counter++;
-          return item;
-        }
-        return t;
-      });
-      affectedTasks = result.filter((t) => t.id === taskId || (t.monthPeriod === month && t.exportedToMonthlyReport));
-      return result;
+    let counter = 1;
+    const result = updated.map((t) => {
+      if (t.monthPeriod === month && t.exportedToMonthlyReport) {
+        const item = { ...t, monthlyOrderNo: counter };
+        counter++;
+        return item;
+      }
+      return t;
     });
+    const affectedTasks = result.filter((t) => t.id === taskId || (t.monthPeriod === month && t.exportedToMonthlyReport));
 
+    setTasks(result);
     for (const t of affectedTasks) {
       upsertRecord(COLLECTIONS.TASKS, t).catch(() => {});
     }
@@ -3872,45 +3966,39 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       year: 'numeric',
     });
 
-    const affectedTasks: CleaningTask[] = [];
-    setTasks((prev) => {
-      const month = targetMonth || '2026-09';
-      let currentMaxOrder = prev
-        .filter((t) => t.monthPeriod === month && t.exportedToMonthlyReport)
-        .reduce((max, t) => Math.max(max, t.monthlyOrderNo || 0), 0);
+    const month = targetMonth || currentMonthPeriod;
+    let currentMaxOrder = tasks
+      .filter((t) => t.monthPeriod === month && t.exportedToMonthlyReport)
+      .reduce((max, t) => Math.max(max, t.monthlyOrderNo || 0), 0);
 
-      return prev.map((t) => {
-        if (taskIds.includes(t.id) && !t.exportedToMonthlyReport) {
-          currentMaxOrder++;
-          const updated = {
-            ...t,
-            exportedToMonthlyReport: true,
-            monthPeriod: month,
-            monthlyOrderNo: currentMaxOrder,
-            monthlyReportExportDate: todayStr,
-          };
-          affectedTasks.push(updated);
-          return updated;
-        }
-        return t;
-      });
+    const affectedTasks: CleaningTask[] = [];
+    const nextTasks = tasks.map((t) => {
+      if (taskIds.includes(t.id) && !t.exportedToMonthlyReport) {
+        currentMaxOrder++;
+        const updated = {
+          ...t,
+          exportedToMonthlyReport: true,
+          monthPeriod: month,
+          monthlyOrderNo: currentMaxOrder,
+          monthlyReportExportDate: todayStr,
+        };
+        affectedTasks.push(updated);
+        return updated;
+      }
+      return t;
     });
 
+    setTasks(nextTasks);
     for (const t of affectedTasks) {
       upsertRecord(COLLECTIONS.TASKS, t).catch(() => {});
     }
   };
 
   const updateTaskWorkDescription = (taskId: string, description: string) => {
-    let updatedTask: CleaningTask | undefined;
+    const existing = tasks.find((t) => t.id === taskId);
+    const updatedTask = existing ? { ...existing, workDescription: description } : undefined;
     setTasks((prev) =>
-      prev.map((t) => {
-        if (t.id === taskId) {
-          updatedTask = { ...t, workDescription: description };
-          return updatedTask;
-        }
-        return t;
-      })
+      prev.map((t) => (t.id === taskId ? { ...t, workDescription: description } : t))
     );
     if (updatedTask) {
       upsertRecord(COLLECTIONS.TASKS, updatedTask).catch((err) => notifyServerError('memperbarui deskripsi tugas', err));
@@ -3919,19 +4007,30 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const updateTaskStatus = (taskId: string, status: TaskStatus) => {
     const nowStr = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB';
-    setTasks((prev) =>
-      prev.map((t) => {
-        if (t.id !== taskId) return t;
-        const updated = {
-          ...t,
+    const existing = tasks.find((t) => t.id === taskId);
+    const updatedTask: CleaningTask | undefined = existing
+      ? {
+          ...existing,
           status,
-          ...(status === 'in_progress' && !t.startTime ? { startTime: nowStr } : {}),
+          ...(status === 'in_progress' && !existing.startTime ? { startTime: nowStr } : {}),
           ...(status === 'completed' ? { completedTime: nowStr } : {}),
-        };
-        upsertRecord(COLLECTIONS.TASKS, updated);
-        return updated;
-      })
+        }
+      : undefined;
+    setTasks((prev) =>
+      prev.map((t) =>
+        t.id === taskId
+          ? {
+              ...t,
+              status,
+              ...(status === 'in_progress' && !t.startTime ? { startTime: nowStr } : {}),
+              ...(status === 'completed' ? { completedTime: nowStr } : {}),
+            }
+          : t
+      )
     );
+    if (updatedTask) {
+      upsertRecord(COLLECTIONS.TASKS, updatedTask).catch((err) => notifyServerError('memperbarui status tugas', err));
+    }
   };
 
   const submitTaskCompletion = (
@@ -3946,28 +4045,22 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
   ) => {
     const nowStr = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB';
-
-    setTasks((prev) =>
-      prev.map((t) => {
-        if (t.id !== taskId) return t;
-        const updated = {
-          ...t,
-          status: 'pending_qc' as const,
-          completedTime: nowStr,
-          checklistArea: payload.checklistArea,
-          suppliesUsed: [],
-          remarks: payload.remarks,
-          photoBefore: payload.photoBefore,
-          photoProgress: payload.photoProgress || t.photoProgress,
-          photoAfter: payload.photoAfter,
-        };
-        upsertRecord(COLLECTIONS.TASKS, updated);
-        return updated;
-      })
-    );
-
     const currentTask = tasks.find((t) => t.id === taskId);
     if (currentTask) {
+      const updatedTask: CleaningTask = {
+        ...currentTask,
+        status: 'pending_qc',
+        completedTime: nowStr,
+        checklistArea: payload.checklistArea,
+        suppliesUsed: [],
+        remarks: payload.remarks,
+        photoBefore: payload.photoBefore,
+        photoProgress: payload.photoProgress || currentTask.photoProgress,
+        photoAfter: payload.photoAfter,
+      };
+      setTasks((prev) => prev.map((t) => (t.id === taskId ? updatedTask : t)));
+      upsertRecord(COLLECTIONS.TASKS, updatedTask).catch((err) => notifyServerError('menyimpan penyelesaian tugas', err));
+
       setAreas((prev) =>
         prev.map((a) =>
           a.id === currentTask.areaId
@@ -3990,7 +4083,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         message: `${currentTask.cleanerName} telah menyelesaikan tugas di ${currentTask.areaName}. Menunggu verifikasi inspeksi.`,
         timestamp: nowStr,
         type: 'info',
-        targetRole: ['supervisor', 'admin'],
+        targetRole: ['supervisor', 'super_admin', 'admin'],
         read: false,
         taskId: currentTask.id,
         projectId: currentTask.projectId || safeActiveProjectId,
@@ -4046,6 +4139,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     const resolvedAreaName = payload.areaName || task?.areaName || 'Area Gedung';
     const resolvedCleanerName = payload.cleanerName || task?.cleanerName || 'Tim Kebersihan';
     const resolvedPhoto = payload.photoAfter || payload.photoProof || task?.photoAfter;
+    const inspectorLabel = currentUser?.name || 'Auditor QC';
 
     const nowStr = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB';
 
@@ -4055,7 +4149,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       taskId: payload.taskId,
       areaName: resolvedAreaName,
       cleanerName: resolvedCleanerName,
-      inspectorName: 'Hendra Wijaya (Auditor QC)',
+      inspectorName: `${inspectorLabel} (Auditor QC)`,
       inspectedAt: `Hari ini, ${nowStr}`,
       score: payload.score,
       status: payload.status,
@@ -4081,7 +4175,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         qcScore: payload.score,
         qcStatus: payload.status === 'passed' ? 'approved' : 'rejected',
         qcNotes: payload.notes,
-        inspectedBy: 'Hendra Wijaya',
+        inspectedBy: inspectorLabel,
         inspectedAt: nowStr,
       };
       setTasks((prev) =>
@@ -4108,7 +4202,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       message: `Inspeksi untuk ${resolvedAreaName} diberikan nilai ${payload.score}/100 oleh Auditor QC: "${payload.notes}"`,
       timestamp: nowStr,
       type: payload.status === 'passed' ? 'success' : 'warning',
-      targetRole: ['petugas', 'admin'],
+      targetRole: ['petugas', 'super_admin', 'admin'],
       read: false,
       taskId: task?.id || payload.taskId,
       projectId: task?.projectId || safeActiveProjectId,
@@ -4199,13 +4293,14 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       message: `${payload.reporterName} melaporkan keluhan "${payload.description}" di ${resolvedAreaName}. SLA penanganan: ${hours} Jam (${slaMins} menit).`,
       timestamp: nowStr,
       type: 'urgent',
-      targetRole: ['admin', 'supervisor', 'petugas', 'klien'],
+      targetRole: ['super_admin', 'admin', 'supervisor', 'petugas', 'klien'],
       read: false,
       projectId: area?.projectId || safeActiveProjectId,
       isNewComplaint: true,
       complaintId: newTicket.id,
     };
     setNotifications((prev) => [notif, ...prev]);
+    upsertRecord(COLLECTIONS.NOTIFICATIONS, notif).catch(() => {});
 
     triggerTopNotification({
       category: 'new_complaint',
@@ -4219,52 +4314,48 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const startHandlingComplaint = (complaintId: string) => {
     const nowStr = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB';
-    let targetTicket: Complaint | undefined;
+    const existing = complaints.find((c) => c.id === complaintId);
+    if (!existing) return;
 
-    setComplaints((prev) =>
-      prev.map((c) => {
-        if (c.id === complaintId) {
-          const hours = c.slaHours && c.slaHours > 0 ? c.slaHours : 2;
-          const needsNewDeadline =
-            c.status === 'resolved' || !c.deadlineTimestamp || c.deadlineTimestamp <= Date.now();
-          const nextDeadline = needsNewDeadline
-            ? Date.now() + hours * 3600 * 1000
-            : c.deadlineTimestamp;
-          const nextDeadlineStr = needsNewDeadline
-            ? new Date(nextDeadline).toLocaleTimeString('id-ID', {
-                hour: '2-digit',
-                minute: '2-digit',
-              }) + ' WIB'
-            : c.slaDeadline;
+    const hours = existing.slaHours && existing.slaHours > 0 ? existing.slaHours : 2;
+    const needsNewDeadline =
+      existing.status === 'resolved' || !existing.deadlineTimestamp || existing.deadlineTimestamp <= Date.now();
+    const nextDeadline = needsNewDeadline
+      ? Date.now() + hours * 3600 * 1000
+      : existing.deadlineTimestamp;
+    const nextDeadlineStr = needsNewDeadline
+      ? new Date(nextDeadline).toLocaleTimeString('id-ID', {
+          hour: '2-digit',
+          minute: '2-digit',
+        }) + ' WIB'
+      : existing.slaDeadline;
 
-          targetTicket = {
-            ...c,
-            status: 'in_progress',
-            startedAt: `Hari ini, ${nowStr}`,
-            resolvedAt: undefined,
-            deadlineTimestamp: nextDeadline,
-            slaDeadline: nextDeadlineStr,
-          };
-          return targetTicket;
-        }
-        return c;
-      })
+    const targetTicket: Complaint = {
+      ...existing,
+      status: 'in_progress',
+      startedAt: `Hari ini, ${nowStr}`,
+      resolvedAt: undefined,
+      deadlineTimestamp: nextDeadline,
+      slaDeadline: nextDeadlineStr,
+    };
+
+    setComplaints((prev) => prev.map((c) => (c.id === complaintId ? targetTicket : c)));
+    upsertRecord(COLLECTIONS.COMPLAINTS, targetTicket).catch((err) =>
+      notifyServerError('memulai penanganan komplain', err)
     );
 
-    if (targetTicket) {
-      upsertRecord(COLLECTIONS.COMPLAINTS, targetTicket);
-      const notif: AppNotification = {
-        id: `notif-${Date.now()}`,
-        title: '⚙️ Komplain Dalam Pengerjaan (Di Kerjakan)',
-        message: `Tiket ${targetTicket.ticketNumber} di ${targetTicket.areaName} kini berstatus Di Kerjakan oleh petugas (${targetTicket.assignedCleanerName || 'Tim Kebersihan'}).`,
-        timestamp: nowStr,
-        type: 'info',
-        targetRole: ['admin', 'supervisor', 'petugas', 'klien'],
-        read: false,
-        projectId: targetTicket.projectId || safeActiveProjectId,
-      };
-      setNotifications((prev) => [notif, ...prev]);
-    }
+    const notif: AppNotification = {
+      id: `notif-${Date.now()}`,
+      title: '⚙️ Komplain Dalam Pengerjaan (Di Kerjakan)',
+      message: `Tiket ${targetTicket.ticketNumber} di ${targetTicket.areaName} kini berstatus Di Kerjakan oleh petugas (${targetTicket.assignedCleanerName || 'Tim Kebersihan'}).`,
+      timestamp: nowStr,
+      type: 'info',
+      targetRole: ['super_admin', 'admin', 'supervisor', 'petugas', 'klien'],
+      read: false,
+      projectId: targetTicket.projectId || safeActiveProjectId,
+    };
+    setNotifications((prev) => [notif, ...prev]);
+    upsertRecord(COLLECTIONS.NOTIFICATIONS, notif).catch(() => {});
   };
 
   const requestComplaintExtension = (
@@ -4273,42 +4364,39 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     reason: string
   ) => {
     const nowStr = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB';
-    let updatedTicket: Complaint | undefined;
+    const existing = complaints.find((c) => c.id === complaintId);
+    if (!existing) return;
 
-    setComplaints((prev) =>
-      prev.map((c) => {
-        if (c.id === complaintId) {
-          const req: ComplaintExtensionRequest = {
-            id: `ext-${Date.now()}`,
-            requestedHours: hours,
-            reason: reason.trim(),
-            requestedBy: activeCleaner?.name || (userRole === 'petugas' ? 'Petugas Lapangan' : 'Tim Operasional'),
-            requestedAt: `Hari ini, ${nowStr}`,
-            status: 'pending',
-          };
-          updatedTicket = {
-            ...c,
-            extensionRequest: req,
-          };
-          return updatedTicket;
-        }
-        return c;
-      })
+    const req: ComplaintExtensionRequest = {
+      id: `ext-${Date.now()}`,
+      requestedHours: hours,
+      reason: reason.trim(),
+      requestedBy: activeCleaner?.name || currentUser?.name || (userRole === 'petugas' ? 'Petugas Lapangan' : 'Tim Operasional'),
+      requestedAt: `Hari ini, ${nowStr}`,
+      status: 'pending',
+    };
+    const updatedTicket: Complaint = {
+      ...existing,
+      extensionRequest: req,
+    };
+
+    setComplaints((prev) => prev.map((c) => (c.id === complaintId ? updatedTicket : c)));
+    upsertRecord(COLLECTIONS.COMPLAINTS, updatedTicket).catch((err) =>
+      notifyServerError('mengajukan perpanjangan komplain', err)
     );
 
-    if (updatedTicket) {
-      const notif: AppNotification = {
-        id: `notif-${Date.now()}`,
-        title: '⏳ Pengajuan Tambahan Waktu Penanganan!',
-        message: `Petugas mengajukan tambahan waktu ${hours} Jam untuk tiket ${updatedTicket.ticketNumber} (${updatedTicket.areaName}). Alasan: "${reason}". Silakan verifikasi pengajuan ini.`,
-        timestamp: nowStr,
-        type: 'warning',
-        targetRole: ['admin', 'supervisor', 'klien'],
-        read: false,
-        projectId: updatedTicket.projectId || safeActiveProjectId,
-      };
-      setNotifications((prev) => [notif, ...prev]);
-    }
+    const notif: AppNotification = {
+      id: `notif-${Date.now()}`,
+      title: '⏳ Pengajuan Tambahan Waktu Penanganan!',
+      message: `Petugas mengajukan tambahan waktu ${hours} Jam untuk tiket ${updatedTicket.ticketNumber} (${updatedTicket.areaName}). Alasan: "${reason}". Silakan verifikasi pengajuan ini.`,
+      timestamp: nowStr,
+      type: 'warning',
+      targetRole: ['super_admin', 'admin', 'supervisor', 'klien'],
+      read: false,
+      projectId: updatedTicket.projectId || safeActiveProjectId,
+    };
+    setNotifications((prev) => [notif, ...prev]);
+    upsertRecord(COLLECTIONS.NOTIFICATIONS, notif).catch(() => {});
   };
 
   const respondToComplaintExtension = (
@@ -4321,82 +4409,73 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     const reviewerName =
       currentUser?.name || (userRole === 'klien' ? 'Pembuat Tiket (Klien)' : 'Pengawas/Admin');
 
+    const existing = complaints.find((c) => c.id === complaintId);
+    if (!existing || !existing.extensionRequest) return;
+    const currentReq = existing.extensionRequest;
     let ticketAfter: Complaint | undefined;
 
-    setComplaints((prev) =>
-      prev.map((c) => {
-        if (c.id !== complaintId || !c.extensionRequest) return c;
+    if (action === 'approve') {
+      const addHours = currentReq.requestedHours;
+      const currentDeadline = existing.deadlineTimestamp && existing.deadlineTimestamp > 0 ? existing.deadlineTimestamp : Date.now();
+      const newDeadline = currentDeadline + addHours * 3600 * 1000;
+      const newHours = (existing.slaHours || 1) + addHours;
+      const newDeadlineStr = new Date(newDeadline).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB';
 
-        const currentReq = c.extensionRequest;
+      ticketAfter = {
+        ...existing,
+        deadlineTimestamp: newDeadline,
+        slaHours: newHours,
+        slaMinutes: newHours * 60,
+        slaDeadline: newDeadlineStr,
+        extensionRequest: {
+          ...currentReq,
+          status: 'approved',
+          reviewedBy: reviewerName,
+          reviewedAt: `Hari ini, ${nowStr}`,
+          reviewNotes: reviewNotes || 'Tambahan waktu disetujui sesuai permohonan.',
+        },
+      };
+    } else if (action === 'revise') {
+      const addHours = revisedHours && revisedHours > 0 ? revisedHours : 1;
+      const currentDeadline = existing.deadlineTimestamp && existing.deadlineTimestamp > 0 ? existing.deadlineTimestamp : Date.now();
+      const newDeadline = currentDeadline + addHours * 3600 * 1000;
+      const newHours = (existing.slaHours || 1) + addHours;
+      const newDeadlineStr = new Date(newDeadline).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB';
 
-        if (action === 'approve') {
-          const addHours = currentReq.requestedHours;
-          const currentDeadline = c.deadlineTimestamp && c.deadlineTimestamp > 0 ? c.deadlineTimestamp : Date.now();
-          const newDeadline = currentDeadline + addHours * 3600 * 1000;
-          const newHours = (c.slaHours || 1) + addHours;
-          const newDeadlineStr = new Date(newDeadline).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB';
-
-          ticketAfter = {
-            ...c,
-            deadlineTimestamp: newDeadline,
-            slaHours: newHours,
-            slaMinutes: newHours * 60,
-            slaDeadline: newDeadlineStr,
-            extensionRequest: {
-              ...currentReq,
-              status: 'approved',
-              reviewedBy: reviewerName,
-              reviewedAt: `Hari ini, ${nowStr}`,
-              reviewNotes: reviewNotes || 'Tambahan waktu disetujui sesuai permohonan.',
-            },
-          };
-          return ticketAfter;
-        }
-
-        if (action === 'revise') {
-          const addHours = revisedHours && revisedHours > 0 ? revisedHours : 1;
-          const currentDeadline = c.deadlineTimestamp && c.deadlineTimestamp > 0 ? c.deadlineTimestamp : Date.now();
-          const newDeadline = currentDeadline + addHours * 3600 * 1000;
-          const newHours = (c.slaHours || 1) + addHours;
-          const newDeadlineStr = new Date(newDeadline).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB';
-
-          ticketAfter = {
-            ...c,
-            deadlineTimestamp: newDeadline,
-            slaHours: newHours,
-            slaMinutes: newHours * 60,
-            slaDeadline: newDeadlineStr,
-            extensionRequest: {
-              ...currentReq,
-              status: 'approved',
-              revisedHours: addHours,
-              reviewedBy: reviewerName,
-              reviewedAt: `Hari ini, ${nowStr}`,
-              reviewNotes: reviewNotes || `Durasi disesuaikan menjadi +${addHours} Jam.`,
-            },
-          };
-          return ticketAfter;
-        }
-
-        if (action === 'reject') {
-          ticketAfter = {
-            ...c,
-            extensionRequest: {
-              ...currentReq,
-              status: 'rejected',
-              reviewedBy: reviewerName,
-              reviewedAt: `Hari ini, ${nowStr}`,
-              reviewNotes: reviewNotes || 'Pengajuan perpanjangan waktu ditolak. Harap selesaikan sesuai batas waktu.',
-            },
-          };
-          return ticketAfter;
-        }
-
-        return c;
-      })
-    );
+      ticketAfter = {
+        ...existing,
+        deadlineTimestamp: newDeadline,
+        slaHours: newHours,
+        slaMinutes: newHours * 60,
+        slaDeadline: newDeadlineStr,
+        extensionRequest: {
+          ...currentReq,
+          status: 'approved',
+          revisedHours: addHours,
+          reviewedBy: reviewerName,
+          reviewedAt: `Hari ini, ${nowStr}`,
+          reviewNotes: reviewNotes || `Durasi disesuaikan menjadi +${addHours} Jam.`,
+        },
+      };
+    } else if (action === 'reject') {
+      ticketAfter = {
+        ...existing,
+        extensionRequest: {
+          ...currentReq,
+          status: 'rejected',
+          reviewedBy: reviewerName,
+          reviewedAt: `Hari ini, ${nowStr}`,
+          reviewNotes: reviewNotes || 'Pengajuan perpanjangan waktu ditolak. Harap selesaikan sesuai batas waktu.',
+        },
+      };
+    }
 
     if (ticketAfter) {
+      setComplaints((prev) => prev.map((c) => (c.id === complaintId ? ticketAfter! : c)));
+      upsertRecord(COLLECTIONS.COMPLAINTS, ticketAfter).catch((err) =>
+        notifyServerError('memproses perpanjangan komplain', err)
+      );
+
       let notifTitle = '';
       let notifMsg = '';
       let notifType: 'success' | 'info' | 'urgent' = 'info';
@@ -4415,18 +4494,18 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         notifType = 'urgent';
       }
 
-      // Notifikasi masuk kepada penerima keluhan (petugas lapangan / tim operasional)
       const notif: AppNotification = {
         id: `notif-${Date.now()}`,
         title: notifTitle,
         message: notifMsg,
         timestamp: nowStr,
         type: notifType,
-        targetRole: ['petugas', 'supervisor', 'admin'],
+        targetRole: ['petugas', 'supervisor', 'super_admin', 'admin'],
         read: false,
         projectId: ticketAfter.projectId || safeActiveProjectId,
       };
       setNotifications((prev) => [notif, ...prev]);
+      upsertRecord(COLLECTIONS.NOTIFICATIONS, notif).catch(() => {});
     }
   };
 
@@ -4437,34 +4516,20 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     photoResolved?: string
   ) => {
     const nowStr = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB';
-    setComplaints((prev) =>
-      prev.map((c) =>
-        c.id === complaintId
-          ? {
-              ...c,
-              status: 'resolved',
-              resolvedAt: `Hari ini, ${nowStr}`,
-              resolutionNotes,
-              photoProgress: photoProgress || c.photoProgress,
-              photoResolved:
-                photoResolved ||
-                c.photoResolved ||
-                'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?w=500&auto=format&fit=crop&q=80',
-            }
-          : c
-      )
-    );
-
     const targetComplaint = complaints.find((c) => c.id === complaintId);
     if (targetComplaint) {
-      upsertRecord(COLLECTIONS.COMPLAINTS, {
+      const resolvedTicket: Complaint = {
         ...targetComplaint,
         status: 'resolved',
         resolvedAt: `Hari ini, ${nowStr}`,
         resolutionNotes,
         photoProgress: photoProgress || targetComplaint.photoProgress,
         photoResolved: photoResolved || targetComplaint.photoResolved,
-      });
+      };
+      setComplaints((prev) => prev.map((c) => (c.id === complaintId ? resolvedTicket : c)));
+      upsertRecord(COLLECTIONS.COMPLAINTS, resolvedTicket).catch((err) =>
+        notifyServerError('menyelesaikan komplain', err)
+      );
     }
 
     const notif: AppNotification = {
@@ -4473,11 +4538,12 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       message: `Tiket ${targetComplaint?.ticketNumber || complaintId} di ${targetComplaint?.areaName || 'lokasi'} telah diselesaikan. Keterangan: "${resolutionNotes}"`,
       timestamp: nowStr,
       type: 'success',
-      targetRole: ['admin', 'supervisor', 'petugas', 'klien'],
+      targetRole: ['super_admin', 'admin', 'supervisor', 'petugas', 'klien'],
       read: false,
       projectId: targetComplaint?.projectId || safeActiveProjectId,
     };
     setNotifications((prev) => [notif, ...prev]);
+    upsertRecord(COLLECTIONS.NOTIFICATIONS, notif).catch(() => {});
 
     try {
       confetti({
@@ -4510,20 +4576,22 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     };
 
     setDamageReports((prev) => [newReport, ...prev]);
-    upsertRecord(COLLECTIONS.DAMAGE_REPORTS, newReport);
+    upsertRecord(COLLECTIONS.DAMAGE_REPORTS, newReport).catch((err) =>
+      notifyServerError('menambah laporan kerusakan', err)
+    );
 
-    // Push notification for team
     const notif: AppNotification = {
       id: `notif-${Date.now()}`,
       title: `⚠️ Laporan Kerusakan Baru: ${ticketNo}`,
       message: `${report.reporterName} melaporkan kerusakan: "${report.itemName}" di ${report.locationName} (${report.floor}). Prioritas: ${report.priority?.toUpperCase()}.`,
       timestamp: nowStr,
       type: report.priority === 'urgent' || report.damageLevel === 'kritis' ? 'urgent' : 'warning',
-      targetRole: ['admin', 'supervisor'],
+      targetRole: ['super_admin', 'admin', 'supervisor'],
       read: false,
       projectId: report.projectId || safeActiveProjectId,
     };
     setNotifications((prev) => [notif, ...prev]);
+    upsertRecord(COLLECTIONS.NOTIFICATIONS, notif).catch(() => {});
 
     triggerTopNotification({
       category: 'damage_report',
@@ -4536,23 +4604,25 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   const updateDamageReport = (id: string, updates: Partial<FacilityDamageReport>) => {
+    const existing = damageReports.find((r) => r.id === id);
+    const updated = existing
+      ? { ...existing, ...updates, updatedAt: new Date().toISOString() }
+      : undefined;
     setDamageReports((prev) =>
-      prev.map((r) => {
-        if (r.id !== id) return r;
-        const updated = {
-          ...r,
-          ...updates,
-          updatedAt: new Date().toISOString(),
-        };
-        upsertRecord(COLLECTIONS.DAMAGE_REPORTS, updated);
-        return updated;
-      })
+      prev.map((r) => (r.id === id ? { ...r, ...updates, updatedAt: new Date().toISOString() } : r))
     );
+    if (updated) {
+      upsertRecord(COLLECTIONS.DAMAGE_REPORTS, updated).catch((err) =>
+        notifyServerError('memperbarui laporan kerusakan', err)
+      );
+    }
   };
 
   const deleteDamageReport = (id: string) => {
     setDamageReports((prev) => prev.filter((r) => r.id !== id));
-    deleteRecord(COLLECTIONS.DAMAGE_REPORTS, id);
+    deleteRecord(COLLECTIONS.DAMAGE_REPORTS, id).catch((err) =>
+      notifyServerError('menghapus laporan kerusakan', err)
+    );
   };
 
   const resolveDamageReport = (
@@ -4568,37 +4638,38 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     const nowStr = now.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB';
     const dateStr = now.toISOString().split('T')[0];
 
-    setDamageReports((prev) =>
-      prev.map((r) => {
-        if (r.id !== id) return r;
-        const updated = {
-          ...r,
-          status: 'selesai' as const,
-          repairedDate: dateStr,
-          repairedTime: nowStr,
-          technicianNotes: resolutionPayload.technicianNotes || r.technicianNotes,
-          photoAfter: resolutionPayload.photoAfter || r.photoAfter,
-          technicianName: resolutionPayload.technicianName || r.technicianName,
-          costEstimate: resolutionPayload.costEstimate !== undefined ? resolutionPayload.costEstimate : r.costEstimate,
-          updatedAt: now.toISOString(),
-        };
-        upsertRecord(COLLECTIONS.DAMAGE_REPORTS, updated);
-        return updated;
-      })
-    );
-
     const target = damageReports.find((r) => r.id === id);
+    if (target) {
+      const updated: FacilityDamageReport = {
+        ...target,
+        status: 'selesai',
+        repairedDate: dateStr,
+        repairedTime: nowStr,
+        technicianNotes: resolutionPayload.technicianNotes || target.technicianNotes,
+        photoAfter: resolutionPayload.photoAfter || target.photoAfter,
+        technicianName: resolutionPayload.technicianName || target.technicianName,
+        costEstimate:
+          resolutionPayload.costEstimate !== undefined ? resolutionPayload.costEstimate : target.costEstimate,
+        updatedAt: now.toISOString(),
+      };
+      setDamageReports((prev) => prev.map((r) => (r.id === id ? updated : r)));
+      upsertRecord(COLLECTIONS.DAMAGE_REPORTS, updated).catch((err) =>
+        notifyServerError('menyelesaikan laporan kerusakan', err)
+      );
+    }
+
     const notif: AppNotification = {
       id: `notif-res-${Date.now()}`,
       title: `✅ Kerusakan Selesai Diperbaiki: ${target?.ticketNo || ''}`,
       message: `Fasilitas "${target?.itemName || 'Barang'}" di ${target?.locationName || 'Area'} telah berhasil diperbaiki oleh ${resolutionPayload.technicianName || 'Tim Teknisi'}.`,
       timestamp: nowStr,
       type: 'success',
-      targetRole: ['admin', 'supervisor', 'petugas'],
+      targetRole: ['super_admin', 'admin', 'supervisor', 'petugas'],
       read: false,
       projectId: target?.projectId || safeActiveProjectId,
     };
     setNotifications((prev) => [notif, ...prev]);
+    upsertRecord(COLLECTIONS.NOTIFICATIONS, notif).catch(() => {});
   };
 
   const addArea = (newArea: Omit<Area, 'id'>) => {
@@ -4806,19 +4877,22 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const clearAllNotifications = () => {
     setNotifications([]);
+    deleteCollectionRecords(COLLECTIONS.NOTIFICATIONS).catch(() => {});
   };
 
   const triggerDeadlinePushNotification = () => {
     const nowStr = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB';
+    const firstPendingTask = tasks.find((t) => t.status === 'pending' || t.status === 'in_progress');
+    const areaLabel = firstPendingTask?.areaName || 'area tugas aktif';
     const notif: AppNotification = {
       id: `notif-${Date.now()}`,
       title: '⏰ Pengingat Batas Waktu!',
-      message: 'Tugas di Lobby Utama & Receptionist tinggal 15 menit lagi sebelum batas waktu! Segera selesaikan tugas Anda.',
+      message: `Tugas di ${areaLabel} tinggal 15 menit lagi sebelum batas waktu! Segera selesaikan tugas Anda.`,
       timestamp: nowStr,
       type: 'warning',
-      targetRole: ['petugas', 'supervisor'],
+      targetRole: ['petugas', 'supervisor', 'super_admin', 'admin'],
       read: false,
-      taskId: 'task-102',
+      taskId: firstPendingTask?.id,
       projectId: safeActiveProjectId,
     };
     setNotifications((prev) => [notif, ...prev]);
@@ -4827,7 +4901,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     triggerTopNotification({
       category: 'deadline_reminder',
       title: 'Pengingat Batas Waktu!',
-      message: 'Tugas di Lobby Utama & Receptionist tinggal 15 menit lagi sebelum batas waktu! Segera selesaikan tugas Anda.',
+      message: `Tugas di ${areaLabel} tinggal 15 menit lagi sebelum batas waktu! Segera selesaikan tugas Anda.`,
       targetTab: 'activity',
       metaId: notif.id,
       projectName: activeProject?.name,
@@ -4837,7 +4911,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const resetToInitialData = () => {
     localStorage.clear();
     setProjects(INITIAL_PROJECTS);
-    setActiveProjectIdState('proj-1');
+    setActiveProjectIdState('');
     setUsers(INITIAL_USERS);
     setActiveUserId('usr-admin');
     setChecklistLocations(INITIAL_CHECKLIST_LOCATIONS);
@@ -4853,7 +4927,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setMasterPrograms(INITIAL_MASTER_PROGRAMS);
     setDamageReports(INITIAL_DAMAGE_REPORTS);
     setKpiConfig(DEFAULT_KPI_VISIBILITY_OFF);
-    setUserRole('admin');
+    setUserRole('super_admin');
     setViewMode('web');
   };
 
@@ -4864,11 +4938,19 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   ): Promise<{ count: number; label: string }> => {
     let deletedCount = 0;
     let label = '';
-    const targetProjId = activeProject?.id || 'proj-1';
+    const targetProjId = activeProject?.id || '';
 
     const deleteBatch = async (col: string, ids: string[]) => {
       if (!ids || ids.length === 0) return;
       await Promise.allSettled(ids.map((id) => deleteRecord(col, id)));
+    };
+
+    const deleteCollectionScoped = async (col: string) => {
+      if (scope === 'all') {
+        await deleteCollectionRecords(col);
+      } else if (targetProjId) {
+        await deleteCollectionRecords(col, targetProjId);
+      }
     };
 
     const upsertBatch = async (col: string, items: any[]) => {
@@ -5199,12 +5281,74 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       }
       case 'notifikasi': {
         label = 'Notifikasi Sistem';
-        const ids = notifications.map((n) => n.id);
-        deletedCount = ids.length;
+        deletedCount = notifications.length;
 
         setNotifications([]);
+        await deleteCollectionRecords(COLLECTIONS.NOTIFICATIONS);
+        break;
+      }
+      case 'audit_logs': {
+        label = 'Log Audit Sistem';
+        const matched = auditLogs.filter((a) => scope === 'all' || a.projectId === targetProjId);
+        deletedCount = matched.length;
 
-        await deleteBatch(COLLECTIONS.NOTIFICATIONS, ids);
+        setAuditLogs((prev) =>
+          scope === 'all' ? [] : prev.filter((a) => a.projectId !== targetProjId)
+        );
+        await deleteCollectionScoped(COLLECTIONS.AUDIT_LOGS);
+        break;
+      }
+      case 'special-job': {
+        label = 'Special Job / Penugasan Khusus';
+        const matched = specialJobs.filter((s) => scope === 'all' || !s.projectId || s.projectId === targetProjId);
+        deletedCount = matched.length;
+
+        setSpecialJobs((prev) =>
+          scope === 'all' ? [] : prev.filter((s) => s.projectId && s.projectId !== targetProjId)
+        );
+        await deleteCollectionScoped(COLLECTIONS.SPECIAL_JOBS);
+        break;
+      }
+      case 'klien_checklist': {
+        label = 'Ceklist & Inspeksi Klien Mode';
+        const matchedItems = klienChecklistItems.filter((k) => scope === 'all' || k.projectId === targetProjId);
+        const matchedInsps = klienChecklistInspections.filter((k) => scope === 'all' || k.projectId === targetProjId);
+        const matchedTurnovers = employeeTurnovers.filter((k) => scope === 'all' || k.projectId === targetProjId);
+        deletedCount = matchedItems.length + matchedInsps.length + matchedTurnovers.length;
+
+        if (scope === 'all') {
+          setKlienChecklistItems([]);
+          setKlienChecklistInspections([]);
+          setEmployeeTurnovers([]);
+        } else {
+          setKlienChecklistItems((prev) => prev.filter((k) => k.projectId !== targetProjId));
+          setKlienChecklistInspections((prev) => prev.filter((k) => k.projectId !== targetProjId));
+          setEmployeeTurnovers((prev) => prev.filter((k) => k.projectId !== targetProjId));
+        }
+
+        await Promise.allSettled([
+          deleteCollectionScoped(COLLECTIONS.KLIEN_CHECKLIST_ITEMS),
+          deleteCollectionScoped(COLLECTIONS.KLIEN_CHECKLIST_INSPECTIONS),
+          deleteCollectionScoped(COLLECTIONS.EMPLOYEE_TURNOVERS),
+        ]);
+        break;
+      }
+      case 'proyek': {
+        label = 'Lokasi Proyek';
+        const matched = projects.filter((p) => scope === 'all' || p.id === targetProjId);
+        deletedCount = matched.length;
+
+        if (scope === 'all') {
+          setProjects([]);
+          setActiveProjectIdState('');
+          localStorage.removeItem('sco_active_project_id');
+          await deleteCollectionRecords(COLLECTIONS.PROJECTS);
+        } else if (targetProjId) {
+          const remaining = projects.filter((p) => p.id !== targetProjId);
+          setProjects(remaining);
+          setActiveProjectId(remaining[0]?.id || '');
+          await deleteRecord(COLLECTIONS.PROJECTS, targetProjId);
+        }
         break;
       }
       default:
@@ -5218,17 +5362,20 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       message: `Super Admin telah menghapus ${deletedCount} data pada sub-menu "${label}" (${scope === 'active_project' ? 'Proyek Aktif' : 'Semua Proyek'}).`,
       timestamp: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB',
       type: 'warning',
-      targetRole: ['admin'],
+      targetRole: ['super_admin', 'admin'],
       read: false,
     };
     setNotifications((prev) => [auditNotif, ...prev]);
+    upsertRecord(COLLECTIONS.NOTIFICATIONS, auditNotif).catch(() => {});
 
-    addAuditLog({
-      action: 'bulk_delete',
-      module: 'pengaturan',
-      entityName: label,
-      details: `Super Admin telah menghapus ${deletedCount} data pada sub-menu "${label}" (${scope === 'active_project' ? 'Proyek Aktif' : 'Semua Proyek'}).`,
-    });
+    if (submenuKey !== 'audit_logs') {
+      addAuditLog({
+        action: 'bulk_delete',
+        module: 'pengaturan',
+        entityName: label,
+        details: `Super Admin telah menghapus ${deletedCount} data pada sub-menu "${label}" (${scope === 'active_project' ? 'Proyek Aktif' : 'Semua Proyek'}).`,
+      });
+    }
 
     return { count: deletedCount, label };
   };
@@ -5237,7 +5384,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     try {
       const res = await fetch('/api/sync/live-vps', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
       });
       const data = await res.json();
       if (!res.ok || !data.success) {

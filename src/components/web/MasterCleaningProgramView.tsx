@@ -184,7 +184,7 @@ export const MasterCleaningProgramView: React.FC = () => {
     setFormWorkMethod('');
     setFormLocation(areas[0]?.name || 'Lobby Utama');
     setFormFrequency('M');
-    setFormPicName(cleaners[0]?.name || 'Budi Santoso');
+    setFormPicName(cleaners[0]?.name || '');
 
     // Default empty days
     const initialDays: Record<number, ProgramDayStatus> = {};

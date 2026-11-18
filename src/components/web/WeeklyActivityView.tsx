@@ -278,7 +278,7 @@ export const WeeklyActivityView: React.FC = () => {
     setFormWorkDescription('');
     setFormWorkMethod('');
     setFormLocation(areas[0]?.name || 'Koridor & Tangga Darurat');
-    setFormPicName(cleaners[0]?.name || 'Asep Supriyadi');
+    setFormPicName(cleaners[0]?.name || '');
 
     // Default: set every Friday or weekend in month to planned
     const days: Record<number, ProgramDayStatus> = {};

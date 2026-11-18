@@ -22,7 +22,7 @@ import {
   ShieldAlert,
 } from 'lucide-react';
 import { useCleaning } from '../../context/CleaningContext';
-import { AuditActionType, AuditLogEntry } from '../../types';
+import { AuditActionType, AuditLogEntry, isSuperAdminRole } from '../../types';
 
 export function getSafeLogDetails(log: any): string {
   if (!log) return '-';
@@ -203,6 +203,7 @@ export const AuditLogSection: React.FC = () => {
   const getRoleBadge = (role: string) => {
     switch (role) {
       case 'admin':
+      case 'super_admin':
         return 'bg-purple-100 text-purple-800 border-purple-200';
       case 'supervisor':
         return 'bg-blue-100 text-blue-800 border-blue-200';
@@ -294,7 +295,7 @@ export const AuditLogSection: React.FC = () => {
             <span>Ekspor CSV</span>
           </button>
 
-          {userRole === 'admin' && (
+          {isSuperAdminRole(userRole) && (
             <button
               type="button"
               onClick={() => setShowClearConfirm(true)}

@@ -8,6 +8,10 @@ export type UserRole =
   | 'petugas'
   | 'klien';
 
+export function isSuperAdminRole(role?: string | null): boolean {
+  return role === 'super_admin' || role === 'admin';
+}
+
 export type CompanyStatus = 'aktif' | 'ditangguhkan' | 'diarsipkan';
 
 export interface Company {
@@ -562,14 +566,14 @@ export interface CompanyProfile {
 }
 
 export const DEFAULT_COMPANY_PROFILE: CompanyProfile = {
-  companyName: 'PT RAJAWALI TALENTA INDONESIA',
+  companyName: 'Smart Cleaning Operations',
   tagline: 'Cleaning Operations & Facility Management System',
   documentHeaderTitle: 'MANAJEMEN OPERASIONAL KEBERSIHAN & FASILITAS GEDUNG',
-  address: 'Gedung Office Tower Lt. 8, Jl. Jend. Sudirman No. 45',
-  city: 'Jakarta Selatan 12190',
-  phone: '021-5558901 / 0812-3456-7890',
-  email: 'rajawalitalentaindonesia@gmail.com',
-  website: 'www.rajawali-smart.co.id',
+  address: '',
+  city: '',
+  phone: '',
+  email: '',
+  website: '',
   logoUrl: '',
 };
 

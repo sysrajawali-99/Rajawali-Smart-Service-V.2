@@ -433,7 +433,7 @@ export const CeklistAreaView: React.FC = () => {
   // Quick action: Fill hours of active shift as Clean 'B'
   const handleQuickFillClean = () => {
     if (!currentDailyChecklist) return;
-    const inspectorName = currentUser?.name?.split(' ')[0] || 'Asep S.';
+    const inspectorName = currentUser?.name?.split(' ')[0] || 'Petugas';
     fillDailyChecklistClean(currentDailyChecklist.id, shiftSlotHours, inspectorName);
   };
 
@@ -1168,7 +1168,7 @@ export const CeklistAreaView: React.FC = () => {
             <div className="flex items-center text-center text-xs text-slate-800">
               <div>
                 <p className="text-slate-600 mb-12 font-medium">Pengawas / Supervisor Area:</p>
-                <p className="font-bold text-slate-900 underline">( Hendra Wijaya )</p>
+                <p className="font-bold text-slate-900 underline">( {activeProject?.managerName || currentUser?.name || 'Supervisor Area'} )</p>
                 <p className="text-[10px] text-slate-500">Quality & Hygiene Inspector</p>
               </div>
             </div>
@@ -1313,7 +1313,7 @@ export const CeklistAreaView: React.FC = () => {
                               currentDailyChecklist.id,
                               slot.hour,
                               'clean',
-                              currentUser?.name?.split(' ')[0] || 'Asep S.'
+                              currentUser?.name?.split(' ')[0] || 'Petugas'
                             );
                           }
                         }}
