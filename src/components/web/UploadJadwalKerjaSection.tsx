@@ -303,7 +303,13 @@ const ScheduleTemplateGrid: React.FC<ScheduleTableProps> = ({
   );
 };
 
-export const UploadJadwalKerjaSection: React.FC = () => {
+export interface UploadJadwalKerjaSectionProps {
+  onScheduleSaved?: (bulan: number, tahun: number) => void;
+}
+
+export const UploadJadwalKerjaSection: React.FC<UploadJadwalKerjaSectionProps> = ({
+  onScheduleSaved,
+}) => {
   const {
     uploadedWorkSchedules,
     saveUploadedWorkSchedule,
@@ -462,9 +468,10 @@ export const UploadJadwalKerjaSection: React.FC = () => {
       setStagedBuffers([]);
       setAutoDetectedNote(null);
       setShowOverwriteModal(false);
+      onScheduleSaved?.(selectedMonth, selectedYear);
       setBannerMessage({
         type: 'success',
-        text: `Jadwal kerja ${MONTH_NAMES_ID[selectedMonth - 1]} ${selectedYear} (${previewResult.employeeCount} karyawan, ${previewResult.entries.length} entri harian) berhasil disimpan.`,
+        text: `Jadwal kerja ${MONTH_NAMES_ID[selectedMonth - 1]} ${selectedYear} (${previewResult.employeeCount} karyawan, ${previewResult.entries.length} entri harian) berhasil disimpan & disinkronkan ke Roster dan Data Petugas.`,
       });
     } catch (err: any) {
       setBannerMessage({

@@ -1,5 +1,5 @@
 import * as XLSX from 'xlsx';
-import { UploadedWorkScheduleEntry } from '../types';
+import { Shift, UploadedWorkScheduleEntry } from '../types';
 
 export const MONTH_NAMES_ID = [
   'Januari',
@@ -624,37 +624,148 @@ export function parseWorkScheduleBuffers(
 export function buildRowsFromEntries(
   entries: UploadedWorkScheduleEntry[]
 ): { rows: ParsedScheduleRow[]; daysCount: number } {
-  const map = new Map<string, ParsedScheduleRow>();
+  const orderedRows: ParsedScheduleRow[] = [];
+  const activeByKey = new Map<string, ParsedScheduleRow>();
   let maxDay = 0;
 
   entries.forEach((entry, idx) => {
-    const key = `${entry.nama}__${entry.jabatan}__${entry.area}`;
-    let existing = map.get(key);
-    if (!existing) {
-      existing = {
-        rowId: `saved-${map.size}-${idx}`,
+    const baseKey = `${entry.nama}__${entry.jabatan}__${entry.area}`;
+    let targetRow = activeByKey.get(baseKey);
+
+    // If this row already has a shift recorded for this tanggal, start a new row (e.g. second Slot Kosong)
+    if (!targetRow || targetRow.shifts[entry.tanggal] !== undefined) {
+      targetRow = {
+        rowId: `saved-${orderedRows.length}-${idx}`,
         sourceFile: 'Tersimpan',
         sourceSheet: 'Jadwal Kerja',
         nama: entry.nama,
-        isSlotKosong: entry.nama.toUpperCase() === 'SLOT KOSONG',
+        isSlotKosong: entry.nama.trim().toUpperCase() === 'SLOT KOSONG',
         jabatan: entry.jabatan,
         area: entry.area,
         shifts: {},
         invalidDays: {},
       };
-      map.set(key, existing);
+      orderedRows.push(targetRow);
+      activeByKey.set(baseKey, targetRow);
     }
+
     const { normalized, isValid, rawCleaned } = normalizeShiftCode(entry.shift);
-    existing.shifts[entry.tanggal] = isValid ? normalized : rawCleaned;
+    targetRow.shifts[entry.tanggal] = isValid ? normalized : rawCleaned;
     if (!isValid) {
-      existing.invalidDays[entry.tanggal] = rawCleaned || '(kosong)';
+      targetRow.invalidDays[entry.tanggal] = rawCleaned || '(kosong)';
     }
     if (entry.tanggal > maxDay) maxDay = entry.tanggal;
   });
 
   return {
-    rows: Array.from(map.values()),
+    rows: orderedRows,
     daysCount: maxDay > 0 ? maxDay : 31,
+  };
+}
+
+export interface ResolvedShiftPair {
+  shift1: Pick<Shift, 'id' | 'name' | 'code' | 'startTime' | 'endTime' | 'color'>;
+  shift2: Pick<Shift, 'id' | 'name' | 'code' | 'startTime' | 'endTime' | 'color'>;
+}
+
+export function resolveShift1AndShift2(shifts: Shift[]): ResolvedShiftPair {
+  const s1 =
+    shifts.find((s) => s.code?.trim().toUpperCase() === 'S1') ||
+    shifts.find((s) => s.id === 'shift-1') ||
+    shifts.find((s) => /\bshift\s*1\b/i.test(s.name)) ||
+    shifts[0];
+
+  const s2 =
+    shifts.find((s) => s.code?.trim().toUpperCase() === 'S2') ||
+    shifts.find((s) => s.id === 'shift-2') ||
+    shifts.find((s) => /\bshift\s*2\b/i.test(s.name)) ||
+    shifts.find((s) => s.id !== s1?.id);
+
+  return {
+    shift1: s1
+      ? {
+          id: s1.id,
+          name: s1.name,
+          code: s1.code,
+          startTime: s1.startTime,
+          endTime: s1.endTime,
+          color: s1.color,
+        }
+      : {
+          id: 'shift-1',
+          name: 'Shift 1 ( satu )',
+          code: 'S1',
+          startTime: '07:00',
+          endTime: '15:00',
+          color: '#0284c7',
+        },
+    shift2: s2
+      ? {
+          id: s2.id,
+          name: s2.name,
+          code: s2.code,
+          startTime: s2.startTime,
+          endTime: s2.endTime,
+          color: s2.color,
+        }
+      : {
+          id: 'shift-2',
+          name: 'Shift 2 ( Midle )',
+          code: 'S2',
+          startTime: '11:00',
+          endTime: '19:00',
+          color: '#0d9488',
+        },
+  };
+}
+
+export interface RowOperationalShiftInfo {
+  dayCode: 'P' | 'S' | 'OFF' | '';
+  effectiveShiftCode: 'P' | 'S'; // Dominant / active working shift for Shift 1 vs Shift 2 mapping
+  isOffOnSelectedDay: boolean;
+  countP: number;
+  countS: number;
+  countOff: number;
+}
+
+export function resolveRowOperationalShift(
+  row: ParsedScheduleRow,
+  daysCount: number,
+  referenceDay?: number
+): RowOperationalShiftInfo {
+  let countP = 0;
+  let countS = 0;
+  let countOff = 0;
+
+  for (let d = 1; d <= daysCount; d++) {
+    const val = normalizeUpper(row.shifts[d]);
+    if (val === 'P') countP++;
+    else if (val === 'S') countS++;
+    else if (val === 'OFF' || val === 'O') countOff++;
+  }
+
+  const dominantCode: 'P' | 'S' = countS > countP ? 'S' : 'P';
+
+  if (referenceDay && referenceDay >= 1) {
+    const dayRaw = normalizeUpper(row.shifts[referenceDay]);
+    if (dayRaw === 'P') {
+      return { dayCode: 'P', effectiveShiftCode: 'P', isOffOnSelectedDay: false, countP, countS, countOff };
+    }
+    if (dayRaw === 'S') {
+      return { dayCode: 'S', effectiveShiftCode: 'S', isOffOnSelectedDay: false, countP, countS, countOff };
+    }
+    if (dayRaw === 'OFF' || dayRaw === 'O') {
+      return { dayCode: 'OFF', effectiveShiftCode: dominantCode, isOffOnSelectedDay: true, countP, countS, countOff };
+    }
+  }
+
+  return {
+    dayCode: dominantCode,
+    effectiveShiftCode: dominantCode,
+    isOffOnSelectedDay: false,
+    countP,
+    countS,
+    countOff,
   };
 }
 

@@ -47,6 +47,11 @@ import {
 import { calculateShiftDuration } from '../utils/shiftUtils';
 import { normalizeFrequencyCode, getNextProgramDayStatus } from '../utils/mcpUtils';
 import {
+  buildRowsFromEntries,
+  resolveRowOperationalShift,
+  resolveShift1AndShift2,
+} from '../utils/workScheduleExcel';
+import {
   INITIAL_AREAS,
   INITIAL_CLEANERS,
   INITIAL_SHIFTS,
@@ -417,6 +422,10 @@ interface CleaningContextType {
     fileName?: string;
     entries: UploadedWorkScheduleEntry[];
   }) => Promise<UploadedWorkScheduleDocument>;
+  syncUploadedScheduleToCleaners: (
+    doc: UploadedWorkScheduleDocument,
+    referenceDay?: number
+  ) => Promise<{ syncedCount: number; createdCount: number; updatedCount: number }>;
   deleteUploadedWorkSchedule: (id: string) => Promise<void>;
 
   // Pengaturan Data Perusahaan & Kop Surat Dokumen PDF
@@ -2727,6 +2736,126 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     deleteRecord(COLLECTIONS.COMPLAINTS, id).catch((err) => notifyServerError('menghapus komplain', err));
   };
 
+  const syncUploadedScheduleToCleaners = async (
+    doc: UploadedWorkScheduleDocument,
+    referenceDay?: number
+  ): Promise<{ syncedCount: number; createdCount: number; updatedCount: number }> => {
+    const projectKey = doc.projectId || safeActiveProjectId || defaultProjectId || 'global';
+    const activeProj = projects.find((p) => p.id === projectKey);
+    const compId = doc.company_id || doc.companyId || activeProj?.company_id || activeProj?.companyId || currentCompany?.id || 'comp-main';
+    const projectShifts = shifts.filter(
+      (s) =>
+        (!s.projectId && (!s.projectIds || s.projectIds.length === 0)) ||
+        s.projectId === projectKey ||
+        s.projectIds?.includes(projectKey)
+    );
+    const { shift1, shift2 } = resolveShift1AndShift2(projectShifts.length > 0 ? projectShifts : shifts);
+
+    const { rows, daysCount } = buildRowsFromEntries(doc.entries || []);
+    const effectiveDaysCount = doc.daysCount || daysCount;
+    const now = new Date();
+    const fallbackDay =
+      now.getMonth() + 1 === doc.bulan && now.getFullYear() === doc.tahun
+        ? Math.min(now.getDate(), effectiveDaysCount)
+        : 1;
+    const refDay = referenceDay && referenceDay >= 1 ? Math.min(referenceDay, effectiveDaysCount) : fallbackDay;
+    const nowTimeStr = now.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB';
+
+    const seenNames = new Set<string>();
+    const newCleanersToPersist: Cleaner[] = [];
+    const updatedCleanerPatches: Array<{ id: string; patch: Partial<Cleaner> }> = [];
+    let createdCount = 0;
+    let updatedCount = 0;
+
+    // Build next snapshot against cleanersRef.current
+    const workingList = [...cleanersRef.current];
+
+    rows.forEach((row, idx) => {
+      const cleanName = (row.nama || '').trim();
+      if (!cleanName || row.isSlotKosong || cleanName.toUpperCase() === 'SLOT KOSONG') {
+        return;
+      }
+      const normKey = cleanName.toLowerCase();
+      if (seenNames.has(normKey)) return;
+      seenNames.add(normKey);
+
+      const cleanArea = row.area && row.area !== '-' ? row.area.trim() : '';
+      const shiftInfo = resolveRowOperationalShift(row, effectiveDaysCount, refDay);
+      const targetShift = shiftInfo.effectiveShiftCode === 'S' ? shift2 : shift1;
+
+      const existingIdx = workingList.findIndex(
+        (c) =>
+          (c.projectId || defaultProjectId || 'global') === projectKey &&
+          c.name.trim().toLowerCase() === normKey
+      );
+
+      if (existingIdx >= 0) {
+        const existing = workingList[existingIdx];
+        const patch: Partial<Cleaner> = {
+          name: cleanName,
+          workPlotting: cleanArea || existing.workPlotting || '',
+          workPlottingUpdatedAt: nowTimeStr,
+          shiftId: targetShift.id,
+          shiftName: targetShift.name,
+        };
+        workingList[existingIdx] = { ...existing, ...patch };
+        updatedCleanerPatches.push({ id: existing.id, patch });
+        updatedCount++;
+      } else {
+        const newId = `cln-${Date.now()}-${idx}`;
+        const created: Cleaner = {
+          id: newId,
+          projectId: projectKey,
+          company_id: compId,
+          companyId: compId,
+          nik: '',
+          name: cleanName,
+          phone: '',
+          photoUrl: '',
+          shiftId: targetShift.id,
+          shiftName: targetShift.name,
+          assignedAreas: [],
+          status: 'active',
+          rating: 5,
+          tasksCompletedToday: 0,
+          totalTasksToday: 0,
+          isClockedIn: false,
+          attendance: {},
+          attendanceByMonth: {},
+          workPlotting: cleanArea,
+          workPlottingUpdatedAt: nowTimeStr,
+        };
+        workingList.push(created);
+        newCleanersToPersist.push(created);
+        createdCount++;
+      }
+    });
+
+    cleanersRef.current = workingList;
+    setCleaners(workingList);
+
+    // Persist updates and new cleaners cleanly to backend
+    for (const { id, patch } of updatedCleanerPatches) {
+      enqueueCleanerWrite(id, 'menyinkronkan petugas dari jadwal kerja', (base) => ({
+        ...base,
+        ...patch,
+      }));
+    }
+
+    for (const item of newCleanersToPersist) {
+      const writePromise = upsertRecord(COLLECTIONS.CLEANERS, item)
+        .then((saved) => syncCleanerRev(saved))
+        .catch((err) => notifyServerError('menambah petugas hasil sinkron jadwal', err));
+      cleanerWriteQueueRef.current.set(item.id, writePromise);
+    }
+
+    return {
+      syncedCount: createdCount + updatedCount,
+      createdCount,
+      updatedCount,
+    };
+  };
+
   const saveUploadedWorkSchedule = async (payload: {
     bulan: number;
     tahun: number;
@@ -2780,6 +2909,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         }
         return [...prev, saved];
       });
+      await syncUploadedScheduleToCleaners(saved);
       return saved;
     } catch (err) {
       notifyServerError('menyimpan jadwal kerja upload', err);
@@ -5788,6 +5918,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         deleteSchedule,
         deleteComplaint,
         saveUploadedWorkSchedule,
+        syncUploadedScheduleToCleaners,
         deleteUploadedWorkSchedule,
 
         // Verifikasi / Approval Berjenjang Controller
