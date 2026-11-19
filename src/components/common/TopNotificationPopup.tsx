@@ -15,11 +15,12 @@ import { onRecordChange } from '../../services/apiService';
 import { COLLECTIONS } from '../../services/apiService';
 
 export type TopPopupCategory =
-  | 'checklist_overdue' // Jadwal Ceklist Terlewat
-  | 'deadline_reminder' // Pengingat Batas Waktu!
-  | 'new_complaint'     // Komplain Baru Diterima!
-  | 'qc_approved'       // Inspeksi QC Disetujui
-  | 'damage_report';    // Laporan Kerusakan
+  | 'checklist_overdue'     // Jadwal Ceklist Terlewat
+  | 'mcp_checklist_reminder'// Pengingat Ceklist MCP 1 Jam
+  | 'deadline_reminder'     // Pengingat Batas Waktu!
+  | 'new_complaint'         // Komplain Baru Diterima!
+  | 'qc_approved'           // Inspeksi QC Disetujui
+  | 'damage_report';        // Laporan Kerusakan
 
 export interface TopPopupItem {
   id: string;
@@ -29,6 +30,8 @@ export interface TopPopupItem {
   timestamp: string;
   projectName?: string;
   targetTab: string;
+  targetAreaId?: string;
+  actionLabel?: string;
   metaId?: string;
 }
 
@@ -43,7 +46,7 @@ function playNotificationTone(category: TopPopupCategory) {
     osc.connect(gain);
     gain.connect(ctx.destination);
 
-    if (category === 'new_complaint' || category === 'checklist_overdue') {
+    if (category === 'new_complaint' || category === 'checklist_overdue' || category === 'mcp_checklist_reminder') {
       // High-priority dual chime
       osc.type = 'sine';
       osc.frequency.setValueAtTime(587.33, ctx.currentTime); // D5
@@ -78,7 +81,7 @@ function playNotificationTone(category: TopPopupCategory) {
 function triggerHaptic(category: TopPopupCategory) {
   try {
     if (typeof navigator !== 'undefined' && navigator.vibrate) {
-      if (category === 'new_complaint' || category === 'checklist_overdue') {
+      if (category === 'new_complaint' || category === 'checklist_overdue' || category === 'mcp_checklist_reminder') {
         navigator.vibrate([100, 50, 100, 50, 150]);
       } else {
         navigator.vibrate([80, 40, 80]);
@@ -96,6 +99,7 @@ export const TopNotificationPopup: React.FC = () => {
     dailyChecklists,
     tasks,
     acknowledgeComplaintNotifications,
+    setSelectedChecklistLocationId,
   } = useCleaning();
 
   const [popups, setPopups] = useState<TopPopupItem[]>([]);
@@ -139,6 +143,9 @@ export const TopNotificationPopup: React.FC = () => {
         setActiveTab('klien-mode');
       }
       return;
+    }
+    if (popup.targetAreaId) {
+      setSelectedChecklistLocationId(popup.targetAreaId);
     }
     if (popup.category === 'new_complaint') {
       acknowledgeComplaintNotifications();
@@ -325,7 +332,7 @@ const TopPopupCard: React.FC<{
 }> = ({ popup, onClose, onAction, touchStartYRef }) => {
   const [progress, setProgress] = useState(100);
   const [isPaused, setIsPaused] = useState(false);
-  const DURATION_MS = 8000;
+  const DURATION_MS = popup.category === 'mcp_checklist_reminder' ? 15000 : 8000;
 
   useEffect(() => {
     if (isPaused) return;
@@ -411,7 +418,13 @@ const TopPopupCard: React.FC<{
               {popup.title}
             </h4>
 
-            <p className="text-[11px] sm:text-xs text-slate-600 mt-0.5 leading-relaxed line-clamp-2">
+            <p
+              className={`text-[11px] sm:text-xs text-slate-600 mt-0.5 leading-relaxed ${
+                popup.category === 'mcp_checklist_reminder'
+                  ? 'max-h-36 overflow-y-auto whitespace-normal break-words pr-1'
+                  : 'line-clamp-2'
+              }`}
+            >
               {popup.message}
             </p>
 
@@ -422,7 +435,7 @@ const TopPopupCard: React.FC<{
                 onClick={onAction}
                 className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all shadow-xs cursor-pointer active:scale-95 ${config.buttonClass}`}
               >
-                <span>{config.actionLabel}</span>
+                <span>{popup.actionLabel || config.actionLabel}</span>
                 <ChevronRight className="w-3.5 h-3.5" />
               </button>
 
@@ -469,6 +482,18 @@ function getCategoryConfig(category: TopPopupCategory) {
         buttonClass: 'bg-rose-600 hover:bg-rose-700 text-white',
         progressClass: 'bg-rose-500',
         actionLabel: 'Buka Ceklist Area',
+      };
+    case 'mcp_checklist_reminder':
+      return {
+        label: 'Pengingat Ceklist MCP',
+        icon: ClipboardList,
+        iconWrapClass: 'bg-amber-600 text-white shadow-amber-200',
+        bgClass: 'bg-white/95 border-amber-300/80',
+        borderClass: 'ring-1 ring-amber-400/30',
+        badgeClass: 'bg-amber-100 text-amber-800 border-amber-200',
+        buttonClass: 'bg-emerald-600 hover:bg-emerald-700 text-white',
+        progressClass: 'bg-amber-500',
+        actionLabel: 'Buka ceklist',
       };
     case 'deadline_reminder':
       return {

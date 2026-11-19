@@ -68,6 +68,14 @@ import {
   getCurrentHourRangeLabel,
   findShiftForCurrentTime,
 } from '../../utils/shiftUtils';
+import { McpDailyChecklistSection } from './McpDailyChecklistSection';
+import {
+  getLocalDateParts,
+  getMcpDropdownOptions,
+  getTodayScheduledMcpItems,
+  isMcpOnlyOptionId,
+  resolveSelectedAreaKey,
+} from '../../utils/mcpChecklist';
 
 interface ShiftSlotDefinition {
   hour: number;
@@ -107,6 +115,9 @@ export const CeklistAreaView: React.FC = () => {
     companyProfile,
     selectedChecklistLocationId,
     setSelectedChecklistLocationId,
+    uploadedMcpPrograms,
+    mcpChecklistResults,
+    saveMcpChecklistResults,
   } = useCleaning();
 
   const [selectedDate, setSelectedDate] = useState<string>(() => getTodayDateString());
@@ -119,10 +130,32 @@ export const CeklistAreaView: React.FC = () => {
   const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
   const [currentTime, setCurrentTime] = useState<Date>(new Date());
 
-  // Real-time minute interval to keep the rentang jam slot indicator active & up to date
+  // Request browser notification permission the first time the user opens Ceklist Kebersihan Area
+  useEffect(() => {
+    if (typeof window === 'undefined' || !('Notification' in window)) return;
+    try {
+      const askedKey = 'sco_mcp_notif_permission_asked';
+      if (!localStorage.getItem(askedKey) && Notification.permission === 'default') {
+        localStorage.setItem(askedKey, '1');
+        Notification.requestPermission().catch(() => {});
+      }
+    } catch {
+      // Ignore storage / browser permission restrictions
+    }
+  }, []);
+
+  // Real-time minute interval to keep the rentang jam slot indicator active & detect date rollover
   useEffect(() => {
     const timer = setInterval(() => {
-      setCurrentTime(new Date());
+      setCurrentTime((prev) => {
+        const next = new Date();
+        const prevDate = getLocalDateParts(prev).dateStr;
+        const nextDate = getLocalDateParts(next).dateStr;
+        if (prevDate !== nextDate) {
+          setSelectedDate((curSel) => (curSel === prevDate ? nextDate : curSel));
+        }
+        return next;
+      });
     }, 15000);
     return () => clearInterval(timer);
   }, []);
@@ -194,27 +227,60 @@ export const CeklistAreaView: React.FC = () => {
     };
   }, [showKopModal, showAddLocationModal, showAddManualItemModal]);
 
+  const todayParts = useMemo(
+    () => getLocalDateParts(currentTime),
+    [currentTime.getFullYear(), currentTime.getMonth(), currentTime.getDate()]
+  );
+
+  const todayScheduledMcpItems = useMemo(
+    () => getTodayScheduledMcpItems(uploadedMcpPrograms, checklistLocations, currentTime),
+    [uploadedMcpPrograms, checklistLocations, todayParts.dateStr]
+  );
+
+  const areaDropdownOptions = useMemo(
+    () => getMcpDropdownOptions(todayScheduledMcpItems, checklistLocations),
+    [todayScheduledMcpItems, checklistLocations]
+  );
+
   // Synchronize selectedLocationId when active project changes or selectedChecklistLocationId is set
   useEffect(() => {
     if (selectedChecklistLocationId) {
-      const exists = checklistLocations.some((loc) => loc.id === selectedChecklistLocationId);
-      if (exists) {
+      const existsInOptions =
+        areaDropdownOptions.some((opt) => opt.value === selectedChecklistLocationId) ||
+        isMcpOnlyOptionId(selectedChecklistLocationId);
+      if (existsInOptions) {
         setSelectedLocationId(selectedChecklistLocationId);
         return;
       }
     }
-    if (checklistLocations.length > 0) {
-      const exists = checklistLocations.some((loc) => loc.id === selectedLocationId);
+    if (areaDropdownOptions.length > 0) {
+      const exists = areaDropdownOptions.some((opt) => opt.value === selectedLocationId);
       if (!exists) {
-        setSelectedLocationId(checklistLocations[0].id);
+        setSelectedLocationId(areaDropdownOptions[0].value);
       }
     }
-  }, [checklistLocations, selectedLocationId, selectedChecklistLocationId]);
+  }, [areaDropdownOptions, selectedLocationId, selectedChecklistLocationId]);
 
-  // Make sure we have a valid selected location
+  const selectedAreaKey = useMemo(
+    () => resolveSelectedAreaKey(selectedLocationId, checklistLocations),
+    [selectedLocationId, checklistLocations]
+  );
+
+  const areaTodayMcpItems = useMemo(() => {
+    if (!selectedAreaKey) return [];
+    return todayScheduledMcpItems.filter((item) => item.areaKey === selectedAreaKey);
+  }, [todayScheduledMcpItems, selectedAreaKey]);
+
+  // Make sure we have a valid selected location for hourly table / PDF fallback
   const currentLocation =
     checklistLocations.find((l) => l.id === selectedLocationId) ||
     checklistLocations[0];
+
+  const selectedAreaDisplayLabel = useMemo(() => {
+    const matchedOpt = areaDropdownOptions.find((opt) => opt.value === selectedLocationId);
+    if (matchedOpt) return matchedOpt.label;
+    return currentLocation?.name || selectedAreaKey || 'Area Proyek';
+  }, [areaDropdownOptions, selectedLocationId, selectedAreaKey, currentLocation?.name]);
 
   useEffect(() => {
     if (activeProject?.id && currentLocation?.id && selectedDate) {
@@ -578,7 +644,7 @@ export const CeklistAreaView: React.FC = () => {
                   Pemetaan Lokasi Kerja ➔
                 </button>
                 <span className="hidden md:inline-block text-[10px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-200">
-                  {checklistLocations.length} Area
+                  {areaDropdownOptions.length} Area
                 </span>
               </div>
             </div>
@@ -592,9 +658,9 @@ export const CeklistAreaView: React.FC = () => {
                 aria-label="Pilih Area Proyek"
                 className="w-full pl-3 pr-8 py-2 bg-emerald-50/50 border border-emerald-200 rounded-xl text-xs font-bold text-slate-900 focus:ring-2 focus:ring-sky-500 appearance-none cursor-pointer"
               >
-                {checklistLocations.map((loc) => (
-                  <option key={loc.id} value={loc.id}>
-                    {loc.name} ({loc.floor})
+                {areaDropdownOptions.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}{opt.todayCount > 0 ? ` — ${opt.todayCount} Pekerjaan MCP Hari Ini` : ''}
                   </option>
                 ))}
               </select>
@@ -778,32 +844,66 @@ export const CeklistAreaView: React.FC = () => {
         </div>
 
         {/* Location selector pills for fast 1-click area navigation */}
-        {checklistLocations.length > 1 && (
+        {areaDropdownOptions.length > 1 && (
           <div
             className={`pt-2 items-center gap-1.5 overflow-x-auto pb-1 text-xs ${
               userRole === 'supervisor' || userRole === 'petugas' ? 'hidden lg:flex' : 'flex'
             }`}
           >
             <span className="text-[11px] font-bold text-slate-400 mr-1 whitespace-nowrap">Area Proyek:</span>
-            {checklistLocations.map((loc) => {
-              const isSelected = selectedLocationId === loc.id;
+            {areaDropdownOptions.map((opt) => {
+              const isSelected = selectedLocationId === opt.value;
               return (
                 <button
-                  key={loc.id}
-                  onClick={() => setSelectedLocationId(loc.id)}
-                  className={`px-2.5 py-1 rounded-lg text-xs whitespace-nowrap font-medium transition-all ${
+                  key={opt.value}
+                  onClick={() => {
+                    setSelectedLocationId(opt.value);
+                    setSelectedChecklistLocationId?.(opt.value);
+                  }}
+                  className={`px-2.5 py-1 rounded-lg text-xs whitespace-nowrap font-medium transition-all flex items-center gap-1 ${
                     isSelected
                       ? 'bg-emerald-700 text-white font-bold shadow-xs'
                       : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
                   }`}
                 >
-                  {loc.name} <span className="text-[10px] opacity-80">({loc.floor})</span>
+                  <span>{opt.label}</span>
+                  {opt.todayCount > 0 && (
+                    <span
+                      className={`text-[10px] px-1.5 py-0.2 rounded font-bold ${
+                        isSelected ? 'bg-emerald-900/40 text-emerald-50' : 'bg-emerald-100 text-emerald-800'
+                      }`}
+                    >
+                      {opt.todayCount}
+                    </span>
+                  )}
                 </button>
               );
             })}
           </div>
         )}
       </div>
+
+      {/* DAFTAR CEKLIST OTOMATIS DARI MCP HARI INI */}
+      <McpDailyChecklistSection
+        todayParts={todayParts}
+        selectedAreaLabel={selectedAreaDisplayLabel}
+        allTodayItems={todayScheduledMcpItems}
+        areaTodayItems={areaTodayMcpItems}
+        savedResults={mcpChecklistResults}
+        onSelectAreaValue={(optVal) => {
+          setSelectedLocationId(optVal);
+          setSelectedChecklistLocationId?.(optVal);
+        }}
+        onSave={async (entries) => {
+          await saveMcpChecklistResults({
+            date: todayParts.dateStr,
+            bulan: todayParts.bulan,
+            tahun: todayParts.tahun,
+            tanggal: todayParts.tanggal,
+            entries,
+          });
+        }}
+      />
 
       {/* Quick KPI Stat Chips */}
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">

@@ -38,6 +38,7 @@ export const COLLECTIONS = {
   SCHEDULES: 'schedules',
   UPLOADED_WORK_SCHEDULES: 'uploaded_work_schedules',
   UPLOADED_MCP: 'uploaded_mcp_programs',
+  MCP_CHECKLIST_RESULTS: 'mcp_checklist_results',
   INSPECTIONS: 'inspections',
   NOTIFICATIONS: 'notifications',
   PROJECTS: 'projects',

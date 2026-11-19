@@ -45,6 +45,8 @@ import {
   UploadedWorkScheduleEntry,
   UploadedMcpDocument,
   UploadedMcpRow,
+  McpChecklistResultRecord,
+  McpChecklistStatus,
 } from '../types';
 import { calculateShiftDuration } from '../utils/shiftUtils';
 import { normalizeFrequencyCode, getNextProgramDayStatus } from '../utils/mcpUtils';
@@ -54,6 +56,7 @@ import {
   resolveShift1AndShift2,
 } from '../utils/workScheduleExcel';
 import { normalizeLokasiProyekKey } from '../utils/mcpExcel';
+import { makeMcpChecklistRecordId, TodayScheduledMcpItem } from '../utils/mcpChecklist';
 import {
   INITIAL_AREAS,
   INITIAL_CLEANERS,
@@ -263,6 +266,7 @@ interface CleaningContextType {
   schedules: CleaningSchedule[];
   uploadedWorkSchedules: UploadedWorkScheduleDocument[];
   uploadedMcpPrograms: UploadedMcpDocument[];
+  mcpChecklistResults: McpChecklistResultRecord[];
   tasks: CleaningTask[];
   inspections: QCInspection[];
   complaints: Complaint[];
@@ -450,6 +454,18 @@ interface CleaningContextType {
     newValue: string
   ) => Promise<void>;
   deleteUploadedMcpProgram: (id: string) => Promise<void>;
+
+  // Ceklist Kebersihan Area (Otomatis dari MCP Hari Ini)
+  saveMcpChecklistResults: (payload: {
+    date: string;
+    bulan: number;
+    tahun: number;
+    tanggal: number;
+    entries: Array<{
+      item: TodayScheduledMcpItem;
+      status: McpChecklistStatus;
+    }>;
+  }) => Promise<McpChecklistResultRecord[]>;
 
   // Pengaturan Data Perusahaan & Kop Surat Dokumen PDF
   companyProfile: CompanyProfile;
@@ -1089,6 +1105,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const [schedules, setSchedules] = useState<CleaningSchedule[]>(INITIAL_SCHEDULES);
   const [uploadedWorkSchedules, setUploadedWorkSchedules] = useState<UploadedWorkScheduleDocument[]>([]);
   const [uploadedMcpPrograms, setUploadedMcpPrograms] = useState<UploadedMcpDocument[]>([]);
+  const [mcpChecklistResults, setMcpChecklistResults] = useState<McpChecklistResultRecord[]>([]);
   const [tasks, setTasks] = useState<CleaningTask[]>(INITIAL_TASKS);
   const [inspections, setInspections] = useState<QCInspection[]>(INITIAL_INSPECTIONS);
   const [complaints, setComplaints] = useState<Complaint[]>(INITIAL_COMPLAINTS);
@@ -1401,6 +1418,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         remoteSpecial,
         remoteMcp,
         remoteUploadedMcp,
+        remoteMcpChecklistResults,
         remoteTurnovers,
         remoteKlienItems,
         remoteKlienInspections,
@@ -1428,6 +1446,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         pullCol<SpecialJobItem>(COLLECTIONS.SPECIAL_JOBS),
         pullCol<MasterCleaningProgramItem>(COLLECTIONS.MASTER_PROGRAMS),
         pullCol<UploadedMcpDocument>(COLLECTIONS.UPLOADED_MCP),
+        pullCol<McpChecklistResultRecord>(COLLECTIONS.MCP_CHECKLIST_RESULTS),
         pullCol<EmployeeTurnoverRecord>(COLLECTIONS.EMPLOYEE_TURNOVERS),
         pullCol<KlienChecklistItem>(COLLECTIONS.KLIEN_CHECKLIST_ITEMS),
         pullCol<KlienChecklistInspection>(COLLECTIONS.KLIEN_CHECKLIST_INSPECTIONS),
@@ -1464,6 +1483,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           }))
         );
         setUploadedMcpPrograms(remoteUploadedMcp);
+        setMcpChecklistResults(remoteMcpChecklistResults);
         setEmployeeTurnovers(remoteTurnovers);
         setKlienChecklistItems(remoteKlienItems);
         setKlienChecklistInspections(remoteKlienInspections);
@@ -1531,6 +1551,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         applyDeltaCollection(remoteSpecial, setSpecialJobs);
         applyDeltaCollection(remoteMcp, setMasterPrograms);
         applyDeltaCollection(remoteUploadedMcp, setUploadedMcpPrograms);
+        applyDeltaCollection(remoteMcpChecklistResults, setMcpChecklistResults);
         applyDeltaCollection(remoteTurnovers, setEmployeeTurnovers);
         applyDeltaCollection(remoteKlienItems, setKlienChecklistItems);
         applyDeltaCollection(remoteKlienInspections, setKlienChecklistInspections);
@@ -1838,6 +1859,9 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           case COLLECTIONS.UPLOADED_MCP:
             setUploadedMcpPrograms((prev) => keepOtherProject(prev));
             break;
+          case COLLECTIONS.MCP_CHECKLIST_RESULTS:
+            setMcpChecklistResults((prev) => keepOtherProject(prev));
+            break;
           case COLLECTIONS.EMPLOYEE_TURNOVERS:
             setEmployeeTurnovers((prev) => keepOtherProject(prev));
             break;
@@ -1889,6 +1913,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           case COLLECTIONS.SPECIAL_JOBS: setSpecialJobs((prev) => prev.filter((s) => s.id !== id)); break;
           case COLLECTIONS.MASTER_PROGRAMS: setMasterPrograms((prev) => prev.filter((m) => m.id !== id)); break;
           case COLLECTIONS.UPLOADED_MCP: setUploadedMcpPrograms((prev) => prev.filter((m) => m.id !== id)); break;
+          case COLLECTIONS.MCP_CHECKLIST_RESULTS: setMcpChecklistResults((prev) => prev.filter((m) => m.id !== id)); break;
           case COLLECTIONS.EMPLOYEE_TURNOVERS: setEmployeeTurnovers((prev) => prev.filter((e) => e.id !== id)); break;
           case COLLECTIONS.KLIEN_CHECKLIST_ITEMS: setKlienChecklistItems((prev) => prev.filter((k) => k.id !== id)); break;
           case COLLECTIONS.KLIEN_CHECKLIST_INSPECTIONS: setKlienChecklistInspections((prev) => prev.filter((k) => k.id !== id)); break;
@@ -1963,6 +1988,13 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             break;
           case COLLECTIONS.UPLOADED_MCP:
             setUploadedMcpPrograms((prev) => {
+              const idx = prev.findIndex((u) => u.id === id);
+              if (idx >= 0) { const next = [...prev]; next[idx] = { ...next[idx], ...data }; return next; }
+              return [...prev, data];
+            });
+            break;
+          case COLLECTIONS.MCP_CHECKLIST_RESULTS:
+            setMcpChecklistResults((prev) => {
               const idx = prev.findIndex((u) => u.id === id);
               if (idx >= 0) { const next = [...prev]; next[idx] = { ...next[idx], ...data }; return next; }
               return [...prev, data];
@@ -3122,6 +3154,91 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
   };
 
+  const saveMcpChecklistResults = async (payload: {
+    date: string;
+    bulan: number;
+    tahun: number;
+    tanggal: number;
+    entries: Array<{
+      item: TodayScheduledMcpItem;
+      status: McpChecklistStatus;
+    }>;
+  }): Promise<McpChecklistResultRecord[]> => {
+    if (!payload.entries || payload.entries.length === 0) return [];
+    const projectKey = safeActiveProjectId || defaultProjectId || 'global';
+    const activeProj = projects.find((p) => p.id === projectKey);
+    const compId = activeProj?.company_id || activeProj?.companyId || currentCompany?.id || 'comp-main';
+    const checkedAt = new Date().toISOString();
+    const checkedBy = currentUser?.name || 'Petugas';
+
+    const recordsToSave: McpChecklistResultRecord[] = payload.entries.map(({ item, status }) => {
+      const recId = makeMcpChecklistRecordId(projectKey, payload.date, item);
+      const existing = mcpChecklistResults.find((r) => r.id === recId);
+      return {
+        id: recId,
+        projectId: projectKey,
+        company_id: compId,
+        companyId: compId,
+        date: payload.date,
+        bulan: payload.bulan,
+        tahun: payload.tahun,
+        tanggal: payload.tanggal,
+        areaKey: item.areaKey,
+        lokasi_kerja: item.lokasi_kerja,
+        docId: item.docId,
+        rowId: item.rowId,
+        area_pekerjaan: item.area_pekerjaan,
+        jenis_pekerjaan: item.jenis_pekerjaan,
+        frq: item.frq,
+        status,
+        checkedAt,
+        checkedBy,
+        ...(existing?._rev ? { _rev: existing._rev, _baseRev: existing._rev } : {}),
+      };
+    });
+
+    setMcpChecklistResults((prev) => {
+      const next = [...prev];
+      for (const rec of recordsToSave) {
+        const idx = next.findIndex((r) => r.id === rec.id);
+        if (idx >= 0) {
+          next[idx] = rec;
+        } else {
+          next.push(rec);
+        }
+      }
+      return next;
+    });
+
+    try {
+      const savedList = await Promise.all(
+        recordsToSave.map((rec) =>
+          upsertWithConflictResolution(
+            COLLECTIONS.MCP_CHECKLIST_RESULTS,
+            rec,
+            setMcpChecklistResults
+          )
+        )
+      );
+      setMcpChecklistResults((prev) => {
+        const next = [...prev];
+        for (const saved of savedList) {
+          const idx = next.findIndex((r) => r.id === saved.id);
+          if (idx >= 0) {
+            next[idx] = saved;
+          } else {
+            next.push(saved);
+          }
+        }
+        return next;
+      });
+      return savedList;
+    } catch (err) {
+      notifyServerError('menyimpan ceklist kebersihan MCP', err);
+      throw err;
+    }
+  };
+
   // Project Location CRUD
   const addProject = (proj: Omit<ProjectLocation, 'id' | 'createdAt'>) => {
     const id = `proj-${Date.now()}`;
@@ -4030,6 +4147,9 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   );
   const filteredUploadedMcpPrograms = uploadedMcpPrograms.filter(
     (m) => (m.projectId || defaultProjectId) === safeActiveProjectId
+  );
+  const filteredMcpChecklistResults = mcpChecklistResults.filter(
+    (r) => (r.projectId || defaultProjectId) === safeActiveProjectId
   );
   const filteredTasks = tasks.filter((t) => (t.projectId || defaultProjectId) === safeActiveProjectId);
   const filteredInspections = inspections.filter((i) => (i.projectId || defaultProjectId) === safeActiveProjectId);
@@ -6044,6 +6164,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         schedules: filteredSchedules,
         uploadedWorkSchedules: filteredUploadedWorkSchedules,
         uploadedMcpPrograms: filteredUploadedMcpPrograms,
+        mcpChecklistResults: filteredMcpChecklistResults,
         tasks: filteredTasks,
         inspections: filteredInspections,
         complaints: filteredComplaints,
@@ -6123,6 +6244,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         saveUploadedMcpProgram,
         updateUploadedMcpCell,
         deleteUploadedMcpProgram,
+        saveMcpChecklistResults,
 
         // Verifikasi / Approval Berjenjang Controller
         verifyTaskApproval,

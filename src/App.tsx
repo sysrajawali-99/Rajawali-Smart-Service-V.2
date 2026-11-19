@@ -27,6 +27,7 @@ import { OverdueAlertBanner } from './components/layout/OverdueAlertBanner';
 import { InstallPrompt } from './components/InstallPrompt';
 import { TestModeBanner } from './components/common/TestModeBanner';
 import { TopNotificationPopup, triggerTopNotification } from './components/common/TopNotificationPopup';
+import { McpHourlyReminderMonitor } from './components/common/McpHourlyReminderMonitor';
 import { ShieldAlert } from 'lucide-react';
 import { updateDocumentFavicon, updateDocumentTitle, getActiveAppIcon } from './utils/dynamicFavicon';
 import { setAppBadgeCount, clearAppBadgeCount } from './utils/appBadge';
@@ -222,6 +223,7 @@ const MainLayout: React.FC = () => {
   return (
     <div className="h-screen flex flex-col bg-slate-50 font-sans text-slate-900 antialiased selection:bg-sky-500 selection:text-white overflow-hidden">
       <TopNotificationPopup />
+      <McpHourlyReminderMonitor />
       <TestModeBanner />
       <Header />
       <OverdueAlertBanner />

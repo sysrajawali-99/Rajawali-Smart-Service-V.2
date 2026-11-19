@@ -803,3 +803,28 @@ export interface UploadedMcpDocument {
   _rev?: string;
   _baseRev?: string;
 }
+
+export type McpChecklistStatus = 'B' | 'K' | 'R';
+
+export interface McpChecklistResultRecord {
+  id: string;
+  projectId?: string;
+  company_id?: string;
+  companyId?: string;
+  date: string; // YYYY-MM-DD (device local date)
+  bulan: number; // 1-12
+  tahun: number;
+  tanggal: number; // 1-31
+  areaKey: string; // Normalized lokasi_kerja key
+  lokasi_kerja: string;
+  docId?: string;
+  rowId: string;
+  area_pekerjaan: string;
+  jenis_pekerjaan: string;
+  frq: string;
+  status: McpChecklistStatus;
+  checkedAt: string; // ISO timestamp
+  checkedBy: string; // User name
+  _rev?: string;
+  _baseRev?: string;
+}
