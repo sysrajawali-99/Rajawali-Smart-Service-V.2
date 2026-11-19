@@ -14,6 +14,7 @@ import {
   Info,
   Layers,
   MapPin,
+  Plus,
   RotateCcw,
   Save,
   Search,
@@ -44,6 +45,12 @@ import {
   getNextMonthPeriod,
   sortMcpDocsByLatestPeriod,
 } from '../../utils/mcpNextMonth';
+import {
+  ManualMcpItemInput,
+  deleteManualMcpRow,
+  upsertManualMcpRow,
+} from '../../utils/mcpManualItem';
+import { AddEditMcpItemModal } from './AddEditMcpItemModal';
 
 export type McpReportMode = 'MCP' | 'DAILY' | 'WEEKLY' | 'MONTHLY';
 
@@ -105,6 +112,8 @@ interface PlanningReportGridProps {
   rows: UploadedMcpRow[];
   editable?: boolean;
   onCellChange?: (rowKey: string, tanggal: number, newValue: string) => Promise<void> | void;
+  onEditManualRow?: (row: UploadedMcpRow) => void;
+  onDeleteManualRow?: (row: UploadedMcpRow) => void;
 }
 
 const PlanningReportGrid: React.FC<PlanningReportGridProps> = ({
@@ -117,6 +126,8 @@ const PlanningReportGrid: React.FC<PlanningReportGridProps> = ({
   rows,
   editable = false,
   onCellChange,
+  onEditManualRow,
+  onDeleteManualRow,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterLokasiKerja, setFilterLokasiKerja] = useState<string>('ALL');
@@ -529,12 +540,41 @@ const PlanningReportGrid: React.FC<PlanningReportGridProps> = ({
 
                       <td className="border-r border-slate-200 px-3 py-1.5 text-slate-800 font-semibold max-w-[260px]">
                         <div className="line-clamp-2 break-words">{row.jenis_pekerjaan || ''}</div>
-                        {row.needsManualCheck && (
-                          <span className="mt-1 inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-300 text-[9px] font-extrabold">
-                            <AlertTriangle className="w-2.5 h-2.5" />
-                            Lengkapi Manual
-                          </span>
-                        )}
+                        <div className="flex flex-wrap items-center gap-1 mt-1 empty:hidden">
+                          {row.isAddedManually && (
+                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-teal-50 text-teal-800 border border-teal-200 text-[9px] font-extrabold">
+                              Tambahan
+                            </span>
+                          )}
+                          {row.needsManualCheck && (
+                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-300 text-[9px] font-extrabold">
+                              <AlertTriangle className="w-2.5 h-2.5" />
+                              Lengkapi Manual
+                            </span>
+                          )}
+                          {row.isAddedManually && editable && onEditManualRow && onDeleteManualRow && (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => onEditManualRow(row)}
+                                className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-slate-100 hover:bg-sky-100 text-slate-700 hover:text-sky-800 border border-slate-200 text-[9px] font-bold cursor-pointer"
+                                title="Edit item pekerjaan tambahan"
+                              >
+                                <Edit3 className="w-2.5 h-2.5" />
+                                <span>Edit</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => onDeleteManualRow(row)}
+                                className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-[9px] font-bold cursor-pointer"
+                                title="Hapus item pekerjaan tambahan"
+                              >
+                                <Trash2 className="w-2.5 h-2.5" />
+                                <span>Hapus</span>
+                              </button>
+                            </>
+                          )}
+                        </div>
                       </td>
 
                       <td className="border-r border-slate-200 px-2 py-1.5 text-center whitespace-nowrap">
@@ -752,6 +792,7 @@ export const McpReportView: React.FC<McpReportViewProps> = ({ mode }) => {
     uploadedMcpPrograms,
     saveUploadedMcpProgram,
     updateUploadedMcpCell,
+    updateUploadedMcpRows,
     deleteUploadedMcpProgram,
     setActiveTab,
   } = useCleaning();
@@ -779,7 +820,7 @@ export const McpReportView: React.FC<McpReportViewProps> = ({ mode }) => {
     [sortedDocs, selectedDocId, latestDoc]
   );
 
-  // Upload states (ONLY active in mode === 'MCP')
+  // Upload & manual item states (ONLY active in mode === 'MCP')
   const now = new Date();
   const [showUploadPanel, setShowUploadPanel] = useState<boolean>(false);
   const [selectedMonth, setSelectedMonth] = useState<number>(now.getMonth() + 1);
@@ -794,10 +835,47 @@ export const McpReportView: React.FC<McpReportViewProps> = ({ mode }) => {
   const [showNextMonthConfirmModal, setShowNextMonthConfirmModal] = useState(false);
   const [isGeneratingNextMonth, setIsGeneratingNextMonth] = useState(false);
   const [nextMonthSummary, setNextMonthSummary] = useState<GeneratedNextMonthMcp | null>(null);
+  const [showManualItemModal, setShowManualItemModal] = useState(false);
+  const [editingManualRow, setEditingManualRow] = useState<UploadedMcpRow | null>(null);
+  const [deletingManualRow, setDeletingManualRow] = useState<UploadedMcpRow | null>(null);
+  const [isDeletingManualRow, setIsDeletingManualRow] = useState(false);
   const [bannerMessage, setBannerMessage] = useState<{
     type: 'success' | 'error' | 'info';
     text: string;
   } | null>(null);
+
+  const handleSaveManualItem = async (input: ManualMcpItemInput) => {
+    if (!activeDoc) return;
+    const { nextRows, savedRow } = upsertManualMcpRow(activeDoc.rows || [], input);
+    await updateUploadedMcpRows(activeDoc.id, nextRows);
+    setBannerMessage({
+      type: 'success',
+      text: input.editingRowId
+        ? `Item tambahan "${savedRow.area_pekerjaan} — ${savedRow.jenis_pekerjaan}" di ${savedRow.lokasi_kerja} berhasil diperbarui.`
+        : `Item pekerjaan "${savedRow.area_pekerjaan} — ${savedRow.jenis_pekerjaan}" (FRQ ${savedRow.frq}, ${savedRow.jadwal.length} tanggal "R") berhasil ditambahkan ke ${savedRow.lokasi_kerja}.`,
+    });
+  };
+
+  const handleConfirmDeleteManualRow = async () => {
+    if (!activeDoc || !deletingManualRow || isDeletingManualRow) return;
+    setIsDeletingManualRow(true);
+    try {
+      const nextRows = deleteManualMcpRow(activeDoc.rows || [], deletingManualRow.rowId);
+      await updateUploadedMcpRows(activeDoc.id, nextRows);
+      setBannerMessage({
+        type: 'success',
+        text: `Item tambahan "${deletingManualRow.area_pekerjaan} — ${deletingManualRow.jenis_pekerjaan}" berhasil dihapus.`,
+      });
+      setDeletingManualRow(null);
+    } catch (err: any) {
+      setBannerMessage({
+        type: 'error',
+        text: `Gagal menghapus item tambahan: ${err?.message || 'Terjadi kesalahan'}`,
+      });
+    } finally {
+      setIsDeletingManualRow(false);
+    }
+  };
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -1071,6 +1149,19 @@ export const McpReportView: React.FC<McpReportViewProps> = ({ mode }) => {
         <div className="flex flex-wrap items-center gap-2">
           {mode === 'MCP' ? (
             <>
+              {activeDoc && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingManualRow(null);
+                    setShowManualItemModal(true);
+                  }}
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-sky-600 hover:bg-sky-700 text-white text-xs font-bold shadow-xs transition-colors cursor-pointer"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Tambah Item Pekerjaan</span>
+                </button>
+              )}
               {latestDoc && (
                 <button
                   type="button"
@@ -1509,6 +1600,17 @@ export const McpReportView: React.FC<McpReportViewProps> = ({ mode }) => {
               onCellChange={(rowKey, tanggal, newValue) =>
                 updateUploadedMcpCell(activeDoc.id, rowKey, tanggal, newValue)
               }
+              onEditManualRow={
+                mode === 'MCP'
+                  ? (row) => {
+                      setEditingManualRow(row);
+                      setShowManualItemModal(true);
+                    }
+                  : undefined
+              }
+              onDeleteManualRow={
+                mode === 'MCP' ? (row) => setDeletingManualRow(row) : undefined
+              }
             />
           ) : (
             <div className="bg-white rounded-2xl border border-dashed border-slate-300 p-10 text-center space-y-3">
@@ -1778,6 +1880,61 @@ export const McpReportView: React.FC<McpReportViewProps> = ({ mode }) => {
                 className="px-4 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold shadow-xs cursor-pointer"
               >
                 Tutup &amp; Lihat MCP
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: TAMBAH / EDIT ITEM PEKERJAAN MANUAL */}
+      {mode === 'MCP' && activeDoc && (
+        <AddEditMcpItemModal
+          isOpen={showManualItemModal}
+          doc={activeDoc}
+          editingRow={editingManualRow}
+          onClose={() => {
+            setShowManualItemModal(false);
+            setEditingManualRow(null);
+          }}
+          onSubmit={handleSaveManualItem}
+        />
+      )}
+
+      {/* MODAL: KONFIRMASI HAPUS ITEM PEKERJAAN TAMBAHAN */}
+      {deletingManualRow && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4">
+          <div className="bg-white rounded-2xl p-5 max-w-md w-full border border-slate-200 shadow-2xl space-y-4">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-xl bg-rose-100 text-rose-700 flex items-center justify-center shrink-0">
+                <Trash2 className="w-5 h-5" />
+              </div>
+              <div className="space-y-1">
+                <h3 className="text-sm font-bold text-slate-900">
+                  Hapus Item Pekerjaan Tambahan Ini?
+                </h3>
+                <p className="text-xs text-slate-600 leading-relaxed">
+                  <strong>{deletingManualRow.lokasi_kerja}</strong> — {deletingManualRow.area_pekerjaan}:{' '}
+                  <strong>{deletingManualRow.jenis_pekerjaan}</strong> (FRQ: {deletingManualRow.frq || '-'}) akan dihapus dari MCP periode ini serta menu Activity terkait.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setDeletingManualRow(null)}
+                disabled={isDeletingManualRow}
+                className="px-4 py-2 rounded-xl border border-slate-200 text-slate-700 hover:bg-slate-50 text-xs font-bold cursor-pointer"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDeleteManualRow}
+                disabled={isDeletingManualRow}
+                className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold shadow-xs cursor-pointer"
+              >
+                {isDeletingManualRow ? 'Menghapus...' : 'Ya, Hapus Item'}
               </button>
             </div>
           </div>

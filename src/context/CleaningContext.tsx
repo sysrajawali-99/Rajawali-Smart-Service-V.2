@@ -453,6 +453,10 @@ interface CleaningContextType {
     tanggal: number,
     newValue: string
   ) => Promise<void>;
+  updateUploadedMcpRows: (
+    docId: string,
+    nextRows: UploadedMcpRow[]
+  ) => Promise<UploadedMcpDocument | undefined>;
   deleteUploadedMcpProgram: (id: string) => Promise<void>;
 
   // Ceklist Kebersihan Area (Otomatis dari MCP Hari Ini)
@@ -3037,6 +3041,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       jadwal: r.jadwal,
       ...(r.sheet ? { sheet: r.sheet } : {}),
       ...(r.needsManualCheck ? { needsManualCheck: true } : {}),
+      ...(r.isAddedManually ? { isAddedManually: true } : {}),
     }));
 
     const doc: UploadedMcpDocument = {
@@ -3142,6 +3147,41 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       );
     } catch (err) {
       notifyServerError('memperbarui sel MCP', err);
+      throw err;
+    }
+  };
+
+  const updateUploadedMcpRows = async (
+    docId: string,
+    nextRows: UploadedMcpRow[]
+  ): Promise<UploadedMcpDocument | undefined> => {
+    const existing = uploadedMcpPrograms.find((d) => d.id === docId);
+    if (!existing) return undefined;
+
+    const updatedDoc: UploadedMcpDocument = {
+      ...existing,
+      rows: nextRows,
+      updatedAt: new Date().toISOString(),
+      updatedBy: currentUser?.name || 'Administrator',
+      ...(existing._rev ? { _rev: existing._rev, _baseRev: existing._rev } : {}),
+    };
+
+    setUploadedMcpPrograms((prev) =>
+      prev.map((item) => (item.id === docId ? updatedDoc : item))
+    );
+
+    try {
+      const saved = await upsertWithConflictResolution(
+        COLLECTIONS.UPLOADED_MCP,
+        updatedDoc,
+        setUploadedMcpPrograms
+      );
+      setUploadedMcpPrograms((prev) =>
+        prev.map((item) => (item.id === docId ? saved : item))
+      );
+      return saved;
+    } catch (err) {
+      notifyServerError('memperbarui daftar pekerjaan MCP', err);
       throw err;
     }
   };
@@ -6245,6 +6285,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         deleteUploadedWorkSchedule,
         saveUploadedMcpProgram,
         updateUploadedMcpCell,
+        updateUploadedMcpRows,
         deleteUploadedMcpProgram,
         saveMcpChecklistResults,
 

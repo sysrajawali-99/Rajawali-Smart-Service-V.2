@@ -784,6 +784,7 @@ export interface UploadedMcpRow {
   jadwal: UploadedMcpScheduleCell[];
   sheet?: string;
   needsManualCheck?: boolean;
+  isAddedManually?: boolean;
 }
 
 export interface UploadedMcpDocument {
