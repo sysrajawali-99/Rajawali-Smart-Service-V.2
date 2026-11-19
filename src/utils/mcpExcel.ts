@@ -15,15 +15,24 @@ export interface ParsedMcpDateColumn {
   tanggal: number;
 }
 
+export interface ParsedMcpSkippedInfo {
+  sheetName: string;
+  rowLabel: string;
+  reason: string;
+}
+
 export interface ParsedMcpSheetSummary {
   fileName: string;
   sheetName: string;
   rowCount: number;
+  dCount: number;
+  wCount: number;
+  mCount: number;
+  otherFrqCount: number;
   datesCount: number;
   scheduledCells: number;
   hasHeader: boolean;
   hasDayRow: boolean;
-  dayMismatchCount: number;
 }
 
 export interface ExtractedMcpMetadata {
@@ -39,15 +48,24 @@ export interface ParseMcpResult {
   bulan: number;
   tahun: number;
   daysCount: number;
+  dayCodes: Record<number, string>;
   sheetNames: string[];
   sheetSummaries: ParsedMcpSheetSummary[];
   rows: UploadedMcpRow[];
   datesDetected: number[];
   lokasiKerjaGroups: string[];
   totalRows: number;
+  frqCounts: {
+    D: number;
+    W: number;
+    M: number;
+    other: number;
+  };
   totalScheduledCells: number;
   uniqueTokens: string[];
+  errors: string[];
   structuralWarnings: string[];
+  skippedItems: ParsedMcpSkippedInfo[];
   detectedMetadata: ExtractedMcpMetadata;
 }
 
@@ -59,14 +77,45 @@ export interface McpTokenStyle {
   dotClass: string;
 }
 
+export interface McpFooterRecap {
+  planningR: Record<number, number>;
+  realisasiV: Record<number, number>;
+  tidakTerealisasiX: Record<number, number>;
+  totalR: number;
+  totalV: number;
+  totalX: number;
+}
+
 export interface McpRecapAndLegend {
   dailyCounts: Record<number, number>;
+  footer: McpFooterRecap;
   totalScheduledCells: number;
   legend: McpTokenStyle[];
   tokenStyleMap: Map<string, McpTokenStyle>;
 }
 
-const TOKEN_COLOR_PALETTE: Array<{
+const FIXED_STATUS_STYLES: Record<
+  string,
+  { cellClass: string; badgeClass: string; dotClass: string }
+> = {
+  R: {
+    cellClass: 'bg-sky-100 text-sky-900 font-extrabold',
+    badgeClass: 'bg-sky-100 text-sky-900 border-sky-300',
+    dotClass: 'bg-sky-600',
+  },
+  V: {
+    cellClass: 'bg-emerald-100 text-emerald-900 font-extrabold',
+    badgeClass: 'bg-emerald-100 text-emerald-900 border-emerald-300',
+    dotClass: 'bg-emerald-600',
+  },
+  X: {
+    cellClass: 'bg-rose-100 text-rose-900 font-extrabold',
+    badgeClass: 'bg-rose-100 text-rose-900 border-rose-300',
+    dotClass: 'bg-rose-600',
+  },
+};
+
+const EXTRA_TOKEN_PALETTE: Array<{
   cellClass: string;
   badgeClass: string;
   dotClass: string;
@@ -75,16 +124,6 @@ const TOKEN_COLOR_PALETTE: Array<{
     cellClass: 'bg-teal-100 text-teal-900 font-bold',
     badgeClass: 'bg-teal-100 text-teal-900 border-teal-300',
     dotClass: 'bg-teal-600',
-  },
-  {
-    cellClass: 'bg-sky-100 text-sky-900 font-bold',
-    badgeClass: 'bg-sky-100 text-sky-900 border-sky-300',
-    dotClass: 'bg-sky-600',
-  },
-  {
-    cellClass: 'bg-emerald-100 text-emerald-900 font-bold',
-    badgeClass: 'bg-emerald-100 text-emerald-900 border-emerald-300',
-    dotClass: 'bg-emerald-600',
   },
   {
     cellClass: 'bg-amber-100 text-amber-900 font-bold',
@@ -102,19 +141,9 @@ const TOKEN_COLOR_PALETTE: Array<{
     dotClass: 'bg-violet-600',
   },
   {
-    cellClass: 'bg-rose-100 text-rose-900 font-bold',
-    badgeClass: 'bg-rose-100 text-rose-900 border-rose-300',
-    dotClass: 'bg-rose-600',
-  },
-  {
     cellClass: 'bg-cyan-100 text-cyan-900 font-bold',
     badgeClass: 'bg-cyan-100 text-cyan-900 border-cyan-300',
     dotClass: 'bg-cyan-600',
-  },
-  {
-    cellClass: 'bg-lime-100 text-lime-900 font-bold',
-    badgeClass: 'bg-lime-100 text-lime-900 border-lime-300',
-    dotClass: 'bg-lime-600',
   },
   {
     cellClass: 'bg-orange-100 text-orange-900 font-bold',
@@ -122,9 +151,9 @@ const TOKEN_COLOR_PALETTE: Array<{
     dotClass: 'bg-orange-600',
   },
   {
-    cellClass: 'bg-fuchsia-100 text-fuchsia-900 font-bold',
-    badgeClass: 'bg-fuchsia-100 text-fuchsia-900 border-fuchsia-300',
-    dotClass: 'bg-fuchsia-600',
+    cellClass: 'bg-lime-100 text-lime-900 font-bold',
+    badgeClass: 'bg-lime-100 text-lime-900 border-lime-300',
+    dotClass: 'bg-lime-600',
   },
   {
     cellClass: 'bg-slate-200 text-slate-900 font-bold',
@@ -144,6 +173,10 @@ function normalizeHeaderNorm(val: unknown): string {
     .toUpperCase();
 }
 
+export function normalizeFrqCode(raw: unknown): string {
+  return trimCell(raw).replace(/\s+/g, '').toUpperCase();
+}
+
 export function normalizeLokasiProyekKey(name: string): string {
   return (
     trimCell(name)
@@ -159,8 +192,7 @@ function getRawCell(sheet: XLSX.WorkSheet, r: number, c: number): XLSX.CellObjec
 }
 
 /**
- * Extracts displayed value from a SheetJS cell (preserving numeric `0` as `"0"`,
- * formula cached display `.w`, etc.) without rejecting any character.
+ * Extracts displayed text from a SheetJS cell (preserving `0` as `"0"`, etc.).
  */
 function getSheetCellDisplayText(sheet: XLSX.WorkSheet, r: number, c: number): string {
   const cell = getRawCell(sheet, r, c);
@@ -178,7 +210,7 @@ function getSheetCellDisplayText(sheet: XLSX.WorkSheet, r: number, c: number): s
 }
 
 /**
- * Checks whether a cell in date columns contains an Excel/CSV formula (starts with `=`).
+ * Checks whether a cell contains a formula (either SheetJS `.f` or text starting with `=`).
  */
 function cellHasFormula(sheet: XLSX.WorkSheet, r: number, c: number): boolean {
   const cell = getRawCell(sheet, r, c);
@@ -226,10 +258,6 @@ function parseMonthYearFromText(text: string): { bulan?: number; tahun?: number 
   return { bulan, tahun };
 }
 
-/**
- * Extracts `AREA : <nama>` from a row, handling both single-cell `"AREA : GEDUNG X"`
- * and split cells `"AREA"` / `": GEDUNG X"` or `"AREA :"` / `"GEDUNG X"`.
- */
 function parseAreaMetadataFromRow(
   sheet: XLSX.WorkSheet,
   r: number,
@@ -240,7 +268,6 @@ function parseAreaMetadataFromRow(
     const txt = getSheetCellDisplayText(sheet, r, c);
     if (!txt) continue;
 
-    // Case 1: Same cell has "AREA : <nama>" or "AREA: <nama>"
     const inlineMatch = txt.match(/^AREA\s*[:=]\s*(.+)$/i);
     if (inlineMatch && trimCell(inlineMatch[1])) {
       return {
@@ -249,7 +276,6 @@ function parseAreaMetadataFromRow(
       };
     }
 
-    // Case 2: Cell is "AREA" or "AREA :" and next non-empty cell has "<nama>" or ": <nama>"
     if (/^AREA\s*[:=]?$/i.test(txt)) {
       for (let nc = c + 1; nc <= Math.min(c + 4, maxCol); nc++) {
         const nextTxt = getSheetCellDisplayText(sheet, r, nc);
@@ -329,27 +355,10 @@ interface DetectedTemplateHeader {
   lokasiKerjaCol: number;
   areaPekerjaanCol: number;
   jenisPekerjaanCol: number;
+  frqCol: number;
   dateColumns: ParsedMcpDateColumn[];
 }
 
-function matchesTemplateField(
-  norm: string,
-  target: 'LOKASI KERJA' | 'AREA PEKERJAAN' | 'JENIS PEKERJAAN'
-): boolean {
-  if (!norm) return false;
-  if (target === 'LOKASI KERJA') {
-    return norm === 'LOKASI KERJA' || norm.includes('LOKASI KERJA');
-  }
-  if (target === 'AREA PEKERJAAN') {
-    return norm === 'AREA PEKERJAAN' || norm.includes('AREA PEKERJAAN');
-  }
-  return norm === 'JENIS PEKERJAAN' || norm.includes('JENIS PEKERJAAN');
-}
-
-/**
- * Extracts sequential day columns `1..28..31` starting strictly to the right of `minColExclusive`.
- * Stops before trailing columns on the right (such as TOTAL/JUMLAH) once the month sequence finishes.
- */
 function extractSequentialDateColumns(
   sheet: XLSX.WorkSheet,
   r: number,
@@ -365,7 +374,6 @@ function extractSequentialDateColumns(
   }
   if (found.length < 7) return [];
 
-  // Longest strictly increasing run (1..28..31)
   let bestRun: ParsedMcpDateColumn[] = [];
   for (let start = 0; start < found.length; start++) {
     const run: ParsedMcpDateColumn[] = [found[start]];
@@ -393,16 +401,17 @@ function extractSequentialDateColumns(
 }
 
 /**
- * Automatically finds the header row containing "Lokasi Kerja", "Area Pekerjaan", "Jenis Pekerjaan"
- * and sequential date columns 1..28..31 to the right of them.
+ * Automatically finds the header row by searching for the cell "Lokasi Kerja"
+ * (case-insensitive, extra spaces collapsed), then maps Area Pekerjaan,
+ * Jenis Pekerjaan, FRQ, and date columns 1..31.
  */
 function detectMcpTemplateHeader(
   sheet: XLSX.WorkSheet,
   maxRow: number,
   maxCol: number,
   merges: XLSX.Range[]
-): DetectedTemplateHeader | null {
-  const scanLimit = Math.min(maxRow, 60);
+): { header: DetectedTemplateHeader | null; foundLokasiKerjaRow: number } {
+  const scanLimit = Math.min(maxRow, 80);
 
   const getHeaderResolvedText = (r: number, c: number): string => {
     const direct = getSheetCellDisplayText(sheet, r, c);
@@ -412,99 +421,92 @@ function detectMcpTemplateHeader(
     return '';
   };
 
+  let firstFoundLokasiRow = -1;
+
   for (let r = 0; r <= scanLimit; r++) {
     let lokasiCol = -1;
     let areaCol = -1;
     let jenisCol = -1;
+    let frqCol = -1;
 
     for (let c = 0; c <= maxCol; c++) {
       const norm = normalizeHeaderNorm(getHeaderResolvedText(r, c));
       if (!norm) continue;
-      if (lokasiCol === -1 && matchesTemplateField(norm, 'LOKASI KERJA')) {
+      if (lokasiCol === -1 && (norm === 'LOKASI KERJA' || norm.includes('LOKASI KERJA'))) {
         lokasiCol = c;
-      } else if (areaCol === -1 && matchesTemplateField(norm, 'AREA PEKERJAAN')) {
+      } else if (
+        areaCol === -1 &&
+        (norm === 'AREA PEKERJAAN' || norm.includes('AREA PEKERJAAN'))
+      ) {
         areaCol = c;
-      } else if (jenisCol === -1 && matchesTemplateField(norm, 'JENIS PEKERJAAN')) {
+      } else if (
+        jenisCol === -1 &&
+        (norm === 'JENIS PEKERJAAN' || norm.includes('JENIS PEKERJAAN'))
+      ) {
         jenisCol = c;
+      } else if (
+        frqCol === -1 &&
+        (norm === 'FRQ' || norm === 'FREQ' || norm === 'FREKUENSI' || norm === 'FREK')
+      ) {
+        frqCol = c;
       }
     }
 
-    if (lokasiCol !== -1 && areaCol !== -1 && jenisCol !== -1) {
-      const rightMostInfoCol = Math.max(lokasiCol, areaCol, jenisCol);
+    if (lokasiCol === -1) continue;
+    if (firstFoundLokasiRow === -1) firstFoundLokasiRow = r;
 
-      // Primary check: dates on the same row `r` to the right of Jenis Pekerjaan
-      let dateCols = extractSequentialDateColumns(sheet, r, rightMostInfoCol, maxCol);
-      let dateRowIndex = r;
+    // Fallback positional resolution relative to Lokasi Kerja if slightly varied names exist
+    const resolvedAreaCol = areaCol !== -1 ? areaCol : lokasiCol + 1;
+    const resolvedJenisCol = jenisCol !== -1 ? jenisCol : resolvedAreaCol + 1;
 
-      // Secondary check: if `Lokasi Kerja / Area Pekerjaan / Jenis Pekerjaan` are merged vertically 2 rows
-      // and `1..31` sits on `r + 1` under a "TANGGAL" parent header
-      if (dateCols.length === 0 && r + 1 <= scanLimit) {
-        const nextDateCols = extractSequentialDateColumns(sheet, r + 1, rightMostInfoCol, maxCol);
-        if (nextDateCols.length > 0) {
-          dateCols = nextDateCols;
-          dateRowIndex = r + 1;
+    // Scan for dates starting after the rightmost detected info column (FRQ or Jenis Pekerjaan)
+    const infoRightCol = Math.max(lokasiCol, resolvedAreaCol, resolvedJenisCol, frqCol);
+
+    let dateCols = extractSequentialDateColumns(sheet, r, infoRightCol, maxCol);
+    let dateRowIndex = r;
+
+    if (dateCols.length === 0 && r + 1 <= scanLimit) {
+      const nextDateCols = extractSequentialDateColumns(sheet, r + 1, infoRightCol, maxCol);
+      if (nextDateCols.length > 0) {
+        dateCols = nextDateCols;
+        dateRowIndex = r + 1;
+      }
+    }
+
+    if (dateCols.length > 0) {
+      // If FRQ column wasn't labeled explicitly, check column right before dateCols[0] if not Jenis Pekerjaan
+      let resolvedFrqCol = frqCol;
+      if (resolvedFrqCol === -1) {
+        for (let c = resolvedJenisCol + 1; c < dateCols[0].colIndex; c++) {
+          const norm = normalizeHeaderNorm(getHeaderResolvedText(r, c));
+          if (norm === 'FRQ' || norm === 'FREQ' || norm === 'FREKUENSI' || norm === 'FREK') {
+            resolvedFrqCol = c;
+            break;
+          }
         }
       }
 
-      if (dateCols.length > 0) {
-        return {
+      return {
+        foundLokasiKerjaRow: r,
+        header: {
           headerRowIndex: Math.max(r, dateRowIndex),
           dateRowIndex,
           lokasiKerjaCol: lokasiCol,
-          areaPekerjaanCol: areaCol,
-          jenisPekerjaanCol: jenisCol,
+          areaPekerjaanCol: resolvedAreaCol,
+          jenisPekerjaanCol: resolvedJenisCol,
+          frqCol: resolvedFrqCol,
           dateColumns: dateCols,
-        };
-      }
+        },
+      };
     }
   }
 
-  return null;
-}
-
-/**
- * Checks whether a row is a footer recap row that stops table data reading:
- * - Lokasi Kerja and Area Pekerjaan (direct unmerged values) are empty AND Jenis Pekerjaan contains
- *   PLANNING / RENCANA / REALISASI / TIDAK TEREALISASI (or JUMLAH / TOTAL / REKAP), OR
- * - Any date cell on that row contains a formula (`=...`).
- */
-function isFooterRecapRow(
-  sheet: XLSX.WorkSheet,
-  r: number,
-  directLokasi: string,
-  directArea: string,
-  directJenis: string,
-  dateColumns: ParsedMcpDateColumn[]
-): boolean {
-  // Check formula in date columns first
-  for (const dc of dateColumns) {
-    if (cellHasFormula(sheet, r, dc.colIndex)) {
-      return true;
-    }
-  }
-
-  if (directLokasi === '' && directArea === '' && directJenis !== '') {
-    const upperJenis = directJenis.toUpperCase();
-    if (
-      /\bPLANNING\b/i.test(upperJenis) ||
-      /\bPLANING\b/i.test(upperJenis) ||
-      /\bRENCANA\b/i.test(upperJenis) ||
-      /\bREALISASI\b/i.test(upperJenis) ||
-      /\bTIDAK\s+TEREALISASI\b/i.test(upperJenis) ||
-      /^(GRAND\s*TOTAL|SUB\s*TOTAL|SUBTOTAL|JUMLAH|TOTAL|REKAP(ITULASI)?)(\s*[:\-].*)?$/i.test(
-        upperJenis
-      )
-    ) {
-      return true;
-    }
-  }
-
-  return false;
+  return { header: null, foundLokasiKerjaRow: firstFoundLokasiRow };
 }
 
 /**
  * Extracts metadata (bulan, tahun, lokasi_proyek) from title rows above the header,
- * sheet names, and file names without hardcoding row numbers.
+ * sheet names, and file names without hardcoding row positions.
  */
 export function extractMcpMetadataFromInputs(
   inputs: Array<{ name: string; buffer: ArrayBuffer }>
@@ -522,8 +524,17 @@ export function extractMcpMetadataFromInputs(
         if (!sheet || !sheet['!ref']) continue;
         const range = XLSX.utils.decode_range(sheet['!ref']);
         const merges = sheet['!merges'] || [];
-        const headerInfo = detectMcpTemplateHeader(sheet, range.e.r, range.e.c, merges);
-        const metaRowLimit = headerInfo ? headerInfo.headerRowIndex - 1 : Math.min(range.e.r, 12);
+        const { header, foundLokasiKerjaRow } = detectMcpTemplateHeader(
+          sheet,
+          range.e.r,
+          range.e.c,
+          merges
+        );
+        const metaRowLimit = header
+          ? header.headerRowIndex - 1
+          : foundLokasiKerjaRow > 0
+          ? foundLokasiKerjaRow - 1
+          : Math.min(range.e.r, 12);
 
         for (let r = 0; r <= Math.max(0, metaRowLimit); r++) {
           if (!meta.lokasiProyek) {
@@ -539,7 +550,6 @@ export function extractMcpMetadataFromInputs(
             if (!txt) continue;
             fallbackNames.push(txt);
 
-            // Title text above header like "PLANING MONTHLY REPORT OKTOBER 2026"
             const parsedMY = parseMonthYearFromText(txt);
             if (parsedMY.bulan && !meta.bulan) {
               meta.bulan = parsedMY.bulan;
@@ -553,7 +563,7 @@ export function extractMcpMetadataFromInputs(
         }
       }
     } catch {
-      // Ignore corrupt files during metadata probe; parser handles errors
+      // Ignore corrupt files during metadata probe
     }
   }
 
@@ -567,8 +577,14 @@ export function extractMcpMetadataFromInputs(
 }
 
 /**
- * Flexibly parses one or more .xlsx, .xls, or .csv files across ALL sheets
- * according to the Planning Monthly Report MCP template specification.
+ * Parses one or more .xlsx, .xls, or .csv files across ALL sheets using the unified
+ * Planning Monthly Report MCP specification:
+ * - Auto-locates "Lokasi Kerja" header row (no hardcoded coordinates)
+ * - Captures day codes verbatim (KM, JM, SB, MG, SN, SL, RB)
+ * - Fills merged/grouped Lokasi Kerja downwards
+ * - Stops reading when "Jenis Pekerjaan" contains "PLANNING" (footer start)
+ * - Ignores formula cells (`=...`) and computes totals dynamically
+ * - Preserves blank rows/cells inside table body and stores ALL non-empty date tokens as scheduled
  */
 export function parseMcpBuffers(
   inputs: Array<{ name: string; buffer: ArrayBuffer }>,
@@ -583,14 +599,18 @@ export function parseMcpBuffers(
       : detectedMetadata.lokasiProyek || ''
   );
 
+  const errors: string[] = [];
   const structuralWarnings: string[] = [];
+  const skippedItems: ParsedMcpSkippedInfo[] = [];
   const allRows: UploadedMcpRow[] = [];
   const sheetNames: string[] = [];
   const sheetSummaries: ParsedMcpSheetSummary[] = [];
   const detectedDateNumbers = new Set<number>();
   const uniqueTokenSet = new Set<string>();
   const lokasiKerjaGroupSet = new Set<string>();
+  const combinedDayCodes: Record<number, string> = {};
 
+  const frqCounts = { D: 0, W: 0, M: 0, other: 0 };
   let totalScheduledCells = 0;
   let maxDaySeen = getDaysInMonth(selectedMonth, selectedYear);
   let globalUrutan = 1;
@@ -600,14 +620,14 @@ export function parseMcpBuffers(
     try {
       workbook = XLSX.read(input.buffer, { type: 'array', cellDates: false });
     } catch (err: any) {
-      structuralWarnings.push(
+      errors.push(
         `File "${input.name}": gagal dibaca (${err?.message || 'format file tidak valid'}).`
       );
       continue;
     }
 
     if (!workbook.SheetNames || workbook.SheetNames.length === 0) {
-      structuralWarnings.push(`File "${input.name}": tidak memiliki sheet yang dapat dibaca.`);
+      errors.push(`File "${input.name}": tidak memiliki sheet yang dapat dibaca.`);
       continue;
     }
 
@@ -625,27 +645,51 @@ export function parseMcpBuffers(
           }
         }
       }
-      if (!hasAnyContent) continue;
+      if (!hasAnyContent) {
+        skippedItems.push({
+          sheetName: rawSheetName,
+          rowLabel: 'Seluruh sheet',
+          reason: 'Sheet kosong tanpa isi',
+        });
+        continue;
+      }
 
       const sheetLabel = inputs.length > 1 ? `${input.name} :: ${rawSheetName}` : rawSheetName;
       sheetNames.push(sheetLabel);
 
       const merges = sheet['!merges'] || [];
-      const header = detectMcpTemplateHeader(sheet, range.e.r, range.e.c, merges);
+      const { header, foundLokasiKerjaRow } = detectMcpTemplateHeader(
+        sheet,
+        range.e.r,
+        range.e.c,
+        merges
+      );
 
       if (!header) {
-        structuralWarnings.push(
-          `Sheet "${sheetLabel}": baris header ("Lokasi Kerja", "Area Pekerjaan", "Jenis Pekerjaan" + kolom tanggal 1 s/d 28-31) tidak ditemukan.`
-        );
+        const errorMsg =
+          foundLokasiKerjaRow === -1
+            ? `Sheet "${sheetLabel}": Header "Lokasi Kerja" tidak ditemukan.`
+            : `Sheet "${sheetLabel}": Header "Lokasi Kerja" ditemukan di baris ${
+                foundLokasiKerjaRow + 1
+              }, namun deretan kolom tanggal 1–31 di sebelah kanannya tidak ditemukan.`;
+        errors.push(errorMsg);
+        skippedItems.push({
+          sheetName: sheetLabel,
+          rowLabel: 'Seluruh sheet',
+          reason: errorMsg,
+        });
         sheetSummaries.push({
           fileName: input.name,
           sheetName: rawSheetName,
           rowCount: 0,
+          dCount: 0,
+          wCount: 0,
+          mCount: 0,
+          otherFrqCount: 0,
           datesCount: 0,
           scheduledCells: 0,
           hasHeader: false,
           hasDayRow: false,
-          dayMismatchCount: 0,
         });
         continue;
       }
@@ -656,6 +700,7 @@ export function parseMcpBuffers(
         lokasiKerjaCol,
         areaPekerjaanCol,
         jenisPekerjaanCol,
+        frqCol,
         dateColumns,
       } = header;
 
@@ -664,17 +709,11 @@ export function parseMcpBuffers(
         if (dc.tanggal > maxDaySeen) maxDaySeen = dc.tanggal;
       }
 
-      // Check row immediately below dateRowIndex for day-of-week codes (SN, SL, RB, KM, JM, SB, MG)
-      // Used ONLY to validate selected Bulan & Tahun, NOT as data rows.
+      // Check row immediately below dateRowIndex for verbatim day codes (KM, JM, SB, MG, SN, SL, RB)
       let dataStartRow = Math.max(headerRowIndex, dateRowIndex) + 1;
       let hasDayRow = false;
-      let dayMismatchCount = 0;
 
-      for (
-        let probe = dataStartRow;
-        probe <= Math.min(dataStartRow + 1, range.e.r);
-        probe++
-      ) {
+      if (dataStartRow <= range.e.r) {
         let recognizedDowCount = 0;
         let checkedDays = 0;
         let mismatches = 0;
@@ -682,7 +721,7 @@ export function parseMcpBuffers(
         const daysInSelectedMonth = getDaysInMonth(selectedMonth, selectedYear);
 
         for (const dc of dateColumns) {
-          const rawDow = getSheetCellDisplayText(sheet, probe, dc.colIndex);
+          const rawDow = getSheetCellDisplayText(sheet, dataStartRow, dc.colIndex);
           const dow = parseDayOfWeekCode(rawDow);
           if (dow !== null) {
             recognizedDowCount++;
@@ -705,23 +744,79 @@ export function parseMcpBuffers(
 
         if (recognizedDowCount >= 5) {
           hasDayRow = true;
-          dayMismatchCount = mismatches;
-          dataStartRow = probe + 1;
+          for (const dc of dateColumns) {
+            const rawDow = getSheetCellDisplayText(sheet, dataStartRow, dc.colIndex);
+            if (rawDow && !combinedDayCodes[dc.tanggal]) {
+              combinedDayCodes[dc.tanggal] = rawDow;
+            }
+          }
+          skippedItems.push({
+            sheetName: sheetLabel,
+            rowLabel: `Baris ${dataStartRow + 1}`,
+            reason: 'Baris header kode hari (KM/JM/SB/MG/SN/SL/RB) di bawah tanggal',
+          });
           if (mismatches > 0 && sampleMismatch) {
             structuralWarnings.push(
-              `Sheet "${sheetLabel}": kode hari tidak sesuai kalender ${
+              `Sheet "${sheetLabel}": kode hari pada baris template (${mismatches}/${checkedDays} hari berbeda, contoh tgl ${sampleMismatch.day}: "${sampleMismatch.actual}") berbeda dengan kalender ${
                 MONTH_NAMES_ID[selectedMonth - 1]
-              } ${selectedYear} (${mismatches}/${checkedDays} hari berbeda, contoh tgl ${
-                sampleMismatch.day
-              }: tertulis "${sampleMismatch.actual}" seharusnya "${sampleMismatch.expected}").`
+              } ${selectedYear} (kode tetap ditampilkan apa adanya).`
             );
           }
+          dataStartRow++;
+        }
+      }
+
+      // First scan for footer ("Jenis Pekerjaan" contains "PLANNING") and last non-empty row before it
+      // so trailing unused Excel sheet rows after the table are not imported.
+      let planningFooterRow = -1;
+      for (let r = dataStartRow; r <= range.e.r; r++) {
+        const directJenis = getSheetCellDisplayText(sheet, r, jenisPekerjaanCol);
+        if (directJenis && /\bPLAN+ING\b/i.test(directJenis)) {
+          planningFooterRow = r;
           break;
         }
       }
 
-      // Helper to read merged cell value in data columns
+      const scanUpperBound = planningFooterRow !== -1 ? planningFooterRow - 1 : range.e.r;
+
+      if (planningFooterRow !== -1) {
+        const footerSample = getSheetCellDisplayText(sheet, planningFooterRow, jenisPekerjaanCol);
+        skippedItems.push({
+          sheetName: sheetLabel,
+          rowLabel: `Baris ${planningFooterRow + 1} s/d ${range.e.r + 1}`,
+          reason: `Baris footer rekap ("${footerSample}") dan seluruh baris di bawahnya`,
+        });
+      }
+
+      // Find the last non-empty row inside [dataStartRow .. scanUpperBound] so trailing empty grid padding is trimmed,
+      // while ALL blank rows inside the table body itself are preserved!
+      let lastNonEmptyTableRow = dataStartRow - 1;
+      for (let r = scanUpperBound; r >= dataStartRow; r--) {
+        const hasInfoText =
+          getSheetCellDisplayText(sheet, r, lokasiKerjaCol) !== '' ||
+          getSheetCellDisplayText(sheet, r, areaPekerjaanCol) !== '' ||
+          getSheetCellDisplayText(sheet, r, jenisPekerjaanCol) !== '' ||
+          (frqCol !== -1 && getSheetCellDisplayText(sheet, r, frqCol) !== '');
+        let hasDateVal = false;
+        if (!hasInfoText) {
+          for (const dc of dateColumns) {
+            if (
+              !cellHasFormula(sheet, r, dc.colIndex) &&
+              getSheetCellDisplayText(sheet, r, dc.colIndex) !== ''
+            ) {
+              hasDateVal = true;
+              break;
+            }
+          }
+        }
+        if (hasInfoText || hasDateVal) {
+          lastNonEmptyTableRow = r;
+          break;
+        }
+      }
+
       const resolveMergedCell = (r: number, c: number): string => {
+        if (c < 0) return '';
         const direct = getSheetCellDisplayText(sheet, r, c);
         if (direct) return direct;
         const merge = merges.find(
@@ -739,35 +834,25 @@ export function parseMcpBuffers(
       };
 
       let sheetRowCount = 0;
+      let sheetD = 0;
+      let sheetW = 0;
+      let sheetM = 0;
+      let sheetOther = 0;
       let sheetScheduledCount = 0;
       let lastLokasiKerja = '';
 
-      for (let r = dataStartRow; r <= range.e.r; r++) {
-        const directLokasi = getSheetCellDisplayText(sheet, r, lokasiKerjaCol);
-        const directArea = getSheetCellDisplayText(sheet, r, areaPekerjaanCol);
-        const directJenis = getSheetCellDisplayText(sheet, r, jenisPekerjaanCol);
-
-        // Stop reading at footer recap rows (PLANNING/RENCANA, REALISASI, TIDAK TEREALISASI, or date formula `=...`)
-        if (
-          isFooterRecapRow(
-            sheet,
-            r,
-            directLokasi,
-            directArea,
-            directJenis,
-            dateColumns
-          )
-        ) {
-          break;
-        }
-
+      for (let r = dataStartRow; r <= lastNonEmptyTableRow; r++) {
         const mergedLokasi = resolveMergedCell(r, lokasiKerjaCol);
         const areaPekerjaan = resolveMergedCell(r, areaPekerjaanCol);
         const jenisPekerjaan = resolveMergedCell(r, jenisPekerjaanCol);
+        const frqNormalized = frqCol !== -1 ? normalizeFrqCode(resolveMergedCell(r, frqCol)) : '';
 
-        // Read all non-empty date cells (ANY character/symbol/number including "0" or "/")
+        // Date cells: ignore formula cells (`=...`); preserve ANY other non-empty character verbatim
         const jadwalCells: Array<{ tanggal: number; nilai_asli: string }> = [];
         for (const dc of dateColumns) {
+          if (cellHasFormula(sheet, r, dc.colIndex)) {
+            continue;
+          }
           const val = getSheetCellDisplayText(sheet, r, dc.colIndex);
           if (val !== '') {
             jadwalCells.push({
@@ -778,41 +863,46 @@ export function parseMcpBuffers(
           }
         }
 
-        // Completely blank row -> skip
-        if (
-          directLokasi === '' &&
-          mergedLokasi === '' &&
-          areaPekerjaan === '' &&
-          jenisPekerjaan === '' &&
-          jadwalCells.length === 0
-        ) {
-          continue;
-        }
+        const rowHasOwnContent =
+          areaPekerjaan !== '' ||
+          jenisPekerjaan !== '' ||
+          frqNormalized !== '' ||
+          jadwalCells.length > 0;
 
-        // Fill Lokasi Kerja downwards from merged parent or preceding group value until a new value appears
         let lokasiKerja = mergedLokasi;
         if (lokasiKerja !== '') {
           lastLokasiKerja = lokasiKerja;
-        } else if (areaPekerjaan !== '' || jenisPekerjaan !== '') {
+        } else if (rowHasOwnContent) {
           lokasiKerja = lastLokasiKerja;
-        }
-
-        // Skip trailing blank-text merge-only rows that have neither Area/Jenis nor schedule
-        if (areaPekerjaan === '' && jenisPekerjaan === '' && jadwalCells.length === 0) {
-          continue;
         }
 
         if (lokasiKerja) {
           lokasiKerjaGroupSet.add(lokasiKerja);
         }
 
+        if (frqNormalized === 'D') {
+          frqCounts.D++;
+          sheetD++;
+        } else if (frqNormalized === 'W') {
+          frqCounts.W++;
+          sheetW++;
+        } else if (frqNormalized === 'M') {
+          frqCounts.M++;
+          sheetM++;
+        } else {
+          frqCounts.other++;
+          sheetOther++;
+        }
+
         allRows.push({
+          rowId: `mcp-row-${globalUrutan}`,
           lokasi_proyek: resolvedLokasiProyek,
           bulan: selectedMonth,
           tahun: selectedYear,
           lokasi_kerja: lokasiKerja,
           area_pekerjaan: areaPekerjaan,
           jenis_pekerjaan: jenisPekerjaan,
+          frq: frqNormalized,
           urutan: globalUrutan++,
           jadwal: jadwalCells,
           sheet: sheetLabel,
@@ -827,11 +917,14 @@ export function parseMcpBuffers(
         fileName: input.name,
         sheetName: rawSheetName,
         rowCount: sheetRowCount,
+        dCount: sheetD,
+        wCount: sheetW,
+        mCount: sheetM,
+        otherFrqCount: sheetOther,
         datesCount: dateColumns.length,
         scheduledCells: sheetScheduledCount,
         hasHeader: true,
         hasDayRow,
-        dayMismatchCount,
       });
     }
   }
@@ -841,36 +934,51 @@ export function parseMcpBuffers(
     bulan: selectedMonth,
     tahun: selectedYear,
     daysCount: Math.min(31, Math.max(28, maxDaySeen)),
+    dayCodes: combinedDayCodes,
     sheetNames,
     sheetSummaries,
     rows: allRows,
     datesDetected: Array.from(detectedDateNumbers).sort((a, b) => a - b),
     lokasiKerjaGroups: Array.from(lokasiKerjaGroupSet),
     totalRows: allRows.length,
+    frqCounts,
     totalScheduledCells,
     uniqueTokens: Array.from(uniqueTokenSet).sort((a, b) =>
       a.localeCompare(b, 'id', { numeric: true, sensitivity: 'base' })
     ),
+    errors,
     structuralWarnings,
+    skippedItems,
     detectedMetadata,
   };
 }
 
 /**
- * Builds automatic legend styles for EVERY unique `nilai_asli` token found
- * plus per-day scheduled job recap counts.
+ * Computes the 3 footer rows (`PLANNING R RENCANA` = count of `"R"`,
+ * `REALISASI` = count of `"V"`, `TIDAK TEREALISASI` = count of `"X"`)
+ * plus automatic unique character legend from the displayed rows.
  */
 export function calculateMcpRecapAndLegend(
   rows: UploadedMcpRow[],
   daysCount: number
 ): McpRecapAndLegend {
   const dailyCounts: Record<number, number> = {};
+  const planningR: Record<number, number> = {};
+  const realisasiV: Record<number, number> = {};
+  const tidakTerealisasiX: Record<number, number> = {};
+
   for (let d = 1; d <= daysCount; d++) {
     dailyCounts[d] = 0;
+    planningR[d] = 0;
+    realisasiV[d] = 0;
+    tidakTerealisasiX[d] = 0;
   }
 
   const tokenCounts = new Map<string, number>();
   let totalScheduledCells = 0;
+  let totalR = 0;
+  let totalV = 0;
+  let totalX = 0;
 
   for (const row of rows) {
     const seenDayInRow = new Set<number>();
@@ -879,9 +987,23 @@ export function calculateMcpRecapAndLegend(
       if (!val) continue;
       tokenCounts.set(val, (tokenCounts.get(val) || 0) + 1);
       totalScheduledCells++;
-      if (cell.tanggal >= 1 && cell.tanggal <= daysCount && !seenDayInRow.has(cell.tanggal)) {
-        dailyCounts[cell.tanggal] = (dailyCounts[cell.tanggal] || 0) + 1;
-        seenDayInRow.add(cell.tanggal);
+
+      if (cell.tanggal >= 1 && cell.tanggal <= daysCount) {
+        if (!seenDayInRow.has(cell.tanggal)) {
+          dailyCounts[cell.tanggal] = (dailyCounts[cell.tanggal] || 0) + 1;
+          seenDayInRow.add(cell.tanggal);
+        }
+        const upperVal = val.toUpperCase();
+        if (upperVal === 'R') {
+          planningR[cell.tanggal] = (planningR[cell.tanggal] || 0) + 1;
+          totalR++;
+        } else if (upperVal === 'V') {
+          realisasiV[cell.tanggal] = (realisasiV[cell.tanggal] || 0) + 1;
+          totalV++;
+        } else if (upperVal === 'X') {
+          tidakTerealisasiX[cell.tanggal] = (tidakTerealisasiX[cell.tanggal] || 0) + 1;
+          totalX++;
+        }
       }
     }
   }
@@ -891,8 +1013,10 @@ export function calculateMcpRecapAndLegend(
   );
 
   const tokenStyleMap = new Map<string, McpTokenStyle>();
-  const legend: McpTokenStyle[] = sortedTokens.map((token, idx) => {
-    const palette = TOKEN_COLOR_PALETTE[idx % TOKEN_COLOR_PALETTE.length];
+  let extraIdx = 0;
+  const legend: McpTokenStyle[] = sortedTokens.map((token) => {
+    const fixed = FIXED_STATUS_STYLES[token.toUpperCase()];
+    const palette = fixed || EXTRA_TOKEN_PALETTE[extraIdx++ % EXTRA_TOKEN_PALETTE.length];
     const style: McpTokenStyle = {
       token,
       count: tokenCounts.get(token) || 0,
@@ -906,6 +1030,14 @@ export function calculateMcpRecapAndLegend(
 
   return {
     dailyCounts,
+    footer: {
+      planningR,
+      realisasiV,
+      tidakTerealisasiX,
+      totalR,
+      totalV,
+      totalX,
+    },
     totalScheduledCells,
     legend,
     tokenStyleMap,
@@ -913,9 +1045,11 @@ export function calculateMcpRecapAndLegend(
 }
 
 /**
- * Generates and downloads a clean Excel (.xlsx) template matching the
- * Planning Monthly Report MCP format (Title, AREA, Lokasi Kerja / Area Pekerjaan /
- * Jenis Pekerjaan + 1..31 + day codes + merged Lokasi Kerja + formula recap footer).
+ * Generates and downloads an Excel (.xlsx) template matching the
+ * Planning Monthly Report MCP format:
+ * Title row, AREA row, header (Lokasi Kerja | Area Pekerjaan | Jenis Pekerjaan | FRQ | 1..31),
+ * day code row (KM, JM, SB, MG, SN, SL, RB), merged Lokasi Kerja sample rows,
+ * and PLANNING / REALISASI / TIDAK TEREALISASI footer rows.
  */
 export function downloadMcpTemplate(
   bulan: number,
@@ -931,33 +1065,37 @@ export function downloadMcpTemplate(
   const titleRow = [`PLANING MONTHLY REPORT ${monthLabel} ${tahun}`];
   const areaMetaRow = [`AREA : ${cleanArea}`];
   const spacerRow: (string | number)[] = [];
-  const headerRow = ['Lokasi Kerja', 'Area Pekerjaan', 'Jenis Pekerjaan', ...dayHeaders];
-  const dayCodeRow = ['', '', '', ...dayCodes];
+  const headerRow = ['Lokasi Kerja', 'Area Pekerjaan', 'Jenis Pekerjaan', 'FRQ', ...dayHeaders];
+  const dayCodeRow = ['', '', '', '', ...dayCodes];
 
   const sampleItems = [
     {
       lokasiKerja: 'LOBBY & RESEPSIONIS',
       areaPekerjaan: 'Lantai Marmer Lobby Utama',
       jenisPekerjaan: 'Dry & Damp Mopping Harian',
-      pattern: (d: number) => (d % 2 === 1 ? '/' : 'V'),
+      frq: 'D',
+      pattern: (d: number) => (d % 3 === 0 ? 'V' : 'R'),
     },
     {
       lokasiKerja: 'LOBBY & RESEPSIONIS',
       areaPekerjaan: 'Kaca Entrance & Frame',
       jenisPekerjaan: 'Glass Cleaning & Detailing',
-      pattern: (d: number) => (d % 7 === 6 ? 'X' : ''),
+      frq: 'W',
+      pattern: (d: number) => (d % 7 === 6 ? 'R' : ''),
     },
     {
       lokasiKerja: 'TOILET UMUM',
       areaPekerjaan: 'Closet, Urinal & Wastafel',
       jenisPekerjaan: 'Deep Cleaning & Disinfeksi',
-      pattern: () => '/',
+      frq: 'D',
+      pattern: (d: number) => (d % 5 === 0 ? 'X' : 'V'),
     },
     {
       lokasiKerja: 'AREA EKSTERNAL',
       areaPekerjaan: 'Saluran Air & Taman',
       jenisPekerjaan: 'General Cleaning & Flushing',
-      pattern: (d: number) => (d === 5 || d === 20 ? '0' : ''),
+      frq: 'M',
+      pattern: (d: number) => (d === 15 ? 'R' : ''),
     },
   ];
 
@@ -965,19 +1103,18 @@ export function downloadMcpTemplate(
     item.lokasiKerja,
     item.areaPekerjaan,
     item.jenisPekerjaan,
+    item.frq,
     ...dayHeaders.map((d) => item.pattern(d)),
   ]);
 
-  const startDataRowIdx = 5; // 0-indexed row 5 = Excel row 6
+  const startDataRowIdx = 5;
   const planningRowIdx = startDataRowIdx + dataRows.length;
-  const planningRow: (string | number)[] = ['', '', 'PLANNING / RENCANA', ...dayHeaders.map(() => 0)];
-  const realisasiRow: (string | number)[] = ['', '', 'REALISASI', ...dayHeaders.map(() => '')];
-  const tidakTerealisasiRow: (string | number)[] = [
-    '',
-    '',
-    'TIDAK TEREALISASI',
-    ...dayHeaders.map(() => ''),
-  ];
+  const realisasiRowIdx = planningRowIdx + 1;
+  const tidakRowIdx = planningRowIdx + 2;
+
+  const planningRow: (string | number)[] = ['', '', 'PLANNING R RENCANA', '', ...dayHeaders.map(() => 0)];
+  const realisasiRow: (string | number)[] = ['', '', 'REALISASI', '', ...dayHeaders.map(() => 0)];
+  const tidakRow: (string | number)[] = ['', '', 'TIDAK TEREALISASI', '', ...dayHeaders.map(() => 0)];
 
   const aoa = [
     titleRow,
@@ -988,40 +1125,55 @@ export function downloadMcpTemplate(
     ...dataRows,
     planningRow,
     realisasiRow,
-    tidakTerealisasiRow,
+    tidakRow,
   ];
   const ws = XLSX.utils.aoa_to_sheet(aoa);
 
-  // Set COUNTA formulas on PLANNING / RENCANA recap row
   dayHeaders.forEach((_, idx) => {
-    const colIdx = 3 + idx;
+    const colIdx = 4 + idx;
     const colLetter = XLSX.utils.encode_col(colIdx);
     const startExcelRow = startDataRowIdx + 1;
     const endExcelRow = startExcelRow + dataRows.length - 1;
-    const addr = XLSX.utils.encode_cell({ r: planningRowIdx, c: colIdx });
-    const countVal = dataRows.reduce(
-      (sum, row) => (trimCell(row[colIdx]) !== '' ? sum + 1 : sum),
-      0
-    );
-    ws[addr] = {
+    const rangeRef = `${colLetter}${startExcelRow}:${colLetter}${endExcelRow}`;
+
+    const countChar = (ch: string) =>
+      dataRows.reduce((s, row) => (trimCell(row[colIdx]).toUpperCase() === ch ? s + 1 : s), 0);
+
+    const rCount = countChar('R');
+    const vCount = countChar('V');
+    const xCount = countChar('X');
+
+    ws[XLSX.utils.encode_cell({ r: planningRowIdx, c: colIdx })] = {
       t: 'n',
-      f: `COUNTA(${colLetter}${startExcelRow}:${colLetter}${endExcelRow})`,
-      v: countVal,
-      w: String(countVal),
+      f: `COUNTIF(${rangeRef},"R")`,
+      v: rCount,
+      w: String(rCount),
+    };
+    ws[XLSX.utils.encode_cell({ r: realisasiRowIdx, c: colIdx })] = {
+      t: 'n',
+      f: `COUNTIF(${rangeRef},"V")`,
+      v: vCount,
+      w: String(vCount),
+    };
+    ws[XLSX.utils.encode_cell({ r: tidakRowIdx, c: colIdx })] = {
+      t: 'n',
+      f: `COUNTIF(${rangeRef},"X")`,
+      v: xCount,
+      w: String(xCount),
     };
   });
 
-  // Merge title banner and first group "LOBBY & RESEPSIONIS" across rows 5..6
   ws['!merges'] = [
-    { s: { r: 0, c: 0 }, e: { r: 0, c: 3 + daysCount - 1 } },
-    { s: { r: 1, c: 0 }, e: { r: 1, c: 3 + daysCount - 1 } },
+    { s: { r: 0, c: 0 }, e: { r: 0, c: 4 + daysCount - 1 } },
+    { s: { r: 1, c: 0 }, e: { r: 1, c: 4 + daysCount - 1 } },
     { s: { r: startDataRowIdx, c: 0 }, e: { r: startDataRowIdx + 1, c: 0 } },
   ];
 
   ws['!cols'] = [
     { wch: 24 },
     { wch: 28 },
-    { wch: 32 },
+    { wch: 30 },
+    { wch: 8 },
     ...dayHeaders.map(() => ({ wch: 4.5 })),
   ];
 

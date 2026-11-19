@@ -438,10 +438,17 @@ interface CleaningContextType {
     bulan: number;
     tahun: number;
     daysCount: number;
+    dayCodes?: Record<number, string>;
     sheetNames?: string[];
     fileName?: string;
     rows: UploadedMcpRow[];
   }) => Promise<UploadedMcpDocument>;
+  updateUploadedMcpCell: (
+    docId: string,
+    rowKey: string,
+    tanggal: number,
+    newValue: string
+  ) => Promise<void>;
   deleteUploadedMcpProgram: (id: string) => Promise<void>;
 
   // Pengaturan Data Perusahaan & Kop Surat Dokumen PDF
@@ -2972,6 +2979,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     bulan: number;
     tahun: number;
     daysCount: number;
+    dayCodes?: Record<number, string>;
     sheetNames?: string[];
     fileName?: string;
     rows: UploadedMcpRow[];
@@ -2985,12 +2993,14 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     const compId = activeProj?.company_id || activeProj?.companyId || currentCompany?.id || 'comp-main';
 
     const normalizedRows: UploadedMcpRow[] = payload.rows.map((r, idx) => ({
+      rowId: r.rowId || `mcp-row-${idx + 1}`,
       lokasi_proyek: cleanLokasi,
       bulan: payload.bulan,
       tahun: payload.tahun,
       lokasi_kerja: r.lokasi_kerja,
       area_pekerjaan: r.area_pekerjaan,
       jenis_pekerjaan: r.jenis_pekerjaan,
+      frq: r.frq || '',
       urutan: r.urutan ?? idx + 1,
       jadwal: r.jadwal,
       ...(r.sheet ? { sheet: r.sheet } : {}),
@@ -3005,6 +3015,9 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       bulan: payload.bulan,
       tahun: payload.tahun,
       daysCount: payload.daysCount,
+      ...(payload.dayCodes && Object.keys(payload.dayCodes).length > 0
+        ? { dayCodes: payload.dayCodes }
+        : {}),
       sheetNames: payload.sheetNames,
       fileName: payload.fileName,
       rows: normalizedRows,
@@ -3041,6 +3054,60 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       return saved;
     } catch (err) {
       notifyServerError('menyimpan upload MCP', err);
+      throw err;
+    }
+  };
+
+  const updateUploadedMcpCell = async (
+    docId: string,
+    rowKey: string,
+    tanggal: number,
+    newValue: string
+  ): Promise<void> => {
+    const existing = uploadedMcpPrograms.find((d) => d.id === docId);
+    if (!existing) return;
+
+    const trimmedVal = newValue.replace(/^[\s\u00A0]+|[\s\u00A0]+$/g, '');
+    const updatedRows = (existing.rows || []).map((row, idx) => {
+      const key = row.rowId || `idx-${row.urutan ?? idx + 1}`;
+      if (key !== rowKey && row.rowId !== rowKey && String(row.urutan) !== rowKey) {
+        return row;
+      }
+      const nextJadwal = (row.jadwal || []).filter((c) => c.tanggal !== tanggal);
+      if (trimmedVal !== '') {
+        nextJadwal.push({ tanggal, nilai_asli: trimmedVal });
+        nextJadwal.sort((a, b) => a.tanggal - b.tanggal);
+      }
+      return {
+        ...row,
+        rowId: row.rowId || `mcp-row-${row.urutan ?? idx + 1}`,
+        jadwal: nextJadwal,
+      };
+    });
+
+    const updatedDoc: UploadedMcpDocument = {
+      ...existing,
+      rows: updatedRows,
+      updatedAt: new Date().toISOString(),
+      updatedBy: currentUser?.name || 'Administrator',
+      ...(existing._rev ? { _rev: existing._rev, _baseRev: existing._rev } : {}),
+    };
+
+    setUploadedMcpPrograms((prev) =>
+      prev.map((item) => (item.id === docId ? updatedDoc : item))
+    );
+
+    try {
+      const saved = await upsertWithConflictResolution(
+        COLLECTIONS.UPLOADED_MCP,
+        updatedDoc,
+        setUploadedMcpPrograms
+      );
+      setUploadedMcpPrograms((prev) =>
+        prev.map((item) => (item.id === docId ? saved : item))
+      );
+    } catch (err) {
+      notifyServerError('memperbarui sel MCP', err);
       throw err;
     }
   };
@@ -6054,6 +6121,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         syncUploadedScheduleToCleaners,
         deleteUploadedWorkSchedule,
         saveUploadedMcpProgram,
+        updateUploadedMcpCell,
         deleteUploadedMcpProgram,
 
         // Verifikasi / Approval Berjenjang Controller

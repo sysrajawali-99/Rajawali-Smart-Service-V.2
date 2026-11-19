@@ -772,12 +772,14 @@ export interface UploadedMcpScheduleCell {
 }
 
 export interface UploadedMcpRow {
+  rowId: string;
   lokasi_proyek: string;
   bulan: number; // 1-12
   tahun: number;
   lokasi_kerja: string;
   area_pekerjaan: string;
   jenis_pekerjaan: string;
+  frq: string; // 'D' | 'W' | 'M' | '' | other
   urutan: number;
   jadwal: UploadedMcpScheduleCell[];
   sheet?: string;
@@ -792,6 +794,7 @@ export interface UploadedMcpDocument {
   bulan: number;
   tahun: number;
   daysCount: number;
+  dayCodes?: Record<number, string>; // verbatim day codes from Excel row below date headers
   sheetNames?: string[];
   fileName?: string;
   rows: UploadedMcpRow[];
