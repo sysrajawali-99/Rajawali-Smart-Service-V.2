@@ -1,5 +1,5 @@
 import * as XLSX from 'xlsx';
-import { UploadedMcpRow } from '../types';
+import { McpChecklistResultRecord, UploadedMcpRow } from '../types';
 import {
   DAY_CODES_ID,
   MONTH_NAMES_ID,
@@ -84,6 +84,13 @@ export interface McpFooterRecap {
   totalR: number;
   totalV: number;
   totalX: number;
+}
+
+export interface McpChecklistFooterContext {
+  bulan: number;
+  tahun: number;
+  docId?: string;
+  results: McpChecklistResultRecord[];
 }
 
 export interface McpRecapAndLegend {
@@ -953,14 +960,24 @@ export function parseMcpBuffers(
   };
 }
 
+function normalizeChecklistMatchKey(value: string | undefined | null): string {
+  return String(value ?? '')
+    .replace(/\u00A0/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toUpperCase();
+}
+
 /**
- * Computes the 3 footer rows (`PLANNING R RENCANA` = count of `"R"`,
- * `REALISASI` = count of `"V"`, `TIDAK TEREALISASI` = count of `"X"`)
+ * Computes the 3 footer rows (`PLANNING R RENCANA` = count of `"R"` in schedule,
+ * `REALISASI` = count of checklist status `"R"` per date when checklistContext is provided,
+ * `TIDAK TEREALISASI` = count of checklist status `"X"` per date when checklistContext is provided)
  * plus automatic unique character legend from the displayed rows.
  */
 export function calculateMcpRecapAndLegend(
   rows: UploadedMcpRow[],
-  daysCount: number
+  daysCount: number,
+  checklistContext?: McpChecklistFooterContext
 ): McpRecapAndLegend {
   const dailyCounts: Record<number, number> = {};
   const planningR: Record<number, number> = {};
@@ -980,6 +997,8 @@ export function calculateMcpRecapAndLegend(
   let totalV = 0;
   let totalX = 0;
 
+  const useChecklistCounts = Boolean(checklistContext);
+
   for (const row of rows) {
     const seenDayInRow = new Set<number>();
     for (const cell of row.jadwal || []) {
@@ -997,11 +1016,75 @@ export function calculateMcpRecapAndLegend(
         if (upperVal === 'R') {
           planningR[cell.tanggal] = (planningR[cell.tanggal] || 0) + 1;
           totalR++;
-        } else if (upperVal === 'V') {
+        } else if (!useChecklistCounts && upperVal === 'V') {
           realisasiV[cell.tanggal] = (realisasiV[cell.tanggal] || 0) + 1;
           totalV++;
-        } else if (upperVal === 'X') {
+        } else if (!useChecklistCounts && upperVal === 'X') {
           tidakTerealisasiX[cell.tanggal] = (tidakTerealisasiX[cell.tanggal] || 0) + 1;
+          totalX++;
+        }
+      }
+    }
+  }
+
+  if (checklistContext) {
+    const resultsByDay = new Map<number, McpChecklistResultRecord[]>();
+    for (const rec of checklistContext.results || []) {
+      if (
+        Number(rec.bulan) !== Number(checklistContext.bulan) ||
+        Number(rec.tahun) !== Number(checklistContext.tahun)
+      ) {
+        continue;
+      }
+      if (rec.status !== 'R' && rec.status !== 'X') continue;
+      const tgl = Number(rec.tanggal);
+      if (tgl < 1 || tgl > daysCount) continue;
+      const list = resultsByDay.get(tgl);
+      if (list) {
+        list.push(rec);
+      } else {
+        resultsByDay.set(tgl, [rec]);
+      }
+    }
+
+    // Ensure deterministic newest record wins if multiple records match the same item
+    for (const list of resultsByDay.values()) {
+      list.sort((a, b) => String(b.checkedAt || '').localeCompare(String(a.checkedAt || '')));
+    }
+
+    for (const row of rows) {
+      const rowAreaKey = normalizeChecklistMatchKey(row.lokasi_kerja);
+      const rowAreaPek = normalizeChecklistMatchKey(row.area_pekerjaan);
+      const rowJenisPek = normalizeChecklistMatchKey(row.jenis_pekerjaan);
+
+      for (const [tgl, dayRecords] of resultsByDay.entries()) {
+        const matched =
+          dayRecords.find(
+            (r) =>
+              Boolean(row.rowId) &&
+              r.rowId === row.rowId &&
+              (!checklistContext.docId || !r.docId || r.docId === checklistContext.docId)
+          ) ||
+          dayRecords.find(
+            (r) =>
+              normalizeChecklistMatchKey(r.areaKey || r.lokasi_kerja) === rowAreaKey &&
+              normalizeChecklistMatchKey(r.area_pekerjaan) === rowAreaPek &&
+              normalizeChecklistMatchKey(r.jenis_pekerjaan) === rowJenisPek &&
+              (!checklistContext.docId || !r.docId || r.docId === checklistContext.docId)
+          ) ||
+          dayRecords.find(
+            (r) =>
+              normalizeChecklistMatchKey(r.areaKey || r.lokasi_kerja) === rowAreaKey &&
+              normalizeChecklistMatchKey(r.area_pekerjaan) === rowAreaPek &&
+              normalizeChecklistMatchKey(r.jenis_pekerjaan) === rowJenisPek
+          );
+
+        if (!matched) continue;
+        if (matched.status === 'R') {
+          realisasiV[tgl] = (realisasiV[tgl] || 0) + 1;
+          totalV++;
+        } else if (matched.status === 'X') {
+          tidakTerealisasiX[tgl] = (tidakTerealisasiX[tgl] || 0) + 1;
           totalX++;
         }
       }

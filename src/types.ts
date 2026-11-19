@@ -806,7 +806,7 @@ export interface UploadedMcpDocument {
   _baseRev?: string;
 }
 
-export type McpChecklistStatus = 'B' | 'K' | 'R';
+export type McpChecklistStatus = 'R' | 'X';
 
 export interface McpChecklistResultRecord {
   id: string;

@@ -37,22 +37,16 @@ const STATUS_OPTIONS: Array<{
   idleClass: string;
 }> = [
   {
-    code: 'B',
-    label: 'Baik',
-    activeClass: 'bg-emerald-600 text-white border-emerald-700 shadow-xs ring-2 ring-emerald-200',
-    idleClass: 'bg-white text-slate-700 border-slate-300 hover:bg-emerald-50 hover:border-emerald-300 hover:text-emerald-800',
-  },
-  {
-    code: 'K',
-    label: 'Kurang',
-    activeClass: 'bg-amber-500 text-white border-amber-600 shadow-xs ring-2 ring-amber-200',
-    idleClass: 'bg-white text-slate-700 border-slate-300 hover:bg-amber-50 hover:border-amber-300 hover:text-amber-800',
-  },
-  {
     code: 'R',
-    label: 'Rusak',
+    label: 'Realisasi',
+    activeClass: 'bg-emerald-600 text-white border-emerald-700 shadow-xs ring-2 ring-emerald-200',
+    idleClass: 'bg-white text-emerald-700 border-slate-300 hover:bg-emerald-50 hover:border-emerald-300 hover:text-emerald-800',
+  },
+  {
+    code: 'X',
+    label: 'Belum Realisasi',
     activeClass: 'bg-rose-600 text-white border-rose-700 shadow-xs ring-2 ring-rose-200',
-    idleClass: 'bg-white text-slate-700 border-slate-300 hover:bg-rose-50 hover:border-rose-300 hover:text-rose-800',
+    idleClass: 'bg-white text-rose-600 border-rose-300 hover:bg-rose-50 hover:border-rose-400 hover:text-rose-700',
   },
 ];
 
@@ -115,9 +109,24 @@ export const McpDailyChecklistSection: React.FC<McpDailyChecklistSectionProps> =
     setSaveFeedback(null);
   }, [todayParts.dateStr]);
 
-  const savedCheckedCount = savedByItemKey.size;
+  const savedRealisasiCount = useMemo(() => {
+    let count = 0;
+    for (const rec of savedByItemKey.values()) {
+      if (rec.status === 'R') count += 1;
+    }
+    return count;
+  }, [savedByItemKey]);
+
+  const savedBelumRealisasiCount = useMemo(() => {
+    let count = 0;
+    for (const rec of savedByItemKey.values()) {
+      if (rec.status === 'X') count += 1;
+    }
+    return count;
+  }, [savedByItemKey]);
+
   const totalAreaCount = areaTodayItems.length;
-  const progressPct = totalAreaCount > 0 ? Math.round((savedCheckedCount / totalAreaCount) * 100) : 0;
+  const progressPct = totalAreaCount > 0 ? Math.round((savedRealisasiCount / totalAreaCount) * 100) : 0;
 
   const pendingChanges = useMemo(() => {
     const list: Array<{ item: TodayScheduledMcpItem; status: McpChecklistStatus }> = [];
@@ -221,16 +230,15 @@ export const McpDailyChecklistSection: React.FC<McpDailyChecklistSectionProps> =
             </div>
             <p className="text-xs text-slate-600 mt-1">
               Area dipilih: <strong className="text-slate-900">{selectedAreaLabel}</strong> • Keterangan Status:{' '}
-              <strong className="text-emerald-700">B</strong> = Baik,{' '}
-              <strong className="text-amber-700">K</strong> = Kurang,{' '}
-              <strong className="text-rose-700">R</strong> = Rusak
+              <strong className="text-emerald-700">R = Realisasi</strong>,{' '}
+              <strong className="text-rose-600">X = Belum Realisasi</strong>
             </p>
           </div>
 
           {totalAreaCount > 0 && (
             <div className="flex flex-wrap items-center gap-2.5">
               <div className="px-3 py-1.5 rounded-xl bg-white border border-emerald-200 shadow-2xs text-xs font-extrabold text-emerald-900">
-                {savedCheckedCount}/{totalAreaCount} sudah dicek
+                {savedRealisasiCount}/{totalAreaCount} sudah direalisasi
               </div>
               <button
                 type="button"
@@ -262,7 +270,12 @@ export const McpDailyChecklistSection: React.FC<McpDailyChecklistSectionProps> =
             </div>
             <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-500">
               <span>
-                Progres area ini: <strong className="text-slate-800">{savedCheckedCount}/{totalAreaCount} sudah dicek</strong> ({progressPct}%)
+                Progres area ini: <strong className="text-slate-800">{savedRealisasiCount}/{totalAreaCount} sudah direalisasi</strong> ({progressPct}%)
+                {savedBelumRealisasiCount > 0 && (
+                  <span className="ml-2 font-bold text-rose-600">
+                    • {savedBelumRealisasiCount} belum realisasi (X)
+                  </span>
+                )}
               </span>
               {pendingChanges.length > 0 ? (
                 <span className="font-bold text-amber-700">
@@ -329,7 +342,7 @@ export const McpDailyChecklistSection: React.FC<McpDailyChecklistSectionProps> =
                 <th className="px-3.5 py-2.5">Area Pekerjaan</th>
                 <th className="px-3.5 py-2.5">Jenis Pekerjaan</th>
                 <th className="px-3.5 py-2.5 text-center w-20">FRQ</th>
-                <th className="px-3.5 py-2.5 text-center w-64">Status Ceklist (B / K / R)</th>
+                <th className="px-3.5 py-2.5 text-center w-64">Status Ceklist (R / X)</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200">

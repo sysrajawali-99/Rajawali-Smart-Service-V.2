@@ -224,7 +224,7 @@ export function resolveSelectedAreaKey(
 }
 
 export function isValidMcpStatus(val: unknown): val is McpChecklistStatus {
-  return val === 'B' || val === 'K' || val === 'R';
+  return val === 'R' || val === 'X';
 }
 
 export function findSavedResultForItem(

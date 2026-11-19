@@ -25,7 +25,7 @@ import {
   XCircle,
 } from 'lucide-react';
 import { useCleaning } from '../../context/CleaningContext';
-import { UploadedMcpDocument, UploadedMcpRow } from '../../types';
+import { McpChecklistResultRecord, UploadedMcpDocument, UploadedMcpRow } from '../../types';
 import {
   MONTH_NAMES_ID,
   ParseMcpResult,
@@ -104,12 +104,14 @@ interface EditingCellState {
 
 interface PlanningReportGridProps {
   mode: McpReportMode;
+  docId?: string;
   lokasiProyek: string;
   bulan: number;
   tahun: number;
   daysCount: number;
   dayCodes?: Record<number, string>;
   rows: UploadedMcpRow[];
+  checklistResults?: McpChecklistResultRecord[];
   editable?: boolean;
   onCellChange?: (rowKey: string, tanggal: number, newValue: string) => Promise<void> | void;
   onEditManualRow?: (row: UploadedMcpRow) => void;
@@ -118,12 +120,14 @@ interface PlanningReportGridProps {
 
 const PlanningReportGrid: React.FC<PlanningReportGridProps> = ({
   mode,
+  docId,
   lokasiProyek,
   bulan,
   tahun,
   daysCount,
   dayCodes,
   rows,
+  checklistResults,
   editable = false,
   onCellChange,
   onEditManualRow,
@@ -244,15 +248,23 @@ const PlanningReportGrid: React.FC<PlanningReportGridProps> = ({
     setFilterFrq('ALL');
   };
 
-  // Footer & legend calculated live from the rows displayed in this menu
+  // Footer & legend calculated live from the rows displayed in this menu and saved checklist R/X statuses
+  const checklistFooterContext = useMemo(
+    () =>
+      checklistResults
+        ? { bulan, tahun, docId, results: checklistResults }
+        : undefined,
+    [checklistResults, bulan, tahun, docId]
+  );
+
   const { footer, legend, tokenStyleMap } = useMemo(
-    () => calculateMcpRecapAndLegend(visibleRows, daysCount),
-    [visibleRows, daysCount]
+    () => calculateMcpRecapAndLegend(visibleRows, daysCount, checklistFooterContext),
+    [visibleRows, daysCount, checklistFooterContext]
   );
 
   const fullLegendData = useMemo(
-    () => (hasActiveFilter ? calculateMcpRecapAndLegend(modeScopedRows, daysCount) : null),
-    [hasActiveFilter, modeScopedRows, daysCount]
+    () => (hasActiveFilter ? calculateMcpRecapAndLegend(modeScopedRows, daysCount, checklistFooterContext) : null),
+    [hasActiveFilter, modeScopedRows, daysCount, checklistFooterContext]
   );
   const activeTokenStyleMap = fullLegendData?.tokenStyleMap || tokenStyleMap;
   const activeLegend = fullLegendData?.legend || legend;
@@ -790,6 +802,7 @@ export const McpReportView: React.FC<McpReportViewProps> = ({ mode }) => {
   const {
     activeProject,
     uploadedMcpPrograms,
+    mcpChecklistResults,
     saveUploadedMcpProgram,
     updateUploadedMcpCell,
     updateUploadedMcpRows,
@@ -1575,6 +1588,7 @@ export const McpReportView: React.FC<McpReportViewProps> = ({ mode }) => {
                   daysCount={previewResult.daysCount}
                   dayCodes={previewResult.dayCodes}
                   rows={previewResult.rows}
+                  checklistResults={[]}
                 />
               )}
             </div>
@@ -1588,6 +1602,7 @@ export const McpReportView: React.FC<McpReportViewProps> = ({ mode }) => {
           {activeDoc && activeDoc.rows && activeDoc.rows.length > 0 ? (
             <PlanningReportGrid
               mode={mode}
+              docId={activeDoc.id}
               lokasiProyek={activeDoc.lokasi_proyek || activeProject?.name || '-'}
               bulan={activeDoc.bulan}
               tahun={activeDoc.tahun}
@@ -1596,6 +1611,7 @@ export const McpReportView: React.FC<McpReportViewProps> = ({ mode }) => {
               }
               dayCodes={activeDoc.dayCodes}
               rows={activeDoc.rows}
+              checklistResults={mcpChecklistResults}
               editable
               onCellChange={(rowKey, tanggal, newValue) =>
                 updateUploadedMcpCell(activeDoc.id, rowKey, tanggal, newValue)
