@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle,
+  ArrowRight,
   Building2,
   Calendar,
   CalendarRange,
@@ -36,6 +37,13 @@ import {
   normalizeLokasiProyekKey,
   parseMcpBuffers,
 } from '../../utils/mcpExcel';
+import {
+  GeneratedNextMonthMcp,
+  formatMcpPeriodLabel,
+  generateNextMonthMcp,
+  getNextMonthPeriod,
+  sortMcpDocsByLatestPeriod,
+} from '../../utils/mcpNextMonth';
 
 export type McpReportMode = 'MCP' | 'DAILY' | 'WEEKLY' | 'MONTHLY';
 
@@ -501,6 +509,8 @@ const PlanningReportGrid: React.FC<PlanningReportGridProps> = ({
                       className={
                         isBlankSpacer
                           ? 'bg-slate-50/40 h-6'
+                          : row.needsManualCheck
+                          ? 'bg-amber-50/50 hover:bg-amber-50/80 transition-colors'
                           : 'bg-white hover:bg-teal-50/40 transition-colors'
                       }
                     >
@@ -519,6 +529,12 @@ const PlanningReportGrid: React.FC<PlanningReportGridProps> = ({
 
                       <td className="border-r border-slate-200 px-3 py-1.5 text-slate-800 font-semibold max-w-[260px]">
                         <div className="line-clamp-2 break-words">{row.jenis_pekerjaan || ''}</div>
+                        {row.needsManualCheck && (
+                          <span className="mt-1 inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-300 text-[9px] font-extrabold">
+                            <AlertTriangle className="w-2.5 h-2.5" />
+                            Lengkapi Manual
+                          </span>
+                        )}
                       </td>
 
                       <td className="border-r border-slate-200 px-2 py-1.5 text-center whitespace-nowrap">
@@ -535,6 +551,10 @@ const PlanningReportGrid: React.FC<PlanningReportGridProps> = ({
                             }`}
                           >
                             {frqNorm}
+                          </span>
+                        ) : row.needsManualCheck ? (
+                          <span className="inline-flex items-center justify-center px-1.5 py-0.5 rounded-md text-[9px] font-bold bg-amber-100 text-amber-800 border border-amber-300">
+                            Kosong
                           </span>
                         ) : (
                           ''
@@ -737,17 +757,14 @@ export const McpReportView: React.FC<McpReportViewProps> = ({ mode }) => {
   } = useCleaning();
 
   const sortedDocs = useMemo(
-    () =>
-      [...uploadedMcpPrograms].sort((a, b) =>
-        (b.updatedAt || '').localeCompare(a.updatedAt || '')
-      ),
+    () => sortMcpDocsByLatestPeriod(uploadedMcpPrograms),
     [uploadedMcpPrograms]
   );
 
   const latestDoc: UploadedMcpDocument | null = sortedDocs[0] || null;
   const [selectedDocId, setSelectedDocId] = useState<string | null>(latestDoc?.id || null);
 
-  // Automatically switch to newly uploaded MCP whenever latestDoc changes (so re-uploading MCP refreshes MCP, Daily, Weekly, Monthly immediately)
+  // Automatically switch to newest period MCP whenever a newer/new MCP doc is saved
   const latestSignature = latestDoc ? `${latestDoc.id}::${latestDoc.updatedAt}` : '';
   useEffect(() => {
     if (latestDoc) {
@@ -774,12 +791,71 @@ export const McpReportView: React.FC<McpReportViewProps> = ({ mode }) => {
   const [isSaving, setIsSaving] = useState(false);
   const [showOverwriteModal, setShowOverwriteModal] = useState(false);
   const [showDeleteConfirmModal, setShowDeleteConfirmModal] = useState(false);
+  const [showNextMonthConfirmModal, setShowNextMonthConfirmModal] = useState(false);
+  const [isGeneratingNextMonth, setIsGeneratingNextMonth] = useState(false);
+  const [nextMonthSummary, setNextMonthSummary] = useState<GeneratedNextMonthMcp | null>(null);
   const [bannerMessage, setBannerMessage] = useState<{
     type: 'success' | 'error' | 'info';
     text: string;
   } | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const nextMonthTarget = useMemo(() => {
+    if (!latestDoc) return null;
+    const nextPeriod = getNextMonthPeriod(latestDoc.bulan, latestDoc.tahun);
+    const locKey = normalizeLokasiProyekKey(
+      latestDoc.lokasi_proyek || activeProject?.name || 'Default'
+    );
+    const existingDoc =
+      uploadedMcpPrograms.find(
+        (doc) =>
+          Number(doc.bulan) === nextPeriod.bulan &&
+          Number(doc.tahun) === nextPeriod.tahun &&
+          normalizeLokasiProyekKey(doc.lokasi_proyek || '') === locKey
+      ) || null;
+    return {
+      sourceDoc: latestDoc,
+      targetBulan: nextPeriod.bulan,
+      targetTahun: nextPeriod.tahun,
+      existingDoc,
+    };
+  }, [latestDoc, uploadedMcpPrograms, activeProject?.name]);
+
+  const handleConfirmGenerateNextMonth = async () => {
+    if (!nextMonthTarget || isGeneratingNextMonth) return;
+    setIsGeneratingNextMonth(true);
+    setBannerMessage(null);
+    try {
+      const generated = generateNextMonthMcp(nextMonthTarget.sourceDoc);
+      const saved = await saveUploadedMcpProgram({
+        lokasi_proyek: generated.lokasiProyek,
+        bulan: generated.targetBulan,
+        tahun: generated.targetTahun,
+        daysCount: generated.daysCount,
+        dayCodes: generated.dayCodes,
+        sheetNames: nextMonthTarget.sourceDoc.sheetNames,
+        fileName: `MCP_${formatMcpPeriodLabel(generated.targetBulan, generated.targetTahun).replace(/\s+/g, '_')}`,
+        rows: generated.rows,
+      });
+
+      setSelectedDocId(saved.id);
+      setShowNextMonthConfirmModal(false);
+      setNextMonthSummary(generated);
+      setBannerMessage({
+        type: 'success',
+        text: `MCP ${formatMcpPeriodLabel(generated.targetBulan, generated.targetTahun)} berhasil dibuat dari ${formatMcpPeriodLabel(generated.sourceBulan, generated.sourceTahun)} (${generated.summary.totalRows} baris). Menu Daily, Weekly, dan Monthly otomatis diperbarui.`,
+      });
+    } catch (err: any) {
+      setShowNextMonthConfirmModal(false);
+      setBannerMessage({
+        type: 'error',
+        text: `Gagal membuat MCP bulan berikutnya: ${err?.message || 'Terjadi kesalahan'}`,
+      });
+    } finally {
+      setIsGeneratingNextMonth(false);
+    }
+  };
 
   const yearOptions = useMemo(() => {
     const base = now.getFullYear();
@@ -995,6 +1071,16 @@ export const McpReportView: React.FC<McpReportViewProps> = ({ mode }) => {
         <div className="flex flex-wrap items-center gap-2">
           {mode === 'MCP' ? (
             <>
+              {latestDoc && (
+                <button
+                  type="button"
+                  onClick={() => setShowNextMonthConfirmModal(true)}
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-xs transition-colors cursor-pointer"
+                >
+                  <ArrowRight className="w-4 h-4" />
+                  <span>Lanjutkan Bulan Berikutnya</span>
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() =>
@@ -1041,28 +1127,54 @@ export const McpReportView: React.FC<McpReportViewProps> = ({ mode }) => {
         </div>
       </div>
 
-      {/* Saved MCP Period Switcher (when > 1 saved MCP exists) */}
-      {sortedDocs.length > 1 && !previewResult && (
-        <div className="flex flex-wrap items-center gap-1.5 bg-white px-4 py-2.5 rounded-2xl border border-slate-200/80 shadow-xs text-[11px]">
-          <span className="font-bold text-slate-500 mr-1">Arsip MCP Tersimpan:</span>
-          {sortedDocs.map((doc, i) => {
-            const isActive = activeDoc?.id === doc.id;
-            return (
-              <button
-                key={doc.id}
-                type="button"
-                onClick={() => setSelectedDocId(doc.id)}
-                className={`px-2.5 py-1 rounded-lg font-bold transition-colors cursor-pointer border ${
-                  isActive
-                    ? 'bg-teal-600 text-white border-teal-600'
-                    : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
-                }`}
-              >
-                {doc.lokasi_proyek} • {MONTH_NAMES_ID[doc.bulan - 1]?.slice(0, 3)} {doc.tahun}
-                {i === 0 ? ' (Terbaru)' : ''}
-              </button>
-            );
-          })}
+      {/* Period Picker (Bulan/Tahun) — keeps older MCP periods accessible across MCP & Activity views */}
+      {sortedDocs.length > 0 && !previewResult && (
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 bg-white px-4 py-3 rounded-2xl border border-slate-200/80 shadow-xs text-xs">
+          <div className="flex flex-wrap items-center gap-2">
+            <label
+              htmlFor={`mcp-period-select-${mode}`}
+              className="font-bold text-slate-600 flex items-center gap-1.5 whitespace-nowrap"
+            >
+              <Calendar className="w-4 h-4 text-teal-600" />
+              <span>Periode MCP (Bulan / Tahun):</span>
+            </label>
+            <select
+              id={`mcp-period-select-${mode}`}
+              value={activeDoc?.id || ''}
+              onChange={(e) => setSelectedDocId(e.target.value)}
+              className="px-3 py-1.5 rounded-xl border border-slate-200 bg-slate-50 text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-teal-500 cursor-pointer"
+            >
+              {sortedDocs.map((doc, i) => (
+                <option key={doc.id} value={doc.id}>
+                  {MONTH_NAMES_ID[doc.bulan - 1]} {doc.tahun} — {doc.lokasi_proyek}
+                  {i === 0 ? ' (Periode Terbaru)' : ''}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {sortedDocs.length > 1 && (
+            <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
+              {sortedDocs.map((doc, i) => {
+                const isActive = activeDoc?.id === doc.id;
+                return (
+                  <button
+                    key={doc.id}
+                    type="button"
+                    onClick={() => setSelectedDocId(doc.id)}
+                    className={`px-2.5 py-1 rounded-lg font-bold transition-colors cursor-pointer border ${
+                      isActive
+                        ? 'bg-teal-600 text-white border-teal-600'
+                        : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                    }`}
+                  >
+                    {MONTH_NAMES_ID[doc.bulan - 1]?.slice(0, 3)} {doc.tahun}
+                    {i === 0 ? ' (Terbaru)' : ''}
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
 
@@ -1502,6 +1614,170 @@ export const McpReportView: React.FC<McpReportViewProps> = ({ mode }) => {
                 className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold shadow-xs cursor-pointer"
               >
                 Hapus MCP
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* MODAL: KONFIRMASI LANJUTKAN BULAN BERIKUTNYA */}
+      {showNextMonthConfirmModal && nextMonthTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4">
+          <div className="bg-white rounded-2xl p-5 max-w-md w-full border border-slate-200 shadow-2xl space-y-4">
+            <div className="flex items-start gap-3">
+              <div
+                className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+                  nextMonthTarget.existingDoc
+                    ? 'bg-amber-100 text-amber-700'
+                    : 'bg-emerald-100 text-emerald-700'
+                }`}
+              >
+                {nextMonthTarget.existingDoc ? (
+                  <AlertTriangle className="w-5 h-5" />
+                ) : (
+                  <CalendarRange className="w-5 h-5" />
+                )}
+              </div>
+              <div className="space-y-1.5">
+                <h3 className="text-sm font-bold text-slate-900">
+                  Buat MCP {formatMcpPeriodLabel(nextMonthTarget.targetBulan, nextMonthTarget.targetTahun)} dari{' '}
+                  {formatMcpPeriodLabel(nextMonthTarget.sourceDoc.bulan, nextMonthTarget.sourceDoc.tahun)}?
+                </h3>
+                <p className="text-xs text-slate-600 leading-relaxed">
+                  Area <strong>{nextMonthTarget.sourceDoc.lokasi_proyek}</strong> ({nextMonthTarget.sourceDoc.rows?.length || 0} baris). Jadwal disusun ulang otomatis berdasarkan pola hari &amp; frekuensi (D/W/M) sebagai rencana tanpa status realisasi bulan lalu (V/X) maupun ceklist (B/K/R).
+                </p>
+                {nextMonthTarget.existingDoc && (
+                  <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-300 text-xs font-semibold text-amber-900">
+                    Periode <strong>{formatMcpPeriodLabel(nextMonthTarget.targetBulan, nextMonthTarget.targetTahun)}</strong> sudah ada ({nextMonthTarget.existingDoc.rows?.length || 0} baris). Timpa data yang sudah ada atau Batal?
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setShowNextMonthConfirmModal(false)}
+                disabled={isGeneratingNextMonth}
+                className="px-4 py-2 rounded-xl border border-slate-200 text-slate-700 hover:bg-slate-50 text-xs font-bold cursor-pointer"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmGenerateNextMonth}
+                disabled={isGeneratingNextMonth}
+                className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-white text-xs font-bold shadow-xs cursor-pointer ${
+                  nextMonthTarget.existingDoc
+                    ? 'bg-amber-600 hover:bg-amber-700'
+                    : 'bg-emerald-600 hover:bg-emerald-700'
+                }`}
+              >
+                <Check className="w-3.5 h-3.5" />
+                <span>
+                  {isGeneratingNextMonth
+                    ? 'Membuat MCP...'
+                    : nextMonthTarget.existingDoc
+                    ? 'Timpa'
+                    : 'Ya, Buat MCP'}
+                </span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: RINGKASAN PEMBUATAN MCP BULAN BERIKUTNYA */}
+      {nextMonthSummary && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4">
+          <div className="bg-white rounded-2xl p-5 max-w-lg w-full border border-slate-200 shadow-2xl space-y-4">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-start gap-3">
+                <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
+                  <CheckCircle2 className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900">
+                    MCP {formatMcpPeriodLabel(nextMonthSummary.targetBulan, nextMonthSummary.targetTahun)} Berhasil Dibuat
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Dari {formatMcpPeriodLabel(nextMonthSummary.sourceBulan, nextMonthSummary.sourceTahun)} • Area: {nextMonthSummary.lokasiProyek}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setNextMonthSummary(null)}
+                className="p-1 rounded-lg hover:bg-slate-100 text-slate-400 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-center">
+              <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200">
+                <span className="text-[10px] font-bold text-slate-500 uppercase block">Total Baris</span>
+                <span className="text-base font-extrabold text-slate-900">
+                  {nextMonthSummary.summary.totalRows}
+                </span>
+              </div>
+              <div className="p-2.5 rounded-xl bg-blue-50 border border-blue-200">
+                <span className="text-[10px] font-bold text-blue-700 uppercase block">FRQ D</span>
+                <span className="text-base font-extrabold text-blue-900">
+                  {nextMonthSummary.summary.frqCounts.D}
+                </span>
+              </div>
+              <div className="p-2.5 rounded-xl bg-purple-50 border border-purple-200">
+                <span className="text-[10px] font-bold text-purple-700 uppercase block">FRQ W</span>
+                <span className="text-base font-extrabold text-purple-900">
+                  {nextMonthSummary.summary.frqCounts.W}
+                </span>
+              </div>
+              <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-200">
+                <span className="text-[10px] font-bold text-amber-700 uppercase block">FRQ M</span>
+                <span className="text-base font-extrabold text-amber-900">
+                  {nextMonthSummary.summary.frqCounts.M}
+                </span>
+              </div>
+              <div className="p-2.5 rounded-xl bg-rose-50 border border-rose-200 col-span-2 sm:col-span-1">
+                <span className="text-[10px] font-bold text-rose-700 uppercase block">Cek Manual</span>
+                <span className="text-base font-extrabold text-rose-900">
+                  {nextMonthSummary.summary.manualCheckRows.length}
+                </span>
+              </div>
+            </div>
+
+            {nextMonthSummary.summary.manualCheckRows.length > 0 && (
+              <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 space-y-1.5">
+                <div className="text-xs font-bold text-amber-900 flex items-center gap-1.5">
+                  <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                  <span>
+                    Baris Butuh Pengecekan Manual ({nextMonthSummary.summary.manualCheckRows.length} baris FRQ kosong / kode lain):
+                  </span>
+                </div>
+                <ul className="max-h-36 overflow-y-auto space-y-1 text-[11px] text-amber-900 pl-4 list-disc">
+                  {nextMonthSummary.summary.manualCheckRows.map((row) => (
+                    <li key={row.urutan}>
+                      <strong>{row.lokasi_kerja}</strong> — {row.area_pekerjaan}: {row.jenis_pekerjaan}{' '}
+                      <span className="font-mono text-[10px] bg-amber-100 px-1 rounded">
+                        (FRQ: {row.frq || 'Kosong'})
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+                <p className="text-[10px] text-amber-800">
+                  Sel tanggal baris tersebut dikosongkan dan ditandai <strong>&quot;Lengkapi Manual&quot;</strong>. Klik sel tanggal di tabel untuk mengisinya secara manual.
+                </p>
+              </div>
+            )}
+
+            <div className="flex items-center justify-between gap-2 pt-2 border-t border-slate-100 text-[11px] text-slate-500">
+              <span>Menu Daily, Weekly &amp; Monthly Activity otomatis diperbarui.</span>
+              <button
+                type="button"
+                onClick={() => setNextMonthSummary(null)}
+                className="px-4 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold shadow-xs cursor-pointer"
+              >
+                Tutup &amp; Lihat MCP
               </button>
             </div>
           </div>

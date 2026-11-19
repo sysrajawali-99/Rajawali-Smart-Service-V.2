@@ -3036,6 +3036,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       urutan: r.urutan ?? idx + 1,
       jadwal: r.jadwal,
       ...(r.sheet ? { sheet: r.sheet } : {}),
+      ...(r.needsManualCheck ? { needsManualCheck: true } : {}),
     }));
 
     const doc: UploadedMcpDocument = {
@@ -3114,6 +3115,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         ...row,
         rowId: row.rowId || `mcp-row-${row.urutan ?? idx + 1}`,
         jadwal: nextJadwal,
+        ...(trimmedVal !== '' ? { needsManualCheck: false } : {}),
       };
     });
 

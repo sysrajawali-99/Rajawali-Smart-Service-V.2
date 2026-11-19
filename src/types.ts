@@ -783,6 +783,7 @@ export interface UploadedMcpRow {
   urutan: number;
   jadwal: UploadedMcpScheduleCell[];
   sheet?: string;
+  needsManualCheck?: boolean;
 }
 
 export interface UploadedMcpDocument {
