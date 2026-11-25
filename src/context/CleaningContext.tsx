@@ -50,13 +50,52 @@ import {
 } from '../types';
 import { calculateShiftDuration } from '../utils/shiftUtils';
 import { normalizeFrequencyCode, getNextProgramDayStatus } from '../utils/mcpUtils';
-import {
-  buildRowsFromEntries,
-  resolveRowOperationalShift,
-  resolveShift1AndShift2,
-} from '../utils/workScheduleExcel';
-import { normalizeLokasiProyekKey } from '../utils/mcpExcel';
 import { makeMcpChecklistRecordId, TodayScheduledMcpItem } from '../utils/mcpChecklist';
+
+function normalizeLokasiProyekKey(name: string): string {
+  return (
+    String(name ?? '')
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '') || 'default'
+  );
+}
+
+const CORE_COLLECTIONS: string[] = [
+  COLLECTIONS.PROJECTS,
+  COLLECTIONS.USERS,
+  COLLECTIONS.COMPANIES,
+  COLLECTIONS.COMPANY_PROFILE,
+  COLLECTIONS.KPI_CONFIG,
+  COLLECTIONS.RBAC_PERMISSIONS,
+  COLLECTIONS.AREAS,
+  COLLECTIONS.CLEANERS,
+  COLLECTIONS.SHIFTS,
+  COLLECTIONS.TASKS,
+  COLLECTIONS.COMPLAINTS,
+  COLLECTIONS.DAMAGE_REPORTS,
+  COLLECTIONS.SPECIAL_JOBS,
+  COLLECTIONS.CHECKLIST_LOCATIONS,
+  COLLECTIONS.CHECKLIST_TEMPLATES,
+  COLLECTIONS.DAILY_CHECKLISTS,
+  COLLECTIONS.INSPECTIONS,
+  COLLECTIONS.MASTER_PROGRAMS,
+];
+
+const MENU_COLLECTION_MAP: Record<string, string[]> = {
+  jadwal: [COLLECTIONS.SCHEDULES, COLLECTIONS.UPLOADED_WORK_SCHEDULES],
+  ceklist: [COLLECTIONS.UPLOADED_MCP, COLLECTIONS.MCP_CHECKLIST_RESULTS],
+  'master-program': [COLLECTIONS.MASTER_PROGRAMS, COLLECTIONS.UPLOADED_MCP, COLLECTIONS.MCP_CHECKLIST_RESULTS],
+  mcp: [COLLECTIONS.MASTER_PROGRAMS, COLLECTIONS.UPLOADED_MCP, COLLECTIONS.MCP_CHECKLIST_RESULTS],
+  pengaturan: [COLLECTIONS.AUDIT_LOGS],
+  'klien-mode': [COLLECTIONS.UPLOADED_WORK_SCHEDULES, COLLECTIONS.EMPLOYEE_TURNOVERS, COLLECTIONS.KLIEN_CHECKLIST_INSPECTIONS],
+  'klien-manpower': [COLLECTIONS.UPLOADED_WORK_SCHEDULES, COLLECTIONS.EMPLOYEE_TURNOVERS, COLLECTIONS.KLIEN_CHECKLIST_INSPECTIONS],
+  'klien-checklist': [COLLECTIONS.KLIEN_CHECKLIST_ITEMS, COLLECTIONS.KLIEN_CHECKLIST_INSPECTIONS, COLLECTIONS.UPLOADED_MCP, COLLECTIONS.MCP_CHECKLIST_RESULTS],
+  'klien-kerusakan': [COLLECTIONS.KLIEN_CHECKLIST_INSPECTIONS],
+  'klien-activity': [COLLECTIONS.KLIEN_CHECKLIST_INSPECTIONS],
+  'klien-keluhan': [COLLECTIONS.KLIEN_CHECKLIST_INSPECTIONS],
+};
 import {
   INITIAL_AREAS,
   INITIAL_CLEANERS,
@@ -142,6 +181,7 @@ interface CleaningContextType {
   };
   syncToSupabase: () => Promise<void>;
   pullAllDataFromServer: (forceFullPull?: boolean) => Promise<void>;
+  ensureCollectionsLoaded: (collections: string[]) => Promise<void>;
   syncFromLiveVps: () => Promise<{ success: boolean; message: string; summary?: any }>;
   isInitialLoading: boolean;
 
@@ -1144,7 +1184,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     lastSyncedAt: null,
   });
 
-  const [isInitialLoading, setIsInitialLoading] = useState<boolean>(true);
+  const [isInitialLoading, setIsInitialLoading] = useState<boolean>(false);
 
   // Refs for synchronization and delta pulls (Tahap C)
   const initialSyncDone = useRef<boolean>(false);
@@ -1156,6 +1196,10 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const projectsRef = useRef<ProjectLocation[]>(projects);
   const projectWriteQueueRef = useRef<Map<string, Promise<void>>>(new Map());
   const lastPullAtRef = useRef<Record<string, string>>({});
+  const lastCollectionSyncMsRef = useRef<Record<string, number>>({});
+  const loadedCollectionsRef = useRef<Set<string>>(new Set());
+  const inFlightCollectionsRef = useRef<Map<string, Promise<void>>>(new Map());
+  const lastVisibilitySyncMsRef = useRef<number>(0);
   const lastDisconnectTimeRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -1382,194 +1426,181 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
   };
 
-  // Pull all collections from backend (full pull on initial load / 10m interval / long reconnect, delta otherwise)
-  const pullAllDataFromServer = async (forceFullPull = false) => {
-    const isFullPull = !initialSyncDone.current || forceFullPull;
-    try {
-      setSupabaseStatus((prev) => ({ ...prev, status: 'SYNCING' }));
-
-      const pullCol = async <T = any>(
-        col: string
-      ): Promise<T[]> => {
-        const since = isFullPull ? undefined : lastPullAtRef.current[col];
-        const items = await getRecords<T>(col, since);
-        if (items && items.length > 0) {
-          const revs = items.map((it: any) => it._rev).filter(Boolean);
-          if (revs.length > 0) {
-            const maxRev = revs.reduce((a, b) => (new Date(a) > new Date(b) ? a : b));
-            const currentLast = lastPullAtRef.current[col];
-            if (!currentLast || new Date(maxRev) > new Date(currentLast)) {
-              lastPullAtRef.current[col] = maxRev;
+  const applyCollectionData = async (
+    col: string,
+    items: any[],
+    isFullReplace: boolean
+  ) => {
+    if (isFullReplace) {
+      switch (col) {
+        case COLLECTIONS.COMPANIES:
+          if (items.length > 0) setCompanies(items);
+          break;
+        case COLLECTIONS.PROJECTS:
+          setProjects(items);
+          break;
+        case COLLECTIONS.USERS:
+          setUsers(items.length > 0 ? items : INITIAL_USERS);
+          break;
+        case COLLECTIONS.RBAC_PERMISSIONS:
+          await loadOrSeedCollection(COLLECTIONS.RBAC_PERMISSIONS, items, DEFAULT_RBAC_PERMISSIONS, setRbacPermissions);
+          break;
+        case COLLECTIONS.AREAS:
+          setAreas(items);
+          break;
+        case COLLECTIONS.CLEANERS:
+          setCleaners(items);
+          break;
+        case COLLECTIONS.SHIFTS:
+          setShifts(items);
+          break;
+        case COLLECTIONS.SCHEDULES:
+          setSchedules(items);
+          break;
+        case COLLECTIONS.UPLOADED_WORK_SCHEDULES:
+          setUploadedWorkSchedules(items);
+          break;
+        case COLLECTIONS.CHECKLIST_LOCATIONS:
+          setChecklistLocations(items);
+          break;
+        case COLLECTIONS.CHECKLIST_TEMPLATES:
+          await loadOrSeedCollection(COLLECTIONS.CHECKLIST_TEMPLATES, items, INITIAL_CHECKLIST_TEMPLATES, setChecklistTemplates);
+          break;
+        case COLLECTIONS.DAILY_CHECKLISTS: {
+          const serverChecklistMap = new Map(items.map((c: DailyAreaChecklist) => [c.id, c]));
+          setDailyChecklists((prevLocal) => {
+            const merged: DailyAreaChecklist[] = [];
+            for (const rem of items as DailyAreaChecklist[]) {
+              if (dirtyChecklistIdsRef.current.has(rem.id)) {
+                const dirty = prevLocal.find((d) => d.id === rem.id);
+                if (dirty) {
+                  merged.push(dirty);
+                  continue;
+                }
+              }
+              merged.push(rem);
             }
-          }
-        }
-        return items;
-      };
-
-      const [
-        remoteProjects,
-        remoteUsers,
-        remoteRbac,
-        remoteAreas,
-        remoteCleaners,
-        remoteShifts,
-        remoteSchedules,
-        remoteUploadedWorkSchedules,
-        remoteChecklistLocs,
-        remoteChecklistTpls,
-        remoteDailyChecklists,
-        remoteTasks,
-        remoteInspections,
-        remoteComplaints,
-        remoteDamage,
-        remoteSpecial,
-        remoteMcp,
-        remoteUploadedMcp,
-        remoteMcpChecklistResults,
-        remoteTurnovers,
-        remoteKlienItems,
-        remoteKlienInspections,
-        remoteNotifs,
-        remoteAuditLogs,
-        remoteProfile,
-        remoteKpi,
-        remoteCompanies,
-      ] = await Promise.all([
-        pullCol<ProjectLocation>(COLLECTIONS.PROJECTS),
-        pullCol<AppUser>(COLLECTIONS.USERS),
-        pullCol<RoleModulePermission>(COLLECTIONS.RBAC_PERMISSIONS),
-        pullCol<Area>(COLLECTIONS.AREAS),
-        pullCol<Cleaner>(COLLECTIONS.CLEANERS),
-        pullCol<Shift>(COLLECTIONS.SHIFTS),
-        pullCol<CleaningSchedule>(COLLECTIONS.SCHEDULES),
-        pullCol<UploadedWorkScheduleDocument>(COLLECTIONS.UPLOADED_WORK_SCHEDULES),
-        pullCol<ChecklistLocation>(COLLECTIONS.CHECKLIST_LOCATIONS),
-        pullCol<ChecklistTemplateItem>(COLLECTIONS.CHECKLIST_TEMPLATES),
-        pullCol<DailyAreaChecklist>(COLLECTIONS.DAILY_CHECKLISTS),
-        pullCol<CleaningTask>(COLLECTIONS.TASKS),
-        pullCol<QCInspection>(COLLECTIONS.INSPECTIONS),
-        pullCol<Complaint>(COLLECTIONS.COMPLAINTS),
-        pullCol<FacilityDamageReport>(COLLECTIONS.DAMAGE_REPORTS),
-        pullCol<SpecialJobItem>(COLLECTIONS.SPECIAL_JOBS),
-        pullCol<MasterCleaningProgramItem>(COLLECTIONS.MASTER_PROGRAMS),
-        pullCol<UploadedMcpDocument>(COLLECTIONS.UPLOADED_MCP),
-        pullCol<McpChecklistResultRecord>(COLLECTIONS.MCP_CHECKLIST_RESULTS),
-        pullCol<EmployeeTurnoverRecord>(COLLECTIONS.EMPLOYEE_TURNOVERS),
-        pullCol<KlienChecklistItem>(COLLECTIONS.KLIEN_CHECKLIST_ITEMS),
-        pullCol<KlienChecklistInspection>(COLLECTIONS.KLIEN_CHECKLIST_INSPECTIONS),
-        pullCol<AppNotification>(COLLECTIONS.NOTIFICATIONS),
-        pullCol<AuditLogEntry>(COLLECTIONS.AUDIT_LOGS),
-        pullCol<CompanyProfile>(COLLECTIONS.COMPANY_PROFILE),
-        pullCol<DashboardKpiVisibilityConfig>(COLLECTIONS.KPI_CONFIG),
-        pullCol<Company>(COLLECTIONS.COMPANIES),
-      ]);
-
-      if (isFullPull) {
-        if (remoteCompanies && remoteCompanies.length > 0) {
-          setCompanies(remoteCompanies);
-        }
-
-        // Server adalah sumber kebenaran utama (authoritative state):
-        // Data operasional langsung mengikuti isi server termasuk jika kosong ([]).
-        setProjects(remoteProjects);
-        setAreas(remoteAreas);
-        setCleaners(remoteCleaners);
-        setShifts(remoteShifts);
-        setSchedules(remoteSchedules);
-        setUploadedWorkSchedules(remoteUploadedWorkSchedules);
-        setChecklistLocations(remoteChecklistLocs);
-        setTasks(remoteTasks);
-        setInspections(remoteInspections);
-        setComplaints(remoteComplaints);
-        setDamageReports(remoteDamage);
-        setSpecialJobs(remoteSpecial);
-        setMasterPrograms(
-          remoteMcp.map((p) => ({
-            ...p,
-            frequency: normalizeFrequencyCode(p.frequency),
-          }))
-        );
-        setUploadedMcpPrograms(remoteUploadedMcp);
-        setMcpChecklistResults(remoteMcpChecklistResults);
-        setEmployeeTurnovers(remoteTurnovers);
-        setKlienChecklistItems(remoteKlienItems);
-        setKlienChecklistInspections(remoteKlienInspections);
-        setNotifications(remoteNotifs);
-        setAuditLogs(remoteAuditLogs.map(normalizeAuditLog));
-
-        // Koleksi struktur dasar: seed otomatis hanya bila benar-benar kosong di server
-        if (remoteUsers.length > 0) {
-          setUsers(remoteUsers);
-        } else {
-          setUsers(INITIAL_USERS);
-        }
-
-        await Promise.all([
-          loadOrSeedCollection(COLLECTIONS.RBAC_PERMISSIONS, remoteRbac, DEFAULT_RBAC_PERMISSIONS, setRbacPermissions),
-          loadOrSeedCollection(COLLECTIONS.CHECKLIST_TEMPLATES, remoteChecklistTpls, INITIAL_CHECKLIST_TEMPLATES, setChecklistTemplates),
-        ]);
-
-        // Daily Checklists full pull: ikuti server, pertahankan hanya perubahan lokal yang belum tersinkron (dirty)
-        const serverChecklistMap = new Map(remoteDailyChecklists.map((c) => [c.id, c]));
-        setDailyChecklists((prevLocal) => {
-          const merged: DailyAreaChecklist[] = [];
-          for (const rem of remoteDailyChecklists) {
-            if (dirtyChecklistIdsRef.current.has(rem.id)) {
-              const dirty = prevLocal.find((d) => d.id === rem.id);
-              if (dirty) {
-                merged.push(dirty);
-                continue;
+            for (const dirtyId of dirtyChecklistIdsRef.current) {
+              if (!serverChecklistMap.has(dirtyId)) {
+                const dirtyDoc = prevLocal.find((d) => d.id === dirtyId);
+                if (dirtyDoc) merged.push(dirtyDoc);
               }
             }
-            merged.push(rem);
-          }
-          for (const dirtyId of dirtyChecklistIdsRef.current) {
-            if (!serverChecklistMap.has(dirtyId)) {
-              const dirtyDoc = prevLocal.find((d) => d.id === dirtyId);
-              if (dirtyDoc) merged.push(dirtyDoc);
+            checklistSnapshotRef.current.clear();
+            for (const item of merged) {
+              if (!dirtyChecklistIdsRef.current.has(item.id)) {
+                checklistSnapshotRef.current.set(item.id, JSON.stringify(item));
+              }
             }
-          }
-          checklistSnapshotRef.current.clear();
-          for (const item of merged) {
-            if (!dirtyChecklistIdsRef.current.has(item.id)) {
-              checklistSnapshotRef.current.set(item.id, JSON.stringify(item));
-            }
-          }
-          return merged;
-        });
-        initialSyncDone.current = true;
-      } else {
-        // Delta pull: Gabungkan per id (ganti bila id sama, tambah bila baru)
-        applyDeltaCollection(remoteCompanies, setCompanies);
-        applyDeltaCollection(remoteProjects, setProjects);
-        applyDeltaCollection(remoteUsers, setUsers);
-        applyDeltaCollection(remoteRbac, setRbacPermissions);
-        applyDeltaCollection(remoteAreas, setAreas);
-        applyDeltaCollection(remoteCleaners, setCleaners);
-        applyDeltaCollection(remoteShifts, setShifts);
-        applyDeltaCollection(remoteSchedules, setSchedules);
-        applyDeltaCollection(remoteUploadedWorkSchedules, setUploadedWorkSchedules);
-        applyDeltaCollection(remoteChecklistLocs, setChecklistLocations);
-        applyDeltaCollection(remoteChecklistTpls, setChecklistTemplates);
-        applyDeltaCollection(remoteTasks, setTasks);
-        applyDeltaCollection(remoteInspections, setInspections);
-        applyDeltaCollection(remoteComplaints, setComplaints);
-        applyDeltaCollection(remoteDamage, setDamageReports);
-        applyDeltaCollection(remoteSpecial, setSpecialJobs);
-        applyDeltaCollection(remoteMcp, setMasterPrograms);
-        applyDeltaCollection(remoteUploadedMcp, setUploadedMcpPrograms);
-        applyDeltaCollection(remoteMcpChecklistResults, setMcpChecklistResults);
-        applyDeltaCollection(remoteTurnovers, setEmployeeTurnovers);
-        applyDeltaCollection(remoteKlienItems, setKlienChecklistItems);
-        applyDeltaCollection(remoteKlienInspections, setKlienChecklistInspections);
-        applyDeltaCollection(remoteNotifs, setNotifications);
-        if (remoteAuditLogs.length > 0) {
-          applyDeltaCollection(remoteAuditLogs.map(normalizeAuditLog), setAuditLogs);
+            return merged;
+          });
+          break;
         }
-
-        // Daily Checklists delta: pertahankan hourlySlots merge
-        if (remoteDailyChecklists.length > 0) {
-          const incomingMap = new Map(remoteDailyChecklists.map((c) => [c.id, c]));
+        case COLLECTIONS.TASKS:
+          setTasks(items);
+          break;
+        case COLLECTIONS.INSPECTIONS:
+          setInspections(items);
+          break;
+        case COLLECTIONS.COMPLAINTS:
+          setComplaints(items);
+          break;
+        case COLLECTIONS.DAMAGE_REPORTS:
+          setDamageReports(items);
+          break;
+        case COLLECTIONS.SPECIAL_JOBS:
+          setSpecialJobs(items);
+          break;
+        case COLLECTIONS.MASTER_PROGRAMS:
+          setMasterPrograms(
+            items.map((p: any) => ({
+              ...p,
+              frequency: normalizeFrequencyCode(p.frequency),
+            }))
+          );
+          break;
+        case COLLECTIONS.UPLOADED_MCP:
+          setUploadedMcpPrograms(items);
+          break;
+        case COLLECTIONS.MCP_CHECKLIST_RESULTS:
+          setMcpChecklistResults(items);
+          break;
+        case COLLECTIONS.EMPLOYEE_TURNOVERS:
+          setEmployeeTurnovers(items);
+          break;
+        case COLLECTIONS.KLIEN_CHECKLIST_ITEMS:
+          setKlienChecklistItems(items);
+          break;
+        case COLLECTIONS.KLIEN_CHECKLIST_INSPECTIONS:
+          setKlienChecklistInspections(items);
+          break;
+        case COLLECTIONS.NOTIFICATIONS:
+          setNotifications(items);
+          break;
+        case COLLECTIONS.AUDIT_LOGS:
+          setAuditLogs(items.map(normalizeAuditLog));
+          break;
+        case COLLECTIONS.COMPANY_PROFILE:
+          if (items.length > 0) {
+            setCompanyProfile(items[0]);
+            try {
+              localStorage.setItem('jti_company_profile', JSON.stringify(items[0]));
+            } catch {}
+          } else {
+            setCompanyProfile(DEFAULT_COMPANY_PROFILE);
+            try {
+              localStorage.removeItem('jti_company_profile');
+            } catch {}
+          }
+          break;
+        case COLLECTIONS.KPI_CONFIG:
+          if (items.length > 0) {
+            setKpiConfig(items[0]);
+            try {
+              localStorage.setItem('jti_kpi_config', JSON.stringify(items[0]));
+            } catch {}
+          } else {
+            setKpiConfig(DEFAULT_KPI_VISIBILITY_OFF);
+            try {
+              localStorage.removeItem('jti_kpi_config');
+            } catch {}
+          }
+          break;
+      }
+    } else {
+      if (!items || items.length === 0) return;
+      switch (col) {
+        case COLLECTIONS.COMPANIES: applyDeltaCollection(items, setCompanies); break;
+        case COLLECTIONS.PROJECTS: applyDeltaCollection(items, setProjects); break;
+        case COLLECTIONS.USERS: applyDeltaCollection(items, setUsers); break;
+        case COLLECTIONS.RBAC_PERMISSIONS: applyDeltaCollection(items, setRbacPermissions); break;
+        case COLLECTIONS.AREAS: applyDeltaCollection(items, setAreas); break;
+        case COLLECTIONS.CLEANERS: applyDeltaCollection(items, setCleaners); break;
+        case COLLECTIONS.SHIFTS: applyDeltaCollection(items, setShifts); break;
+        case COLLECTIONS.SCHEDULES: applyDeltaCollection(items, setSchedules); break;
+        case COLLECTIONS.UPLOADED_WORK_SCHEDULES: applyDeltaCollection(items, setUploadedWorkSchedules); break;
+        case COLLECTIONS.CHECKLIST_LOCATIONS: applyDeltaCollection(items, setChecklistLocations); break;
+        case COLLECTIONS.CHECKLIST_TEMPLATES: applyDeltaCollection(items, setChecklistTemplates); break;
+        case COLLECTIONS.TASKS: applyDeltaCollection(items, setTasks); break;
+        case COLLECTIONS.INSPECTIONS: applyDeltaCollection(items, setInspections); break;
+        case COLLECTIONS.COMPLAINTS: applyDeltaCollection(items, setComplaints); break;
+        case COLLECTIONS.DAMAGE_REPORTS: applyDeltaCollection(items, setDamageReports); break;
+        case COLLECTIONS.SPECIAL_JOBS: applyDeltaCollection(items, setSpecialJobs); break;
+        case COLLECTIONS.MASTER_PROGRAMS:
+          applyDeltaCollection(
+            items.map((p: any) => ({ ...p, frequency: normalizeFrequencyCode(p.frequency) })),
+            setMasterPrograms
+          );
+          break;
+        case COLLECTIONS.UPLOADED_MCP: applyDeltaCollection(items, setUploadedMcpPrograms); break;
+        case COLLECTIONS.MCP_CHECKLIST_RESULTS: applyDeltaCollection(items, setMcpChecklistResults); break;
+        case COLLECTIONS.EMPLOYEE_TURNOVERS: applyDeltaCollection(items, setEmployeeTurnovers); break;
+        case COLLECTIONS.KLIEN_CHECKLIST_ITEMS: applyDeltaCollection(items, setKlienChecklistItems); break;
+        case COLLECTIONS.KLIEN_CHECKLIST_INSPECTIONS: applyDeltaCollection(items, setKlienChecklistInspections); break;
+        case COLLECTIONS.NOTIFICATIONS: applyDeltaCollection(items, setNotifications); break;
+        case COLLECTIONS.AUDIT_LOGS: applyDeltaCollection(items.map(normalizeAuditLog), setAuditLogs); break;
+        case COLLECTIONS.DAILY_CHECKLISTS: {
+          const incomingMap = new Map((items as DailyAreaChecklist[]).map((c) => [c.id, c]));
           setDailyChecklists((prevLocal) => {
             const updated = prevLocal.map((localDoc) => {
               if (!incomingMap.has(localDoc.id)) return localDoc;
@@ -1603,32 +1634,82 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             }
             return updated;
           });
+          break;
         }
+        case COLLECTIONS.COMPANY_PROFILE:
+          setCompanyProfile(items[0]);
+          try {
+            localStorage.setItem('jti_company_profile', JSON.stringify(items[0]));
+          } catch {}
+          break;
+        case COLLECTIONS.KPI_CONFIG:
+          setKpiConfig(items[0]);
+          try {
+            localStorage.setItem('jti_kpi_config', JSON.stringify(items[0]));
+          } catch {}
+          break;
       }
+    }
+  };
 
-      // Company profile & KPI config: ikuti server secara penuh
-      if (remoteProfile.length > 0) {
-        setCompanyProfile(remoteProfile[0]);
-        try {
-          localStorage.setItem('jti_company_profile', JSON.stringify(remoteProfile[0]));
-        } catch {}
-      } else if (isFullPull) {
-        setCompanyProfile(DEFAULT_COMPANY_PROFILE);
-        try {
-          localStorage.removeItem('jti_company_profile');
-        } catch {}
-      }
+  // Fetch specific collections with in-flight deduplication and accurate ?since= tracking
+  const pullCollections = async (collectionsToPull: string[], forceFullPull = false) => {
+    const uniqueCols = Array.from(new Set(collectionsToPull)).filter(Boolean);
+    if (uniqueCols.length === 0) return;
 
-      if (remoteKpi.length > 0) {
-        setKpiConfig(remoteKpi[0]);
-        try {
-          localStorage.setItem('jti_kpi_config', JSON.stringify(remoteKpi[0]));
-        } catch {}
-      } else if (isFullPull) {
-        setKpiConfig(DEFAULT_KPI_VISIBILITY_OFF);
-        try {
-          localStorage.removeItem('jti_kpi_config');
-        } catch {}
+    try {
+      setSupabaseStatus((prev) => ({ ...prev, status: 'SYNCING' }));
+      const offlineSnapshot: Record<string, any[]> = {};
+
+      await Promise.all(
+        uniqueCols.map(async (col) => {
+          const existingInFlight = inFlightCollectionsRef.current.get(col);
+          if (existingInFlight) {
+            await existingInFlight;
+            return;
+          }
+
+          const task = (async () => {
+            const isColFull = forceFullPull || !loadedCollectionsRef.current.has(col);
+            const since = isColFull ? undefined : lastPullAtRef.current[col];
+            const pullStartedSafeIso = new Date(Date.now() - 2000).toISOString();
+
+            const items = await getRecords<any>(col, since);
+            loadedCollectionsRef.current.add(col);
+            lastCollectionSyncMsRef.current[col] = Date.now();
+
+            if (items && items.length > 0) {
+              const revs = items.map((it: any) => it._rev).filter(Boolean);
+              if (revs.length > 0) {
+                const maxRev = revs.reduce((a: string, b: string) => (new Date(a) > new Date(b) ? a : b));
+                const currentLast = lastPullAtRef.current[col];
+                if (!currentLast || new Date(maxRev) > new Date(currentLast)) {
+                  lastPullAtRef.current[col] = maxRev;
+                }
+              } else if (!lastPullAtRef.current[col]) {
+                lastPullAtRef.current[col] = pullStartedSafeIso;
+              }
+            } else if (!lastPullAtRef.current[col]) {
+              lastPullAtRef.current[col] = pullStartedSafeIso;
+            }
+
+            if (isColFull) {
+              offlineSnapshot[col] = items;
+            }
+            await applyCollectionData(col, items, isColFull);
+          })().finally(() => {
+            if (inFlightCollectionsRef.current.get(col) === task) {
+              inFlightCollectionsRef.current.delete(col);
+            }
+          });
+
+          inFlightCollectionsRef.current.set(col, task);
+          await task;
+        })
+      );
+
+      if (uniqueCols.some((c) => CORE_COLLECTIONS.includes(c))) {
+        initialSyncDone.current = true;
       }
 
       const nowStr = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB';
@@ -1639,23 +1720,79 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       });
       setIsInitialLoading(false);
 
-      // Cache operational data in Dexie IndexedDB for instant offline availability
-      if (isFullPull) {
+      if (
+        offlineSnapshot[COLLECTIONS.CHECKLIST_TEMPLATES] ||
+        offlineSnapshot[COLLECTIONS.AREAS] ||
+        offlineSnapshot[COLLECTIONS.CHECKLIST_LOCATIONS] ||
+        offlineSnapshot[COLLECTIONS.DAILY_CHECKLISTS] ||
+        offlineSnapshot[COLLECTIONS.TASKS]
+      ) {
         cacheOfflineData({
-          templates: remoteChecklistTpls?.length ? remoteChecklistTpls : INITIAL_CHECKLIST_TEMPLATES,
-          areas: remoteAreas || [],
-          locations: remoteChecklistLocs || [],
-          checklists: remoteDailyChecklists || [],
-          tasks: remoteTasks || [],
+          templates: offlineSnapshot[COLLECTIONS.CHECKLIST_TEMPLATES]?.length
+            ? offlineSnapshot[COLLECTIONS.CHECKLIST_TEMPLATES]
+            : INITIAL_CHECKLIST_TEMPLATES,
+          areas: offlineSnapshot[COLLECTIONS.AREAS] || [],
+          locations: offlineSnapshot[COLLECTIONS.CHECKLIST_LOCATIONS] || [],
+          checklists: offlineSnapshot[COLLECTIONS.DAILY_CHECKLISTS] || [],
+          tasks: offlineSnapshot[COLLECTIONS.TASKS] || [],
         }).catch(() => {});
       }
 
-      // Auto-trigger sync of any pending outbox items from earlier offline session
-      syncService.triggerSync().catch(() => {});
+      if (initialSyncDone.current) {
+        syncService.triggerSync().catch(() => {});
+      }
     } catch (err) {
       console.warn('[Auto-Pull] Gagal mengambil data dari server:', err);
       setSupabaseStatus((prev) => ({ ...prev, status: 'ERROR' }));
       setIsInitialLoading(false);
+    }
+  };
+
+  // Ensure lazy/on-demand collections are loaded once, then refreshed silently via ?since= if stale
+  const ensureCollectionsLoaded = async (collections: string[]) => {
+    if (!isAuthenticatedRef.current) return;
+    const uniqueCols = Array.from(new Set(collections)).filter(Boolean);
+    if (uniqueCols.length === 0) return;
+
+    const now = Date.now();
+    const missingCols = uniqueCols.filter((c) => !loadedCollectionsRef.current.has(c));
+    const staleCols = uniqueCols.filter(
+      (c) =>
+        loadedCollectionsRef.current.has(c) &&
+        now - (lastCollectionSyncMsRef.current[c] || 0) > 15000
+    );
+
+    if (missingCols.length > 0) {
+      await pullCollections(missingCols, true).catch(() => {});
+    }
+    if (staleCols.length > 0) {
+      await pullCollections(staleCols, false).catch(() => {});
+    }
+  };
+
+  const ensureTabCollections = (tab: string) => {
+    if (!isAuthenticatedRef.current) return;
+    const menuCols = MENU_COLLECTION_MAP[tab];
+    if (menuCols && menuCols.length > 0) {
+      ensureCollectionsLoaded(menuCols).catch(() => {});
+    }
+  };
+
+  // Pull core + currently visited collections (full pull only when requested, delta ?since= otherwise)
+  const pullAllDataFromServer = async (forceFullPull = false) => {
+    if (!isAuthenticatedRef.current) {
+      if (!forceFullPull) return;
+      await pullCollections([COLLECTIONS.COMPANY_PROFILE], true);
+      return;
+    }
+
+    if (forceFullPull || loadedCollectionsRef.current.size === 0) {
+      const targetCols = Array.from(
+        new Set([...CORE_COLLECTIONS, ...Array.from(loadedCollectionsRef.current)])
+      );
+      await pullCollections(targetCols, forceFullPull);
+    } else {
+      await pullCollections(Array.from(loadedCollectionsRef.current), false);
     }
   };
 
@@ -1730,12 +1867,9 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   useEffect(() => {
     let isMounted = true;
 
-    // 1. Initial Full pull on app load
-    pullAllDataFromServer(true);
-
-    // 2. Pull saat Socket.IO reconnect: jika terputus > 2 menit pull PENUH, singkat cukup delta pull
+    // 1. Pull saat Socket.IO reconnect: hanya untuk koleksi yang sudah pernah dimuat
     const unsubscribeReconnect = onServerReconnect(async () => {
-      if (!isMounted) return;
+      if (!isMounted || !isAuthenticatedRef.current) return;
       const now = Date.now();
       const disconnectDuration = lastDisconnectTimeRef.current ? now - lastDisconnectTimeRef.current : 0;
       lastDisconnectTimeRef.current = null;
@@ -1746,8 +1880,10 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         lastSyncedAt: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB',
       }));
 
-      const isLongDisconnect = disconnectDuration > 2 * 60 * 1000;
-      await pullAllDataFromServer(isLongDisconnect);
+      if (loadedCollectionsRef.current.size > 0) {
+        const isLongDisconnect = disconnectDuration > 2 * 60 * 1000;
+        await pullAllDataFromServer(isLongDisconnect);
+      }
 
       if (dirtyChecklistIdsRef.current.size > 0) {
         for (const dirtyId of Array.from(dirtyChecklistIdsRef.current)) {
@@ -1766,34 +1902,27 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       }
     });
 
-    // 3. Auto-pull when tab becomes active again / on focus: delta pull saja
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        console.debug('[Sync] Tab aktif kembali, delta pull data...');
-        pullAllDataFromServer(false);
-      }
-    };
-    const handleWindowFocus = () => {
+    // 2. Auto-pull saat tab kembali aktif (throttled 20 detik, delta ?since= hanya untuk koleksi yang dimuat)
+    const handleVisibilityOrFocus = () => {
+      if (!isMounted || !isAuthenticatedRef.current) return;
+      if (document.visibilityState !== 'visible') return;
+      if (loadedCollectionsRef.current.size === 0) return;
+
+      const now = Date.now();
+      if (now - lastVisibilitySyncMsRef.current < 20000) return;
+      lastVisibilitySyncMsRef.current = now;
       pullAllDataFromServer(false);
     };
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    window.addEventListener('focus', handleWindowFocus);
+    document.addEventListener('visibilitychange', handleVisibilityOrFocus);
+    window.addEventListener('focus', handleVisibilityOrFocus);
 
-    // 4. Periodic backup pull every 120 seconds: hanya jalan bila document.visibilityState==='visible' dan socket.connected===false
-    const backupInterval = setInterval(() => {
-      if (document.visibilityState === 'visible' && !socket.connected) {
-        console.debug('[Sync] Socket offline & tab aktif, menjalankan backup delta pull 120s...');
-        pullAllDataFromServer(false);
-      }
-    }, 120000);
-
-    // 5. Pull PENUH (replace) setiap 10 menit saat tab aktif untuk deteksi data terhapus
-    const fullPullInterval = setInterval(() => {
-      if (document.visibilityState === 'visible') {
-        console.debug('[Sync] Menjalankan full pull periodik 10 menit...');
-        pullAllDataFromServer(true);
-      }
-    }, 10 * 60 * 1000);
+    // 3. Periodic background polling setiap 30 detik memakai ?since= untuk koleksi yang sudah dimuat
+    const deltaPollInterval = setInterval(() => {
+      if (!isMounted || !isAuthenticatedRef.current) return;
+      if (document.visibilityState !== 'visible') return;
+      if (loadedCollectionsRef.current.size === 0) return;
+      pullAllDataFromServer(false);
+    }, 30000);
 
     // 5. Real-time updates without page refresh via Socket.IO
     const unsubscribeChanges = onRecordChange((evt) => {
@@ -2206,10 +2335,9 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       socket.off('company:logo_updated', onCompanyLogoUpdated);
       socket.off('company_profile:update', onCompanyProfileUpdated);
       socket.off('disconnect', onSocketDisconnect);
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-      window.removeEventListener('focus', handleWindowFocus);
-      clearInterval(backupInterval);
-      clearInterval(fullPullInterval);
+      document.removeEventListener('visibilitychange', handleVisibilityOrFocus);
+      window.removeEventListener('focus', handleVisibilityOrFocus);
+      clearInterval(deltaPollInterval);
     };
   }, []);
 
@@ -2432,8 +2560,11 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     const hasToken = typeof window !== 'undefined' && !!localStorage.getItem('sco_auth_token');
     return saved === 'true' || hasToken;
   });
+  const isAuthenticatedRef = useRef<boolean>(isAuthenticated);
+  isAuthenticatedRef.current = isAuthenticated;
+  const authCoreLoadedRef = useRef<boolean>(false);
 
-  // Verify or restore session across origins / preview environments via Bearer token
+  // Verify existing token once on mount (without triggering duplicate pulls)
   useEffect(() => {
     const existingToken = getAuthToken();
     if (existingToken) {
@@ -2450,12 +2581,32 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
               setUserRole(res.user.role);
               localStorage.setItem('sco_role', res.user.role);
             }
-            pullAllDataFromServer(true).catch(() => {});
           }
         })
         .catch(() => {});
+    } else if (!isAuthenticatedRef.current) {
+      // Unauthenticated login screen: only load lightweight company branding
+      pullCollections([COLLECTIONS.COMPANY_PROFILE], true).catch(() => {});
     }
   }, []);
+
+  // Single entry point for initial core data load after login / authenticated session restore
+  useEffect(() => {
+    if (!isAuthenticated) {
+      authCoreLoadedRef.current = false;
+      return;
+    }
+    if (!authCoreLoadedRef.current) {
+      authCoreLoadedRef.current = true;
+      pullCollections(CORE_COLLECTIONS, true).catch(() => {});
+    }
+  }, [isAuthenticated]);
+
+  // On-demand lazy collection loading per active menu tab
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    ensureTabCollections(activeTab);
+  }, [isAuthenticated, activeTab]);
 
   const login = async (identifier: string, pass: string): Promise<{ success: boolean; message?: string }> => {
     const cleanId = identifier.trim().toLowerCase();
@@ -2516,7 +2667,6 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           setActiveTab('dashboard');
         }
 
-        pullAllDataFromServer(true).catch(() => {});
         return { success: true };
       } else if (apiRes && !apiRes.success && apiRes.error) {
         return { success: false, message: apiRes.error || 'Email atau kata sandi salah' };
@@ -2598,7 +2748,9 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
     // Kirim request login ke backend di latar belakang jika tersedia
     apiLogin({ identifier: cleanId, password: cleanPass })
-      .then(() => pullAllDataFromServer(true).catch(() => {}))
+      .then((res) => {
+        if (res?.success) pullCollections(CORE_COLLECTIONS, true).catch(() => {});
+      })
       .catch(() => {});
 
     if (matchedUser.role === 'klien') {
@@ -2660,7 +2812,6 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           setActiveTab('dashboard');
         }
 
-        pullAllDataFromServer(true).catch(() => {});
         return { success: true };
       }
     } catch {}
@@ -2702,7 +2853,9 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
     // Call backend API login asynchronously to retrieve and persist Bearer token
     apiLogin({ userId })
-      .then(() => pullAllDataFromServer(true).catch(() => {}))
+      .then((res) => {
+        if (res?.success) pullCollections(CORE_COLLECTIONS, true).catch(() => {});
+      })
       .catch((err) => {
         console.warn('[Instant Login Token] Backend token issuance notice:', err);
       });
@@ -2718,6 +2871,12 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const logout = () => {
     setIsAuthenticated(false);
+    authCoreLoadedRef.current = false;
+    initialSyncDone.current = false;
+    loadedCollectionsRef.current.clear();
+    lastPullAtRef.current = {};
+    lastCollectionSyncMsRef.current = {};
+    inFlightCollectionsRef.current.clear();
     localStorage.removeItem('sco_auth_state');
     localStorage.removeItem('sco_auth_token');
     setAuthToken(null);
@@ -2835,6 +2994,11 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             s.projectId === projectKey ||
             s.projectIds?.includes(projectKey)
         );
+    const {
+      buildRowsFromEntries,
+      resolveRowOperationalShift,
+      resolveShift1AndShift2,
+    } = await import('../utils/workScheduleExcel');
     const { shift1, shift2 } = resolveShift1AndShift2(projectShifts.length > 0 ? projectShifts : shifts);
 
     const { rows, daysCount } = buildRowsFromEntries(doc.entries || []);
@@ -6099,6 +6263,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     <CleaningContext.Provider
       value={{
         pullAllDataFromServer,
+        ensureCollectionsLoaded,
         syncFromLiveVps,
         companyProfile: effectiveCompanyProfile,
         currentCompany,

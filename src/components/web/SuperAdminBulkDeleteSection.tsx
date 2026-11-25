@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Trash2,
   AlertTriangle,
@@ -22,6 +22,7 @@ import {
   X,
 } from 'lucide-react';
 import { useCleaning } from '../../context/CleaningContext';
+import { COLLECTIONS } from '../../services/apiService';
 import { isSuperAdminRole } from '../../types';
 
 interface SubmenuDeleteOption {
@@ -53,7 +54,16 @@ export const SuperAdminBulkDeleteSection: React.FC = () => {
     klienChecklistItems,
     auditLogs,
     notifications,
+    ensureCollectionsLoaded,
   } = useCleaning();
+
+  useEffect(() => {
+    ensureCollectionsLoaded([
+      COLLECTIONS.NOTIFICATIONS,
+      COLLECTIONS.SCHEDULES,
+      COLLECTIONS.KLIEN_CHECKLIST_ITEMS,
+    ]).catch(() => {});
+  }, []);
 
   const [scope, setScope] = useState<'active_project' | 'all'>('active_project');
   const [selectedSubmenu, setSelectedSubmenu] = useState<SubmenuDeleteOption | null>(null);

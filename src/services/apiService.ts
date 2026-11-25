@@ -138,6 +138,7 @@ export function getAuthToken(): string | null {
 }
 
 export function setAuthToken(token: string | null): void {
+  inFlightGetRequests.clear();
   if (typeof window === 'undefined') return;
   if (token) {
     localStorage.setItem('sco_auth_token', token);
@@ -347,31 +348,50 @@ export async function sanitizeRecordPhotos<T extends Record<string, any>>(record
   return clone as T;
 }
 
+const inFlightGetRequests = new Map<string, Promise<any[]>>();
+
 /**
  * Fetch all records for a given collection from the backend.
  * Throws an error if the server is unreachable or returns a non-2xx status,
  * so the caller can distinguish between server error vs truly empty collection.
  * Supports optional since timestamp to fetch only records updated after that time.
+ * Deduplicates identical concurrent in-flight requests.
  */
 export async function getRecords<T = any>(collection: string, since?: string): Promise<T[]> {
-  try {
-    const url = since
-      ? `/api/records/${collection}?since=${encodeURIComponent(since)}`
-      : `/api/records/${collection}`;
-    const res = await fetch(getApiUrl(url), {
-      headers: getAuthHeaders(),
-    });
-    if (!res.ok) {
-      const errorText = await res.text().catch(() => res.statusText);
-      console.warn(`[API] Failed to get ${collection}: status ${res.status} (${errorText})`);
-      throw new Error(`Gagal mengambil data ${collection}: HTTP ${res.status}`);
-    }
-    const data = await res.json();
-    return Array.isArray(data) ? data : [];
-  } catch (err) {
-    console.warn(`[API] Network error fetching ${collection}:`, err);
-    throw err;
+  const tokenKey = getAuthToken() || 'anon';
+  const requestKey = `${tokenKey}::${collection}::${since || 'FULL'}`;
+  const existingRequest = inFlightGetRequests.get(requestKey);
+  if (existingRequest) {
+    return existingRequest as Promise<T[]>;
   }
+
+  const requestPromise = (async (): Promise<T[]> => {
+    try {
+      const url = since
+        ? `/api/records/${collection}?since=${encodeURIComponent(since)}`
+        : `/api/records/${collection}`;
+      const res = await fetch(getApiUrl(url), {
+        headers: getAuthHeaders(),
+      });
+      if (!res.ok) {
+        const errorText = await res.text().catch(() => res.statusText);
+        console.warn(`[API] Failed to get ${collection}: status ${res.status} (${errorText})`);
+        throw new Error(`Gagal mengambil data ${collection}: HTTP ${res.status}`);
+      }
+      const data = await res.json();
+      return Array.isArray(data) ? data : [];
+    } catch (err) {
+      console.warn(`[API] Network error fetching ${collection}:`, err);
+      throw err;
+    }
+  })().finally(() => {
+    if (inFlightGetRequests.get(requestKey) === requestPromise) {
+      inFlightGetRequests.delete(requestKey);
+    }
+  });
+
+  inFlightGetRequests.set(requestKey, requestPromise);
+  return requestPromise;
 }
 
 /**

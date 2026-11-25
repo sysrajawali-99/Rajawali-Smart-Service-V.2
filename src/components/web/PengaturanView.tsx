@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, lazy, Suspense } from 'react';
 import {
   Settings,
   Building,
@@ -36,15 +36,16 @@ import {
 } from 'lucide-react';
 import { useCleaning } from '../../context/CleaningContext';
 import { ChecklistLocationCategory, DashboardKpiVisibilityConfig, ChecklistTemplateItem, isSuperAdminRole } from '../../types';
-import { UserManagementSection } from './UserManagementSection';
-import { CompanyProfileSettingsSection } from './CompanyProfileSettingsSection';
-import { SuperAdminBulkDeleteSection } from './SuperAdminBulkDeleteSection';
-import { AuditTrailModal } from './AuditTrailModal';
-import { AuditLogSection } from './AuditLogSection';
-import { PwaBrandingSection } from './PwaBrandingSection';
-import { NotificationSettingsSection } from './NotificationSettingsSection';
-import { ProjectShiftSettingsSection } from './ProjectShiftSettingsSection';
-import { LiveSyncSection } from './LiveSyncSection';
+
+const UserManagementSection = lazy(() => import('./UserManagementSection').then((m) => ({ default: m.UserManagementSection })));
+const CompanyProfileSettingsSection = lazy(() => import('./CompanyProfileSettingsSection').then((m) => ({ default: m.CompanyProfileSettingsSection })));
+const SuperAdminBulkDeleteSection = lazy(() => import('./SuperAdminBulkDeleteSection').then((m) => ({ default: m.SuperAdminBulkDeleteSection })));
+const AuditTrailModal = lazy(() => import('./AuditTrailModal').then((m) => ({ default: m.AuditTrailModal })));
+const AuditLogSection = lazy(() => import('./AuditLogSection').then((m) => ({ default: m.AuditLogSection })));
+const PwaBrandingSection = lazy(() => import('./PwaBrandingSection').then((m) => ({ default: m.PwaBrandingSection })));
+const NotificationSettingsSection = lazy(() => import('./NotificationSettingsSection').then((m) => ({ default: m.NotificationSettingsSection })));
+const ProjectShiftSettingsSection = lazy(() => import('./ProjectShiftSettingsSection').then((m) => ({ default: m.ProjectShiftSettingsSection })));
+const LiveSyncSection = lazy(() => import('./LiveSyncSection').then((m) => ({ default: m.LiveSyncSection })));
 
 export type PengaturanSubTab =
   | 'all'
@@ -485,32 +486,44 @@ export const PengaturanView: React.FC = () => {
 
       {/* SECTION: Sinkronisasi Data Real-Time VPS */}
       {(activeSubTab === 'all' || activeSubTab === 'live_sync') && (
-        <LiveSyncSection />
+        <Suspense fallback={<div className="p-6 rounded-2xl bg-white border border-slate-200 text-xs text-slate-400">Memuat panel sinkronisasi...</div>}>
+          <LiveSyncSection />
+        </Suspense>
       )}
 
       {/* SECTION: Pengaturan Shift per Proyek */}
       {(activeSubTab === 'all' || activeSubTab === 'project_shifts') && (
-        <ProjectShiftSettingsSection />
+        <Suspense fallback={<div className="p-6 rounded-2xl bg-white border border-slate-200 text-xs text-slate-400">Memuat pengaturan shift...</div>}>
+          <ProjectShiftSettingsSection />
+        </Suspense>
       )}
 
       {/* SECTION: Tampilan Aplikasi & PWA (Khusus Super Admin) */}
       {(activeSubTab === 'all' || activeSubTab === 'branding') && isSuperAdmin && (
-        <PwaBrandingSection />
+        <Suspense fallback={<div className="p-6 rounded-2xl bg-white border border-slate-200 text-xs text-slate-400">Memuat pengaturan PWA...</div>}>
+          <PwaBrandingSection />
+        </Suspense>
       )}
 
       {/* SECTION: Pengaturan Notifikasi Web Push */}
       {(activeSubTab === 'all' || activeSubTab === 'notifications') && (
-        <NotificationSettingsSection />
+        <Suspense fallback={<div className="p-6 rounded-2xl bg-white border border-slate-200 text-xs text-slate-400">Memuat pengaturan notifikasi...</div>}>
+          <NotificationSettingsSection />
+        </Suspense>
       )}
 
       {/* SECTION: Log Aktivitas Sistem & Audit Trail */}
       {(activeSubTab === 'all' || activeSubTab === 'log') && (
-        <AuditLogSection />
+        <Suspense fallback={<div className="p-6 rounded-2xl bg-white border border-slate-200 text-xs text-slate-400">Memuat riwayat audit log...</div>}>
+          <AuditLogSection />
+        </Suspense>
       )}
 
       {/* SECTION: Profil Perusahaan, Logo & Kop Surat Resmi (PDF & Login) */}
       {(activeSubTab === 'all' || activeSubTab === 'profile') && (
-        <CompanyProfileSettingsSection />
+        <Suspense fallback={<div className="p-6 rounded-2xl bg-white border border-slate-200 text-xs text-slate-400">Memuat profil perusahaan...</div>}>
+          <CompanyProfileSettingsSection />
+        </Suspense>
       )}
 
       {/* SECTION: Pengaturan Tampilan KPI & Widget Dashboard (Dipindahkan dari Dashboard) */}
@@ -901,7 +914,9 @@ export const PengaturanView: React.FC = () => {
       {/* Section 2: User Management & Project Access Control (Super Admin) */}
       {(activeSubTab === 'all' || activeSubTab === 'users') && (
       <>
-      <UserManagementSection />
+      <Suspense fallback={<div className="p-6 rounded-2xl bg-white border border-slate-200 text-xs text-slate-400">Memuat manajemen pengguna...</div>}>
+        <UserManagementSection />
+      </Suspense>
 
       <form onSubmit={handleSave} className="space-y-6">
         {/* Section 3: SLA & Push Notification Rules */}
@@ -1186,14 +1201,20 @@ export const PengaturanView: React.FC = () => {
 
       {/* SECTION: Hapus Data Masal per Sub-Menu (Khusus Super Admin) */}
       {(activeSubTab === 'all' || activeSubTab === 'bulk_delete') && isSuperAdmin && (
-        <SuperAdminBulkDeleteSection />
+        <Suspense fallback={<div className="p-6 rounded-2xl bg-white border border-slate-200 text-xs text-slate-400">Memuat panel hapus data masal...</div>}>
+          <SuperAdminBulkDeleteSection />
+        </Suspense>
       )}
 
       {/* MODAL: Audit Trail Log */}
-      <AuditTrailModal
-        isOpen={isAuditModalOpen}
-        onClose={() => setIsAuditModalOpen(false)}
-      />
+      {isAuditModalOpen && (
+        <Suspense fallback={null}>
+          <AuditTrailModal
+            isOpen={isAuditModalOpen}
+            onClose={() => setIsAuditModalOpen(false)}
+          />
+        </Suspense>
+      )}
     </div>
   );
 };

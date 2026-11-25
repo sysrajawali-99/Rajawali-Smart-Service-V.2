@@ -31,7 +31,6 @@ export const CrossProjectLiveMonitor: React.FC = () => {
     complaints,
     cleaners,
     inspections,
-    auditLogs,
     checkOverdueAreasAndTasks,
   } = useCleaning();
 

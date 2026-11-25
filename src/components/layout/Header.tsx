@@ -18,7 +18,7 @@ import {
 import { useCleaning } from '../../context/CleaningContext';
 import { UserRole, isSuperAdminRole } from '../../types';
 import { getActiveAppIcon } from '../../utils/dynamicFavicon';
-import { getFullUploadUrl } from '../../services/apiService';
+import { COLLECTIONS, getFullUploadUrl } from '../../services/apiService';
 import { SupabaseStatusModal } from '../modals/SupabaseStatusModal';
 
 export const Header: React.FC = () => {
@@ -44,6 +44,7 @@ export const Header: React.FC = () => {
     supabaseStatus,
     companyProfile,
     hasAccess,
+    ensureCollectionsLoaded,
   } = useCleaning();
 
   const [showNotifDropdown, setShowNotifDropdown] = useState(false);
@@ -438,7 +439,13 @@ export const Header: React.FC = () => {
           {/* Notification Button */}
           <div className="relative">
             <button
-              onClick={() => setShowNotifDropdown(!showNotifDropdown)}
+              onClick={() => {
+                const next = !showNotifDropdown;
+                setShowNotifDropdown(next);
+                if (next) {
+                  ensureCollectionsLoaded([COLLECTIONS.NOTIFICATIONS]).catch(() => {});
+                }
+              }}
               className="relative p-2 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-colors cursor-pointer flex items-center justify-center"
               title="Notifikasi & Panel Kontrol"
               aria-label="Notifikasi & Panel Kontrol"

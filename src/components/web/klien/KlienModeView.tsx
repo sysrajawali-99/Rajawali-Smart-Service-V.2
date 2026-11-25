@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, lazy, Suspense } from 'react';
 import {
   Users,
   ClipboardList,
@@ -7,11 +7,12 @@ import {
   AlertCircle,
 } from 'lucide-react';
 import { useCleaning } from '../../../context/CleaningContext';
-import { KlienManpowerSection } from './KlienManpowerSection';
-import { KlienChecklistSection } from './KlienChecklistSection';
-import { KlienDamageSection } from './KlienDamageSection';
-import { KlienActivitySection } from './KlienActivitySection';
-import { KlienComplaintSection } from './KlienComplaintSection';
+
+const KlienManpowerSection = lazy(() => import('./KlienManpowerSection').then((m) => ({ default: m.KlienManpowerSection })));
+const KlienChecklistSection = lazy(() => import('./KlienChecklistSection').then((m) => ({ default: m.KlienChecklistSection })));
+const KlienDamageSection = lazy(() => import('./KlienDamageSection').then((m) => ({ default: m.KlienDamageSection })));
+const KlienActivitySection = lazy(() => import('./KlienActivitySection').then((m) => ({ default: m.KlienActivitySection })));
+const KlienComplaintSection = lazy(() => import('./KlienComplaintSection').then((m) => ({ default: m.KlienComplaintSection })));
 
 export type KlienSubTab =
   | 'manpower'
@@ -179,11 +180,20 @@ export const KlienModeView: React.FC<KlienModeViewProps> = ({ initialSubTab }) =
 
       {/* RENDER CURRENT SUB-TAB CONTENT */}
       <div className="transition-all duration-200">
-        {activeSubTab === 'manpower' && <KlienManpowerSection />}
-        {activeSubTab === 'checklist' && <KlienChecklistSection />}
-        {activeSubTab === 'kerusakan' && <KlienDamageSection />}
-        {activeSubTab === 'activity' && <KlienActivitySection />}
-        {activeSubTab === 'keluhan' && <KlienComplaintSection />}
+        <Suspense
+          fallback={
+            <div className="p-6 rounded-2xl bg-white border border-slate-200 shadow-xs flex items-center gap-3 text-xs text-slate-500">
+              <div className="w-4 h-4 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+              <span>Memuat tampilan modul klien...</span>
+            </div>
+          }
+        >
+          {activeSubTab === 'manpower' && <KlienManpowerSection />}
+          {activeSubTab === 'checklist' && <KlienChecklistSection />}
+          {activeSubTab === 'kerusakan' && <KlienDamageSection />}
+          {activeSubTab === 'activity' && <KlienActivitySection />}
+          {activeSubTab === 'keluhan' && <KlienComplaintSection />}
+        </Suspense>
       </div>
     </div>
   );
