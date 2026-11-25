@@ -1,13 +1,11 @@
 // JTI Smart / Smart Cleaning Operations - Progressive Web App Service Worker
 // Versioned cache with current timestamp for reliable cache invalidation
-const CACHE_VERSION = 'jti-smart-v2026-11-18-r2';
+const CACHE_VERSION = 'jti-smart-v2026-11-25-r3';
 const STATIC_CACHE = `jti-static-${CACHE_VERSION}`;
 const ASSET_CACHE = `jti-assets-${CACHE_VERSION}`;
 
-// Precache list for the application shell and offline fallback
+// Precache list for offline shell & icons (HTML documents are always fetched network-first)
 const PRECACHE_URLS = [
-  '/',
-  '/index.html',
   '/offline.html',
   '/manifest.webmanifest',
   '/icons/icon-192.png',
@@ -57,7 +55,7 @@ self.addEventListener('message', (event) => {
   }
 });
 
-// Fetch: network-first navigation with offline.html fallback, cache-first for static assets
+// Fetch: network-first navigation with offline.html fallback, validated cache-first for static assets
 self.addEventListener('fetch', (event) => {
   const { request } = event;
 
@@ -82,14 +80,14 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // 1. Navigation requests (HTML / SPA): Network-first with offline.html fallback
+  // 1. Navigation requests (HTML / SPA): Network-first (no-cache) with offline.html fallback
   const isNavigation =
     request.mode === 'navigate' ||
     (request.headers.get('accept') && request.headers.get('accept').includes('text/html'));
 
   if (isNavigation) {
     event.respondWith(
-      fetch(request)
+      fetch(new Request(request, { cache: 'no-cache' }))
         .then((response) => {
           if (response && response.status === 200) {
             const clone = response.clone();
@@ -98,16 +96,12 @@ self.addEventListener('fetch', (event) => {
           return response;
         })
         .catch(async () => {
-          // Try cached page first
+          // Try cached page first when offline
           const cached = await caches.match(request);
           if (cached) return cached;
 
-          // If offline and not in cache, serve offline.html
           const offlinePage = await caches.match('/offline.html');
           if (offlinePage) return offlinePage;
-
-          const fallbackIndex = await caches.match('/index.html');
-          if (fallbackIndex) return fallbackIndex;
 
           return caches.match('/');
         })
@@ -115,26 +109,37 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // 2. Static assets & Icons: Cache-first with network fallback
-  if (
+  // 2. Static assets & Icons: Cache-first with strict MIME validation so HTML 404/SPA fallbacks are never cached as JS/CSS
+  const isAssetPath =
     url.pathname.startsWith('/assets/') ||
     url.pathname.startsWith('/icons/') ||
     url.pathname.endsWith('.png') ||
     url.pathname.endsWith('.svg') ||
-    url.pathname.endsWith('.ico')
-  ) {
+    url.pathname.endsWith('.ico');
+
+  if (isAssetPath) {
+    const expectsScriptOrStyle = /\.(js|mjs|css)(\?|$)/i.test(url.pathname);
     event.respondWith(
-      caches.match(request).then((cached) => {
+      caches.match(request).then(async (cached) => {
         if (cached) {
-          return cached;
+          const cachedType = (cached.headers.get('content-type') || '').toLowerCase();
+          if (!expectsScriptOrStyle || !cachedType.includes('text/html')) {
+            return cached;
+          }
+          // Evict poisoned HTML entry if somehow present
+          const cache = await caches.open(ASSET_CACHE);
+          await cache.delete(request);
         }
-        return fetch(request).then((networkResponse) => {
-          if (networkResponse && networkResponse.status === 200) {
+
+        const networkResponse = await fetch(request);
+        if (networkResponse && networkResponse.ok) {
+          const respType = (networkResponse.headers.get('content-type') || '').toLowerCase();
+          if (!expectsScriptOrStyle || !respType.includes('text/html')) {
             const clone = networkResponse.clone();
             caches.open(ASSET_CACHE).then((cache) => cache.put(request, clone));
           }
-          return networkResponse;
-        });
+        }
+        return networkResponse;
       })
     );
     return;

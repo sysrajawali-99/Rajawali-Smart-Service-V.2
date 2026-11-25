@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, lazy, Suspense } from 'react';
+import React, { useState, useEffect, useMemo, Suspense } from 'react';
 import {
   Users,
   ClipboardList,
@@ -16,12 +16,13 @@ import {
 import { useCleaning } from '../../../context/CleaningContext';
 import { UserRole } from '../../../types';
 import { getTodayScheduledMcpItems } from '../../../utils/mcpChecklist';
+import { lazyWithRetry } from '../../../utils/lazyWithRetry';
 
-const KlienManpowerSection = lazy(() => import('./KlienManpowerSection').then((m) => ({ default: m.KlienManpowerSection })));
-const KlienChecklistSection = lazy(() => import('./KlienChecklistSection').then((m) => ({ default: m.KlienChecklistSection })));
-const KlienDamageSection = lazy(() => import('./KlienDamageSection').then((m) => ({ default: m.KlienDamageSection })));
-const KlienActivitySection = lazy(() => import('./KlienActivitySection').then((m) => ({ default: m.KlienActivitySection })));
-const KlienComplaintSection = lazy(() => import('./KlienComplaintSection').then((m) => ({ default: m.KlienComplaintSection })));
+const KlienManpowerSection = lazyWithRetry(() => import('./KlienManpowerSection').then((m) => ({ default: m.KlienManpowerSection })));
+const KlienChecklistSection = lazyWithRetry(() => import('./KlienChecklistSection').then((m) => ({ default: m.KlienChecklistSection })));
+const KlienDamageSection = lazyWithRetry(() => import('./KlienDamageSection').then((m) => ({ default: m.KlienDamageSection })));
+const KlienActivitySection = lazyWithRetry(() => import('./KlienActivitySection').then((m) => ({ default: m.KlienActivitySection })));
+const KlienComplaintSection = lazyWithRetry(() => import('./KlienComplaintSection').then((m) => ({ default: m.KlienComplaintSection })));
 
 export type KlienSubTab =
   | 'manpower'

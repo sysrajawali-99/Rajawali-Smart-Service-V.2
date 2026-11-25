@@ -1,4 +1,4 @@
-import React, { useState, lazy, Suspense } from 'react';
+import React, { useState, Suspense } from 'react';
 import {
   Settings,
   Building,
@@ -36,16 +36,17 @@ import {
 } from 'lucide-react';
 import { useCleaning } from '../../context/CleaningContext';
 import { ChecklistLocationCategory, DashboardKpiVisibilityConfig, ChecklistTemplateItem, isSuperAdminRole } from '../../types';
+import { lazyWithRetry } from '../../utils/lazyWithRetry';
 
-const UserManagementSection = lazy(() => import('./UserManagementSection').then((m) => ({ default: m.UserManagementSection })));
-const CompanyProfileSettingsSection = lazy(() => import('./CompanyProfileSettingsSection').then((m) => ({ default: m.CompanyProfileSettingsSection })));
-const SuperAdminBulkDeleteSection = lazy(() => import('./SuperAdminBulkDeleteSection').then((m) => ({ default: m.SuperAdminBulkDeleteSection })));
-const AuditTrailModal = lazy(() => import('./AuditTrailModal').then((m) => ({ default: m.AuditTrailModal })));
-const AuditLogSection = lazy(() => import('./AuditLogSection').then((m) => ({ default: m.AuditLogSection })));
-const PwaBrandingSection = lazy(() => import('./PwaBrandingSection').then((m) => ({ default: m.PwaBrandingSection })));
-const NotificationSettingsSection = lazy(() => import('./NotificationSettingsSection').then((m) => ({ default: m.NotificationSettingsSection })));
-const ProjectShiftSettingsSection = lazy(() => import('./ProjectShiftSettingsSection').then((m) => ({ default: m.ProjectShiftSettingsSection })));
-const LiveSyncSection = lazy(() => import('./LiveSyncSection').then((m) => ({ default: m.LiveSyncSection })));
+const UserManagementSection = lazyWithRetry(() => import('./UserManagementSection').then((m) => ({ default: m.UserManagementSection })));
+const CompanyProfileSettingsSection = lazyWithRetry(() => import('./CompanyProfileSettingsSection').then((m) => ({ default: m.CompanyProfileSettingsSection })));
+const SuperAdminBulkDeleteSection = lazyWithRetry(() => import('./SuperAdminBulkDeleteSection').then((m) => ({ default: m.SuperAdminBulkDeleteSection })));
+const AuditTrailModal = lazyWithRetry(() => import('./AuditTrailModal').then((m) => ({ default: m.AuditTrailModal })));
+const AuditLogSection = lazyWithRetry(() => import('./AuditLogSection').then((m) => ({ default: m.AuditLogSection })));
+const PwaBrandingSection = lazyWithRetry(() => import('./PwaBrandingSection').then((m) => ({ default: m.PwaBrandingSection })));
+const NotificationSettingsSection = lazyWithRetry(() => import('./NotificationSettingsSection').then((m) => ({ default: m.NotificationSettingsSection })));
+const ProjectShiftSettingsSection = lazyWithRetry(() => import('./ProjectShiftSettingsSection').then((m) => ({ default: m.ProjectShiftSettingsSection })));
+const LiveSyncSection = lazyWithRetry(() => import('./LiveSyncSection').then((m) => ({ default: m.LiveSyncSection })));
 
 export type PengaturanSubTab =
   | 'all'

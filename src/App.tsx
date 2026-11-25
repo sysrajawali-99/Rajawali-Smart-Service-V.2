@@ -1,4 +1,4 @@
-import React, { lazy, Suspense } from 'react';
+import React, { Suspense } from 'react';
 import { CleaningProvider, useCleaning } from './context/CleaningContext';
 import { Header } from './components/layout/Header';
 import { Sidebar } from './components/layout/Sidebar';
@@ -7,31 +7,32 @@ import { InstallPrompt } from './components/InstallPrompt';
 import { TestModeBanner } from './components/common/TestModeBanner';
 import { TopNotificationPopup, triggerTopNotification } from './components/common/TopNotificationPopup';
 import { McpHourlyReminderMonitor } from './components/common/McpHourlyReminderMonitor';
-import { ShieldAlert } from 'lucide-react';
+import { ShieldAlert, RotateCw } from 'lucide-react';
 import { updateDocumentFavicon, updateDocumentTitle, getActiveAppIcon } from './utils/dynamicFavicon';
 import { setAppBadgeCount, clearAppBadgeCount } from './utils/appBadge';
+import { lazyWithRetry, clearAppCachesAndReload, isChunkLoadError } from './utils/lazyWithRetry';
 
-const LoginPage = lazy(() => import('./components/auth/LoginPage').then((m) => ({ default: m.LoginPage })));
-const DashboardView = lazy(() => import('./components/web/DashboardView').then((m) => ({ default: m.DashboardView })));
-const AreaCleaningView = lazy(() => import('./components/web/AreaCleaningView').then((m) => ({ default: m.AreaCleaningView })));
-const PetugasView = lazy(() => import('./components/web/PetugasView').then((m) => ({ default: m.PetugasView })));
-const ShiftView = lazy(() => import('./components/web/ShiftView').then((m) => ({ default: m.ShiftView })));
-const JadwalCleaningView = lazy(() => import('./components/web/JadwalCleaningView').then((m) => ({ default: m.JadwalCleaningView })));
-const CleaningActivityView = lazy(() => import('./components/web/CleaningActivityView').then((m) => ({ default: m.CleaningActivityView })));
-const InspeksiControlView = lazy(() => import('./components/web/InspeksiControlView').then((m) => ({ default: m.InspeksiControlView })));
-const ComplaintView = lazy(() => import('./components/web/ComplaintView').then((m) => ({ default: m.ComplaintView })));
-const LaporanReportView = lazy(() => import('./components/web/LaporanReportView').then((m) => ({ default: m.LaporanReportView })));
-const PengaturanView = lazy(() => import('./components/web/PengaturanView').then((m) => ({ default: m.PengaturanView })));
-const LokasiProyekView = lazy(() => import('./components/web/LokasiProyekView').then((m) => ({ default: m.LokasiProyekView })));
-const CeklistAreaView = lazy(() => import('./components/web/CeklistAreaView').then((m) => ({ default: m.CeklistAreaView })));
-const MasterCleaningProgramView = lazy(() => import('./components/web/MasterCleaningProgramView').then((m) => ({ default: m.MasterCleaningProgramView })));
-const DailyActivityView = lazy(() => import('./components/web/DailyActivityView').then((m) => ({ default: m.DailyActivityView })));
-const WeeklyActivityView = lazy(() => import('./components/web/WeeklyActivityView').then((m) => ({ default: m.WeeklyActivityView })));
-const MonthlyActivityView = lazy(() => import('./components/web/MonthlyActivityView').then((m) => ({ default: m.MonthlyActivityView })));
-const SpecialJobView = lazy(() => import('./components/web/SpecialJobView').then((m) => ({ default: m.SpecialJobView })));
-const DamageReportView = lazy(() => import('./components/web/DamageReportView').then((m) => ({ default: m.DamageReportView })));
-const KlienModeView = lazy(() => import('./components/web/klien/KlienModeView').then((m) => ({ default: m.KlienModeView })));
-const CompanyManagementView = lazy(() => import('./components/web/CompanyManagementView').then((m) => ({ default: m.CompanyManagementView })));
+const LoginPage = lazyWithRetry(() => import('./components/auth/LoginPage').then((m) => ({ default: m.LoginPage })));
+const DashboardView = lazyWithRetry(() => import('./components/web/DashboardView').then((m) => ({ default: m.DashboardView })));
+const AreaCleaningView = lazyWithRetry(() => import('./components/web/AreaCleaningView').then((m) => ({ default: m.AreaCleaningView })));
+const PetugasView = lazyWithRetry(() => import('./components/web/PetugasView').then((m) => ({ default: m.PetugasView })));
+const ShiftView = lazyWithRetry(() => import('./components/web/ShiftView').then((m) => ({ default: m.ShiftView })));
+const JadwalCleaningView = lazyWithRetry(() => import('./components/web/JadwalCleaningView').then((m) => ({ default: m.JadwalCleaningView })));
+const CleaningActivityView = lazyWithRetry(() => import('./components/web/CleaningActivityView').then((m) => ({ default: m.CleaningActivityView })));
+const InspeksiControlView = lazyWithRetry(() => import('./components/web/InspeksiControlView').then((m) => ({ default: m.InspeksiControlView })));
+const ComplaintView = lazyWithRetry(() => import('./components/web/ComplaintView').then((m) => ({ default: m.ComplaintView })));
+const LaporanReportView = lazyWithRetry(() => import('./components/web/LaporanReportView').then((m) => ({ default: m.LaporanReportView })));
+const PengaturanView = lazyWithRetry(() => import('./components/web/PengaturanView').then((m) => ({ default: m.PengaturanView })));
+const LokasiProyekView = lazyWithRetry(() => import('./components/web/LokasiProyekView').then((m) => ({ default: m.LokasiProyekView })));
+const CeklistAreaView = lazyWithRetry(() => import('./components/web/CeklistAreaView').then((m) => ({ default: m.CeklistAreaView })));
+const MasterCleaningProgramView = lazyWithRetry(() => import('./components/web/MasterCleaningProgramView').then((m) => ({ default: m.MasterCleaningProgramView })));
+const DailyActivityView = lazyWithRetry(() => import('./components/web/DailyActivityView').then((m) => ({ default: m.DailyActivityView })));
+const WeeklyActivityView = lazyWithRetry(() => import('./components/web/WeeklyActivityView').then((m) => ({ default: m.WeeklyActivityView })));
+const MonthlyActivityView = lazyWithRetry(() => import('./components/web/MonthlyActivityView').then((m) => ({ default: m.MonthlyActivityView })));
+const SpecialJobView = lazyWithRetry(() => import('./components/web/SpecialJobView').then((m) => ({ default: m.SpecialJobView })));
+const DamageReportView = lazyWithRetry(() => import('./components/web/DamageReportView').then((m) => ({ default: m.DamageReportView })));
+const KlienModeView = lazyWithRetry(() => import('./components/web/klien/KlienModeView').then((m) => ({ default: m.KlienModeView })));
+const CompanyManagementView = lazyWithRetry(() => import('./components/web/CompanyManagementView').then((m) => ({ default: m.CompanyManagementView })));
 
 const MenuChunkFallback: React.FC = () => (
   <div className="p-6 rounded-2xl bg-white border border-slate-200/80 shadow-xs flex items-center gap-3 text-xs text-slate-500">
@@ -39,6 +40,77 @@ const MenuChunkFallback: React.FC = () => (
     <span>Menyiapkan tampilan menu...</span>
   </div>
 );
+
+class ViewChunkErrorBoundary extends React.Component<
+  { children: React.ReactNode; resetKey: string },
+  { hasError: boolean; errorMsg: string; isChunkError: boolean; retryNonce: number }
+> {
+  constructor(props: { children: React.ReactNode; resetKey: string }) {
+    super(props);
+    this.state = { hasError: false, errorMsg: '', isChunkError: false, retryNonce: 0 };
+  }
+
+  static getDerivedStateFromError(error: Error) {
+    return {
+      hasError: true,
+      errorMsg: error?.message || 'Gagal memuat modul menu.',
+      isChunkError: isChunkLoadError(error),
+    };
+  }
+
+  componentDidUpdate(prevProps: { resetKey: string }) {
+    if (prevProps.resetKey !== this.props.resetKey && this.state.hasError) {
+      this.setState({ hasError: false, errorMsg: '', isChunkError: false });
+    }
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="p-6 sm:p-8 bg-white rounded-2xl border border-slate-200 shadow-xs max-w-lg mx-auto my-8 text-center space-y-4">
+          <div className="w-11 h-11 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center mx-auto">
+            <ShieldAlert className="w-5 h-5" />
+          </div>
+          <div className="space-y-1">
+            <h3 className="text-sm font-bold text-slate-900">
+              {this.state.isChunkError ? 'Versi Modul Menu Diperbarui' : 'Tampilan Menu Terhenti'}
+            </h3>
+            <p className="text-xs text-slate-500 leading-relaxed">
+              {this.state.isChunkError
+                ? 'Terdapat pembaruan aplikasi di server atau gangguan koneksi saat memuat modul ini.'
+                : this.state.errorMsg}
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center justify-center gap-2">
+            <button
+              type="button"
+              onClick={() =>
+                this.setState((prev) => ({
+                  hasError: false,
+                  errorMsg: '',
+                  isChunkError: false,
+                  retryNonce: prev.retryNonce + 1,
+                }))
+              }
+              className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-xl cursor-pointer inline-flex items-center gap-1.5"
+            >
+              <RotateCw className="w-3.5 h-3.5" />
+              <span>Coba Lagi</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => clearAppCachesAndReload()}
+              className="px-4 py-2 bg-sky-600 hover:bg-sky-700 text-white text-xs font-semibold rounded-xl cursor-pointer"
+            >
+              Muat Ulang &amp; Segarkan Cache
+            </button>
+          </div>
+        </div>
+      );
+    }
+    return <React.Fragment key={this.state.retryNonce}>{this.props.children}</React.Fragment>;
+  }
+}
 
 const MainLayout: React.FC = () => {
   const {
@@ -230,9 +302,11 @@ const MainLayout: React.FC = () => {
         <Sidebar />
         <main className="flex-1 overflow-y-auto bg-slate-50 min-h-0">
           <div className="max-w-7xl mx-auto w-full p-3 sm:p-5 md:p-6 lg:p-8">
-            <Suspense fallback={<MenuChunkFallback />}>
-              {renderActiveWebView()}
-            </Suspense>
+            <ViewChunkErrorBoundary resetKey={activeTab}>
+              <Suspense fallback={<MenuChunkFallback />}>
+                {renderActiveWebView()}
+              </Suspense>
+            </ViewChunkErrorBoundary>
           </div>
         </main>
       </div>
@@ -270,7 +344,7 @@ class AppErrorBoundary extends React.Component<
                 type="button"
                 onClick={() => {
                   this.setState({ hasError: false, errorMsg: '' });
-                  window.location.reload();
+                  clearAppCachesAndReload();
                 }}
                 className="px-4 py-2 bg-sky-600 hover:bg-sky-700 text-white text-xs font-semibold rounded-xl cursor-pointer"
               >
@@ -286,7 +360,7 @@ class AppErrorBoundary extends React.Component<
                       window.indexedDB.deleteDatabase('JTISmartDB');
                     }
                   } catch {}
-                  window.location.reload();
+                  await clearAppCachesAndReload();
                 }}
                 className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-xl cursor-pointer"
               >

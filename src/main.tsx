@@ -2,6 +2,9 @@ import { createRoot } from 'react-dom/client';
 import App from './App.tsx';
 import './index.css';
 import { updateDocumentFavicon, updateDocumentTitle, getActiveAppIcon } from './utils/dynamicFavicon';
+import { registerVitePreloadErrorRecovery } from './utils/lazyWithRetry';
+
+registerVitePreloadErrorRecovery();
 
 // Immediately apply saved custom icon & title from localStorage before React tree mounts
 try {

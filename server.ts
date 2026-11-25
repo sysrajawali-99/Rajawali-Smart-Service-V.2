@@ -3116,12 +3116,45 @@ async function startServer() {
   if (isProduction) {
     console.log('[Server] Starting in PRODUCTION mode');
     const distPath = path.resolve(process.cwd(), 'dist');
-    app.use(express.static(distPath));
+
+    // Hashed Vite chunks are immutable; missing chunks must return 404 (never index.html)
+    app.use(
+      '/assets',
+      express.static(path.join(distPath, 'assets'), {
+        maxAge: '1y',
+        immutable: true,
+        fallthrough: false,
+      })
+    );
+    app.use('/assets', (_err: any, _req: Request, res: Response, _next: NextFunction) => {
+      res.status(404).type('text/plain').send('Asset chunk not found');
+    });
+
+    app.use(
+      express.static(distPath, {
+        setHeaders: (res, filePath) => {
+          if (filePath.endsWith('index.html') || filePath.endsWith('sw.js')) {
+            res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+            res.setHeader('Pragma', 'no-cache');
+            res.setHeader('Expires', '0');
+          }
+        },
+      })
+    );
 
     app.get('*', (req: Request, res: Response, next: NextFunction) => {
       if (req.path.startsWith('/api') || req.path.startsWith('/uploads')) {
         return next();
       }
+      if (
+        req.path.startsWith('/assets') ||
+        /\.(js|mjs|css|map|png|jpg|jpeg|svg|ico|webp|woff2?|json|webmanifest)$/i.test(req.path)
+      ) {
+        return res.status(404).end();
+      }
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
       res.sendFile(path.resolve(distPath, 'index.html'));
     });
   } else {
