@@ -87,9 +87,9 @@ export const AuditTrailModal: React.FC<{ isOpen: boolean; onClose: () => void }>
     const csvRows = [
       ['Waktu', 'Pengguna', 'Role', 'Aksi', 'Modul', 'Entitas', 'Proyek', 'Keterangan Perubahan'],
       ...filteredLogs.map((log) => [
-        `"${log.timestamp}"`,
-        `"${log.userName}"`,
-        `"${log.userRole}"`,
+        `"${log.timestamp || '-'}"`,
+        `"${log.userName || 'Sistem'}"`,
+        `"${log.userRole || 'system'}"`,
         `"${getActionLabel(log.action)}"`,
         `"${log.module}"`,
         `"${log.entityName || '-'}"`,
@@ -212,10 +212,10 @@ export const AuditTrailModal: React.FC<{ isOpen: boolean; onClose: () => void }>
                     <td className="py-2.5 px-3">
                       <div className="font-bold text-slate-800 flex items-center gap-1.5">
                         <User className="w-3.5 h-3.5 text-slate-400" />
-                        <span>{log.userName}</span>
+                        <span>{log.userName || 'Sistem'}</span>
                       </div>
                       <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">
-                        {log.userRole}
+                        {log.userRole || 'system'}
                       </span>
                     </td>
 

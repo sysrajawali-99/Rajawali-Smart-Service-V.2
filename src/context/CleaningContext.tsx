@@ -549,6 +549,9 @@ export function normalizeAuditLog(raw: any): AuditLogEntry {
 
   return {
     ...raw,
+    userName: (typeof raw.userName === 'string' && raw.userName.trim()) ? raw.userName : (raw.user_name || 'Sistem'),
+    userRole: (typeof raw.userRole === 'string' && raw.userRole.trim()) ? raw.userRole : (raw.user_role || 'system'),
+    timestamp: raw.timestamp || raw.createdAt || new Date().toISOString(),
     details: detailsText,
   };
 }

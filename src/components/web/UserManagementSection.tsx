@@ -141,9 +141,9 @@ export const UserManagementSection: React.FC = () => {
       const q = searchQuery.trim().toLowerCase();
       if (!q) return matchRole;
 
-      const matchName = u.name.toLowerCase().includes(q);
+      const matchName = (u.name || '').toLowerCase().includes(q);
       const matchUsername = (u.username || '').toLowerCase().includes(q);
-      const matchEmail = u.email.toLowerCase().includes(q);
+      const matchEmail = (u.email || '').toLowerCase().includes(q);
       const matchPhone = (u.phone || '').toLowerCase().includes(q);
       const matchProjects = (u.assignedProjectIds || []).some((projId) => {
         const p = projects.find((proj) => proj.id === projId);
@@ -615,10 +615,10 @@ export const UserManagementSection: React.FC = () => {
                               : 'bg-sky-100 text-sky-700'
                           }`}
                         >
-                          {u.name.charAt(0).toUpperCase()}
+                          {(u.name || u.username || 'U').charAt(0).toUpperCase()}
                         </div>
                         <div className="min-w-0">
-                          <div className="font-bold text-slate-900 text-xs truncate">{u.name}</div>
+                          <div className="font-bold text-slate-900 text-xs truncate">{u.name || u.username || '-'}</div>
                           <div className="text-[11px] text-slate-500 font-mono flex items-center gap-1 mt-0.5">
                             <span className="text-slate-400">@</span>
                             <span className="font-semibold text-slate-700">{u.username || u.id}</span>

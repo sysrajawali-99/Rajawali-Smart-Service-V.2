@@ -2284,6 +2284,7 @@ async function addAuditLog(entry: {
   description?: string;
   userId?: string;
   userName?: string;
+  userRole?: string;
   projectId?: string;
   company_id?: string;
   companyId?: string;
@@ -2318,6 +2319,9 @@ async function addAuditLog(entry: {
     id: logId,
     timestamp: new Date().toISOString(),
     ...entry,
+    userId: entry.userId || 'system',
+    userName: entry.userName || 'Sistem',
+    userRole: entry.userRole || 'system',
     details: detailsText,
     description: detailsText,
     company_id,

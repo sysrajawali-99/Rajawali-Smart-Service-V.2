@@ -122,7 +122,8 @@ export const AuditLogSection: React.FC = () => {
     let criticalCount = 0;
 
     auditLogs.forEach((log) => {
-      if (log.timestamp.includes(todayStr) || log.timestamp.includes('Hari ini')) {
+      const ts = String(log.timestamp || '');
+      if (ts.includes(todayStr) || ts.includes('Hari ini')) {
         todayCount++;
       }
       if (log.action === 'verify_approve' || log.action === 'verify_reject') {
@@ -222,10 +223,10 @@ export const AuditLogSection: React.FC = () => {
     const csvRows = [
       ['ID Log', 'Waktu (WIB)', 'Nama Pengguna', 'Peran Akun', 'Tipe Aksi', 'Modul', 'Nama Entitas / Target', 'Lokasi Proyek', 'Detail Perubahan', 'Status Sebelumnya', 'Status Baru'],
       ...filteredLogs.map((log) => [
-        `"${log.id}"`,
-        `"${log.timestamp}"`,
-        `"${log.userName}"`,
-        `"${log.userRole}"`,
+        `"${log.id || ''}"`,
+        `"${log.timestamp || '-'}"`,
+        `"${log.userName || 'Sistem'}"`,
+        `"${log.userRole || 'system'}"`,
         `"${getActionBadge(log.action).label}"`,
         `"${log.module || '-'}"`,
         `"${(log.entityName || '-').replace(/"/g, '""')}"`,
@@ -524,18 +525,18 @@ export const AuditLogSection: React.FC = () => {
                       <td className="p-3 align-top">
                         <div className="flex items-center gap-2">
                           <div className="w-7 h-7 rounded-full bg-slate-800 text-white flex items-center justify-center font-bold text-[10px] uppercase shrink-0">
-                            {log.userName.slice(0, 2)}
+                            {(log.userName || 'SY').slice(0, 2)}
                           </div>
                           <div className="min-w-0">
                             <span className="font-bold text-slate-900 block truncate leading-tight">
-                              {log.userName}
+                              {log.userName || 'Sistem'}
                             </span>
                             <span
                               className={`inline-block text-[9px] font-bold px-1.5 py-0.2 rounded border uppercase mt-0.5 ${getRoleBadge(
-                                log.userRole
+                                log.userRole || 'system'
                               )}`}
                             >
-                              {log.userRole}
+                              {log.userRole || 'system'}
                             </span>
                           </div>
                         </div>
@@ -709,7 +710,7 @@ export const AuditLogSection: React.FC = () => {
               <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
                 <span className="text-[10px] text-slate-400 block font-semibold uppercase">Pelaksana & Peran</span>
                 <span className="font-semibold text-slate-800">
-                  {selectedLogDetail.userName} ({selectedLogDetail.userRole.toUpperCase()})
+                  {selectedLogDetail.userName || 'Sistem'} ({(selectedLogDetail.userRole || 'system').toUpperCase()})
                 </span>
               </div>
               <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
