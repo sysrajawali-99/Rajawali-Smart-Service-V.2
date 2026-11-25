@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   CalendarRange,
   Calendar,
@@ -27,6 +27,10 @@ import {
 } from '../../../types';
 import { SpecialJobView } from '../SpecialJobView';
 import { normalizeFrequencyCode } from '../../../utils/mcpUtils';
+import {
+  findSavedResultForItem,
+  getTodayScheduledMcpItems,
+} from '../../../utils/mcpChecklist';
 import {
   exportKlienActivityReportToPDF,
   getProjectKop,
@@ -91,6 +95,9 @@ export const KlienActivitySection: React.FC = () => {
   const {
     tasks,
     masterPrograms,
+    uploadedMcpPrograms,
+    mcpChecklistResults,
+    checklistLocations,
     specialJobs,
     activeProject,
     companyProfile,
@@ -142,6 +149,12 @@ export const KlienActivitySection: React.FC = () => {
   const [selectedDailyItem, setSelectedDailyItem] = useState<UnifiedDailyActivityItem | null>(null);
   const [selectedSpecialDetail, setSelectedSpecialDetail] = useState<SpecialJobItem | null>(null);
 
+  useEffect(() => {
+    setSelectedLocationFilter('all');
+    setSelectedDailyItem(null);
+    setSelectedSpecialDetail(null);
+  }, [activeProject?.id]);
+
   // Toast Notification
   const [toastMsg, setToastMsg] = useState<string | null>(null);
   const showToast = (msg: string) => {
@@ -174,17 +187,29 @@ export const KlienActivitySection: React.FC = () => {
       default:
         return (
           <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-rose-50 text-rose-700 border border-rose-200 flex items-center gap-1.5 shrink-0">
-            <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse" />
+            <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
             Menunggu Tindakan
           </span>
         );
     }
   };
 
-  // Build Unified Daily Activity Items strictly from activeProject (sesuai user login)
+  // Build Unified Daily Activity Items strictly from activeProject (sesuai user login & tanggal terpilih)
   const unifiedDailyItems = useMemo<UnifiedDailyActivityItem[]>(() => {
-    const sourceTasks = tasks;
-    const sourcePrograms = masterPrograms;
+    if (!activeProject?.id) return [];
+    const todayIso = new Date().toISOString().split('T')[0];
+    const selectedMonthPeriod = selectedDateIso.slice(0, 7);
+
+    const sourceTasks = tasks.filter((t) => {
+      if (t.taskDate) {
+        const norm = t.taskDate.trim();
+        return norm === selectedDateDdMmYyyy || norm === selectedDateIso;
+      }
+      if (t.monthPeriod) {
+        return t.monthPeriod === selectedMonthPeriod && selectedDateIso === todayIso;
+      }
+      return selectedDateIso === todayIso;
+    });
 
     const fromTasks: UnifiedDailyActivityItem[] = sourceTasks.map((t) => {
       const normalizedStatus: 'completed' | 'in_progress' | 'pending' =
@@ -205,7 +230,7 @@ export const KlienActivitySection: React.FC = () => {
         workMethod: 'SOP Pembersihan Harian & Sanitasi Area',
         picName: t.cleanerName || 'Petugas CS',
         shiftOrTime: `${t.shift} (${t.scheduledTime} - ${t.deadlineTime})`,
-        dateDdMmYyyy: selectedDateDdMmYyyy,
+        dateDdMmYyyy: t.taskDate || selectedDateDdMmYyyy,
         status: normalizedStatus,
         photoBefore: t.photoBefore,
         photoProgress: t.photoProgress,
@@ -217,30 +242,52 @@ export const KlienActivitySection: React.FC = () => {
       };
     });
 
-    const dailyMcpPrograms = sourcePrograms.filter(
+    const [selYearNum, selMonthNum, selDayNum] = selectedDateIso.split('-').map(Number);
+    const selectedDateObj = new Date(
+      selYearNum || new Date().getFullYear(),
+      (selMonthNum || 1) - 1,
+      selDayNum || 1
+    );
+    const scheduledUploadedMcp = getTodayScheduledMcpItems(
+      uploadedMcpPrograms,
+      checklistLocations,
+      selectedDateObj
+    );
+
+    const fromUploadedMcp: UnifiedDailyActivityItem[] = scheduledUploadedMcp.map((item) => {
+      const saved = findSavedResultForItem(item, mcpChecklistResults, selectedDateIso);
+      const mappedStatus: 'completed' | 'in_progress' | 'pending' =
+        saved?.status === 'R' ? 'completed' : 'pending';
+      return {
+        id: `mcp-upload-${item.itemKey}`,
+        origin: 'mcp_daily',
+        projectId: activeProject.id,
+        projectName: activeProject.name,
+        locationName: item.lokasi_kerja || 'Area Gedung',
+        floorOrZone: item.area_pekerjaan || `Program MCP (${item.frq || 'D'})`,
+        workDescription: item.jenis_pekerjaan || item.area_pekerjaan || 'Pekerjaan MCP Terjadwal',
+        workMethod: `Jadwal MCP: ${item.scheduleMark || item.frq || 'D'}`,
+        picName: saved?.checkedBy || 'Tim Operasional',
+        shiftOrTime: saved?.checkedAt
+          ? `Dicek ${saved.checkedAt} (${saved.status === 'R' ? 'Realisasi' : 'Belum'})`
+          : `Jadwal MCP (${item.frq || 'Harian'})`,
+        dateDdMmYyyy: selectedDateDdMmYyyy,
+        status: mappedStatus,
+      };
+    });
+
+    const dailyMcpPrograms = masterPrograms.filter(
       (p) => normalizeFrequencyCode(p.frequency) === 'D'
     );
 
-    const fromMcp: UnifiedDailyActivityItem[] = dailyMcpPrograms.map((p, idx) => {
+    const fromMcp: UnifiedDailyActivityItem[] = dailyMcpPrograms.map((p) => {
       const rawDayStatus = p.days?.[selectedDayNumber] || 'planned';
-      const allDaysPlannedOnly = Object.values(p.days || {}).every(
-        (st) => st === 'planned' || st === 'none'
-      );
-
-      let mappedStatus: 'completed' | 'in_progress' | 'pending' = 'pending';
-      if (rawDayStatus === 'done') {
-        mappedStatus = 'completed';
-      } else if (rawDayStatus === 'in_progress') {
-        mappedStatus = 'in_progress';
-      } else if (allDaysPlannedOnly) {
-        if ((idx + selectedDayNumber) % 3 === 0 || (idx + selectedDayNumber) % 3 === 1) {
-          mappedStatus = 'completed';
-        } else {
-          mappedStatus = 'in_progress';
-        }
-      } else {
-        mappedStatus = 'pending';
-      }
+      const mappedStatus: 'completed' | 'in_progress' | 'pending' =
+        rawDayStatus === 'done'
+          ? 'completed'
+          : rawDayStatus === 'in_progress'
+          ? 'in_progress'
+          : 'pending';
 
       return {
         id: `mcp-${p.id}`,
@@ -260,11 +307,15 @@ export const KlienActivitySection: React.FC = () => {
       };
     });
 
-    return [...fromTasks, ...fromMcp];
+    return [...fromTasks, ...fromUploadedMcp, ...fromMcp];
   }, [
     tasks,
     masterPrograms,
+    uploadedMcpPrograms,
+    mcpChecklistResults,
+    checklistLocations,
     selectedDayNumber,
+    selectedDateIso,
     selectedDateDdMmYyyy,
     activeProject,
   ]);
@@ -1021,7 +1072,7 @@ export const KlienActivitySection: React.FC = () => {
           <div className="bg-amber-50/90 p-4 sm:p-5 rounded-2xl border border-amber-200 flex flex-col lg:flex-row lg:items-center justify-between gap-3">
             <div>
               <div className="flex items-center gap-2">
-                <span className="w-2.5 h-2.5 rounded-full bg-amber-600 animate-ping" />
+                <Clock className="w-4 h-4 text-amber-600 shrink-0" />
                 <h4 className="text-base font-extrabold text-amber-950">
                   Pekerjaan Sedang Dikerjakan di Lapangan ({totalInProgressCount} Pekerjaan Aktif)
                 </h4>
@@ -1492,15 +1543,19 @@ export const KlienActivitySection: React.FC = () => {
               </span>
               <div className="grid grid-cols-3 gap-2">
                 <div className="space-y-1">
-                  <div className="h-28 rounded-xl bg-slate-100 overflow-hidden border border-slate-200">
-                    <img
-                      src={
-                        selectedDailyItem.photoBefore ||
-                        'https://images.unsplash.com/photo-1581578731548-c64695cc6952?w=400&auto=format&fit=crop&q=80'
-                      }
-                      alt="Before"
-                      className="w-full h-full object-cover"
-                    />
+                  <div className="h-28 rounded-xl bg-slate-100 overflow-hidden border border-slate-200 flex items-center justify-center">
+                    {selectedDailyItem.photoBefore ? (
+                      <img
+                        src={selectedDailyItem.photoBefore}
+                        alt="Before"
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <div className="text-center p-2 text-slate-400">
+                        <Camera className="w-5 h-5 mx-auto mb-1 opacity-50" />
+                        <p className="text-[10px]">Belum ada foto</p>
+                      </div>
+                    )}
                   </div>
                   <span className="text-[10px] font-bold text-center block text-slate-600">
                     Foto Before
@@ -1508,15 +1563,19 @@ export const KlienActivitySection: React.FC = () => {
                 </div>
 
                 <div className="space-y-1">
-                  <div className="h-28 rounded-xl bg-slate-100 overflow-hidden border border-slate-200">
-                    <img
-                      src={
-                        selectedDailyItem.photoProgress ||
-                        'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?w=400&auto=format&fit=crop&q=80'
-                      }
-                      alt="Progress"
-                      className="w-full h-full object-cover"
-                    />
+                  <div className="h-28 rounded-xl bg-slate-100 overflow-hidden border border-slate-200 flex items-center justify-center">
+                    {selectedDailyItem.photoProgress ? (
+                      <img
+                        src={selectedDailyItem.photoProgress}
+                        alt="Progress"
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <div className="text-center p-2 text-slate-400">
+                        <Camera className="w-5 h-5 mx-auto mb-1 opacity-50" />
+                        <p className="text-[10px]">Belum ada foto</p>
+                      </div>
+                    )}
                   </div>
                   <span className="text-[10px] font-bold text-center block text-slate-600">
                     Foto Progress
@@ -1524,15 +1583,19 @@ export const KlienActivitySection: React.FC = () => {
                 </div>
 
                 <div className="space-y-1">
-                  <div className="h-28 rounded-xl bg-slate-100 overflow-hidden border border-slate-200">
-                    <img
-                      src={
-                        selectedDailyItem.photoAfter ||
-                        'https://images.unsplash.com/photo-1527515637462-cff94eecc1ac?w=400&auto=format&fit=crop&q=80'
-                      }
-                      alt="After"
-                      className="w-full h-full object-cover"
-                    />
+                  <div className="h-28 rounded-xl bg-slate-100 overflow-hidden border border-slate-200 flex items-center justify-center">
+                    {selectedDailyItem.photoAfter ? (
+                      <img
+                        src={selectedDailyItem.photoAfter}
+                        alt="After"
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <div className="text-center p-2 text-slate-400">
+                        <Camera className="w-5 h-5 mx-auto mb-1 opacity-50" />
+                        <p className="text-[10px]">Belum ada foto</p>
+                      </div>
+                    )}
                   </div>
                   <span className="text-[10px] font-bold text-center block text-emerald-700">
                     Foto After Selesai

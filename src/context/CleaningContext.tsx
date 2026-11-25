@@ -89,11 +89,34 @@ const MENU_COLLECTION_MAP: Record<string, string[]> = {
   'master-program': [COLLECTIONS.MASTER_PROGRAMS, COLLECTIONS.UPLOADED_MCP, COLLECTIONS.MCP_CHECKLIST_RESULTS],
   mcp: [COLLECTIONS.MASTER_PROGRAMS, COLLECTIONS.UPLOADED_MCP, COLLECTIONS.MCP_CHECKLIST_RESULTS],
   pengaturan: [COLLECTIONS.AUDIT_LOGS],
-  'klien-mode': [COLLECTIONS.UPLOADED_WORK_SCHEDULES, COLLECTIONS.EMPLOYEE_TURNOVERS, COLLECTIONS.KLIEN_CHECKLIST_INSPECTIONS],
-  'klien-manpower': [COLLECTIONS.UPLOADED_WORK_SCHEDULES, COLLECTIONS.EMPLOYEE_TURNOVERS, COLLECTIONS.KLIEN_CHECKLIST_INSPECTIONS],
-  'klien-checklist': [COLLECTIONS.KLIEN_CHECKLIST_ITEMS, COLLECTIONS.KLIEN_CHECKLIST_INSPECTIONS, COLLECTIONS.UPLOADED_MCP, COLLECTIONS.MCP_CHECKLIST_RESULTS],
+  'klien-mode': [
+    COLLECTIONS.SCHEDULES,
+    COLLECTIONS.UPLOADED_WORK_SCHEDULES,
+    COLLECTIONS.EMPLOYEE_TURNOVERS,
+    COLLECTIONS.KLIEN_CHECKLIST_ITEMS,
+    COLLECTIONS.KLIEN_CHECKLIST_INSPECTIONS,
+    COLLECTIONS.UPLOADED_MCP,
+    COLLECTIONS.MCP_CHECKLIST_RESULTS,
+  ],
+  'klien-manpower': [
+    COLLECTIONS.SCHEDULES,
+    COLLECTIONS.UPLOADED_WORK_SCHEDULES,
+    COLLECTIONS.EMPLOYEE_TURNOVERS,
+    COLLECTIONS.KLIEN_CHECKLIST_INSPECTIONS,
+  ],
+  'klien-checklist': [
+    COLLECTIONS.KLIEN_CHECKLIST_ITEMS,
+    COLLECTIONS.KLIEN_CHECKLIST_INSPECTIONS,
+    COLLECTIONS.UPLOADED_MCP,
+    COLLECTIONS.MCP_CHECKLIST_RESULTS,
+  ],
   'klien-kerusakan': [COLLECTIONS.KLIEN_CHECKLIST_INSPECTIONS],
-  'klien-activity': [COLLECTIONS.KLIEN_CHECKLIST_INSPECTIONS],
+  'klien-activity': [
+    COLLECTIONS.SCHEDULES,
+    COLLECTIONS.UPLOADED_MCP,
+    COLLECTIONS.MCP_CHECKLIST_RESULTS,
+    COLLECTIONS.KLIEN_CHECKLIST_INSPECTIONS,
+  ],
   'klien-keluhan': [COLLECTIONS.KLIEN_CHECKLIST_INSPECTIONS],
 };
 import {
@@ -215,6 +238,7 @@ interface CleaningContextType {
   deleteUser: (userId: string) => { success: boolean; message?: string };
   updateUserProjectAssignment: (userId: string, projectIds: string[]) => void;
   allowedProjects: ProjectLocation[];
+  projectAssignedUsers: AppUser[];
 
   // Multi-Company Management (Super Admin)
   companies: Company[];
@@ -1081,7 +1105,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const allowedProjects = useMemo(() => {
     if (isAdminOrSuper) return companyScopedProjects;
     const userProjs = currentUser?.assignedProjectIds;
-    if (Array.isArray(userProjs) && userProjs.length > 0) {
+    if (Array.isArray(userProjs)) {
       return companyScopedProjects.filter((p) => userProjs.includes(p.id));
     }
     return companyScopedProjects;
@@ -1092,8 +1116,8 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     if (allowedProjects.some((p) => p.id === activeProjectId)) {
       return activeProjectId;
     }
-    return allowedProjects[0]?.id || defaultProjectId;
-  }, [allowedProjects, activeProjectId, defaultProjectId]);
+    return allowedProjects[0]?.id || (isAdminOrSuper ? defaultProjectId : '');
+  }, [allowedProjects, activeProjectId, defaultProjectId, isAdminOrSuper]);
 
   // Synchronize state and localStorage if safeActiveProjectId diverged
   useEffect(() => {
@@ -1133,12 +1157,35 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const activeProject =
     allowedProjects.find((p) => p.id === safeActiveProjectId) ||
-    companyScopedProjects.find((p) => p.id === safeActiveProjectId) ||
+    (isAdminOrSuper ? companyScopedProjects.find((p) => p.id === safeActiveProjectId) : undefined) ||
     allowedProjects[0] ||
-    companyScopedProjects[0] ||
+    (isAdminOrSuper ? companyScopedProjects[0] : undefined) ||
     EMPTY_PROJECT_PLACEHOLDER;
 
   const visibleProjects = isAdminOrSuper ? companyScopedProjects : allowedProjects;
+
+  const getProjectCompanyId = (targetProjectId?: string): string => {
+    const pId = targetProjectId || safeActiveProjectId;
+    const proj = projectsRef.current.find((p) => p.id === pId) || projects.find((p) => p.id === pId);
+    return proj?.companyId || proj?.company_id || userCompanyId || 'comp-main';
+  };
+
+  const projectAssignedUsers = useMemo(() => {
+    if (!safeActiveProjectId) return [];
+    const targetProj = projects.find((p) => p.id === safeActiveProjectId);
+    const targetCompId = targetProj?.companyId || targetProj?.company_id || 'comp-main';
+
+    return users.filter((u) => {
+      const uCompId = u.companyId || (u as any).company_id || 'comp-main';
+      if (Array.isArray(u.assignedProjectIds) && u.assignedProjectIds.includes(safeActiveProjectId)) {
+        return isSuperAdminRole(u.role) || uCompId === targetCompId;
+      }
+      if ((u.role === 'admin_perusahaan' || u.role === 'service_manager') && uCompId === targetCompId) {
+        return true;
+      }
+      return false;
+    });
+  }, [users, projects, safeActiveProjectId]);
 
   // 4. Checklist Master & 24-Hour Checklist Data
   const [checklistLocations, setChecklistLocations] = useState<ChecklistLocation[]>(INITIAL_CHECKLIST_LOCATIONS);
@@ -2656,9 +2703,9 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         let nextProjId = '';
         if (isUserAdmin) {
           nextProjId = compProjects[0]?.id || '';
-        } else if (userProjs.length > 0) {
+        } else if (Array.isArray(apiRes.user.assignedProjectIds)) {
           const allowedMatch = compProjects.find((p) => userProjs.includes(p.id));
-          nextProjId = allowedMatch?.id || '';
+          nextProjId = allowedMatch?.id || userProjs[0] || '';
         } else {
           nextProjId = compProjects[0]?.id || '';
         }
@@ -2745,9 +2792,9 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     let nextProjId = '';
     if (isUserAdmin) {
       nextProjId = compProjects[0]?.id || '';
-    } else if (userProjs.length > 0) {
+    } else if (Array.isArray(matchedUser.assignedProjectIds)) {
       const allowedMatch = compProjects.find((p) => userProjs.includes(p.id));
-      nextProjId = allowedMatch?.id || '';
+      nextProjId = allowedMatch?.id || userProjs[0] || '';
     } else {
       nextProjId = compProjects[0]?.id || '';
     }
@@ -2810,9 +2857,9 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         let nextProjId = '';
         if (isUserAdmin) {
           nextProjId = compProjects[0]?.id || '';
-        } else if (userProjs.length > 0) {
+        } else if (Array.isArray(apiRes.user.assignedProjectIds)) {
           const allowedMatch = compProjects.find((p) => userProjs.includes(p.id));
-          nextProjId = allowedMatch?.id || '';
+          nextProjId = allowedMatch?.id || userProjs[0] || '';
         } else {
           nextProjId = compProjects[0]?.id || '';
         }
@@ -2860,9 +2907,9 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     let nextProjId = '';
     if (isUserAdmin) {
       nextProjId = compProjects[0]?.id || '';
-    } else if (userProjs.length > 0) {
+    } else if (Array.isArray(matchedUser.assignedProjectIds)) {
       const allowedMatch = compProjects.find((p) => userProjs.includes(p.id));
-      nextProjId = allowedMatch?.id || '';
+      nextProjId = allowedMatch?.id || userProjs[0] || '';
     } else {
       nextProjId = compProjects[0]?.id || '';
     }
@@ -3562,19 +3609,62 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     return shifts.filter((s) => !s.projectId || s.projectId === pId);
   };
 
+  const syncCleanerForAssignedPetugas = (user: AppUser, targetProjIds: string[]) => {
+    if (user.role !== 'petugas' || targetProjIds.length === 0) return;
+    const primaryProjId = targetProjIds[0];
+    const compId = getProjectCompanyId(primaryProjId);
+    const matchedCleaners = cleanersRef.current.filter(
+      (c) => c.name.trim().toLowerCase() === user.name.trim().toLowerCase()
+    );
+
+    if (matchedCleaners.length === 0) {
+      const firstShift = getProjectShifts(primaryProjId)[0] || shifts[0];
+      const newCleanerItem: Cleaner = {
+        id: `cln-${Date.now()}-${Math.floor(Math.random() * 100)}`,
+        projectId: primaryProjId,
+        companyId: compId,
+        company_id: compId,
+        nik: `CLN-${new Date().getFullYear()}-${String(cleanersRef.current.length + 1).padStart(3, '0')}`,
+        name: user.name,
+        phone: user.phone || '',
+        photoUrl: '',
+        shiftId: firstShift?.id || '',
+        shiftName: firstShift ? `${firstShift.name} (${firstShift.startTime} - ${firstShift.endTime})` : '-',
+        assignedAreas: [],
+        status: 'active',
+        rating: 5,
+        tasksCompletedToday: 0,
+        totalTasksToday: 0,
+        isClockedIn: false,
+      };
+      cleanersRef.current = [...cleanersRef.current, newCleanerItem];
+      setCleaners((prev) => [...prev, newCleanerItem]);
+      upsertRecord(COLLECTIONS.CLEANERS, newCleanerItem).catch(() => {});
+    } else {
+      const orphanOrSingle = matchedCleaners.find((c) => !c.projectId || !targetProjIds.includes(c.projectId));
+      if (orphanOrSingle && targetProjIds.length === 1) {
+        const updatedCleaner: Cleaner = {
+          ...orphanOrSingle,
+          projectId: primaryProjId,
+          companyId: compId,
+          company_id: compId,
+        };
+        cleanersRef.current = cleanersRef.current.map((c) => (c.id === updatedCleaner.id ? updatedCleaner : c));
+        setCleaners((prev) => prev.map((c) => (c.id === updatedCleaner.id ? updatedCleaner : c)));
+        upsertRecord(COLLECTIONS.CLEANERS, updatedCleaner).catch(() => {});
+      }
+    }
+  };
+
   const updateUserProjectAssignment = (userId: string, projectIds: string[]) => {
-    let updatedUser: AppUser | undefined;
+    const existingUser = users.find((u) => u.id === userId);
+    const updatedUser = existingUser ? { ...existingUser, assignedProjectIds: projectIds } : undefined;
     setUsers((prev) =>
-      prev.map((u) => {
-        if (u.id === userId) {
-          updatedUser = { ...u, assignedProjectIds: projectIds };
-          return updatedUser;
-        }
-        return u;
-      })
+      prev.map((u) => (u.id === userId ? { ...u, assignedProjectIds: projectIds } : u))
     );
     if (updatedUser) {
       upsertRecord(COLLECTIONS.USERS, updatedUser).catch((err) => notifyServerError('memperbarui hak akses proyek pengguna', err));
+      syncCleanerForAssignedPetugas(updatedUser, projectIds);
     }
   };
 
@@ -3597,18 +3687,21 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
     // If added user is a petugas, provision corresponding cleaner profile if not exists
     if (userData.role === 'petugas') {
-      const existingCleaner = cleaners.find(
+      const existingCleaner = cleanersRef.current.find(
         (c) => c.name.toLowerCase() === userData.name.toLowerCase()
       );
       if (!existingCleaner) {
         const firstProjId =
           (userData.assignedProjectIds && userData.assignedProjectIds[0]) || safeActiveProjectId;
+        const compId = getProjectCompanyId(firstProjId);
         const newCleanerId = `cln-${Date.now()}`;
-        const newNik = `CLN-${new Date().getFullYear()}-${String(cleaners.length + 1).padStart(3, '0')}`;
-        const firstShift = shifts[0];
+        const newNik = `CLN-${new Date().getFullYear()}-${String(cleanersRef.current.length + 1).padStart(3, '0')}`;
+        const firstShift = getProjectShifts(firstProjId)[0] || shifts[0];
         const newCleanerItem: Cleaner = {
           id: newCleanerId,
           projectId: firstProjId,
+          companyId: compId,
+          company_id: compId,
           nik: newNik,
           name: userData.name,
           phone: userData.phone || '',
@@ -3622,6 +3715,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           totalTasksToday: 0,
           isClockedIn: false,
         };
+        cleanersRef.current = [...cleanersRef.current, newCleanerItem];
         setCleaners((prev) => [...prev, newCleanerItem]);
         upsertRecord(COLLECTIONS.CLEANERS, newCleanerItem).catch((err) => notifyServerError('menambah petugas', err));
       }
@@ -3656,6 +3750,9 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     );
     if (updatedUser) {
       upsertRecord(COLLECTIONS.USERS, updatedUser).catch((err) => notifyServerError('memperbarui pengguna', err));
+      if (updates.assignedProjectIds || updates.role === 'petugas') {
+        syncCleanerForAssignedPetugas(updatedUser, updatedUser.assignedProjectIds || []);
+      }
     }
   };
 
@@ -3694,7 +3791,9 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   // Checklist Master & Daily Methods
   const addChecklistLocation = (loc: Omit<ChecklistLocation, 'id'>) => {
     const id = `cloc-${Date.now()}`;
-    const newLoc: ChecklistLocation = { ...loc, id, projectId: loc.projectId || safeActiveProjectId };
+    const targetProjId = loc.projectId || safeActiveProjectId;
+    const compId = getProjectCompanyId(targetProjId);
+    const newLoc: ChecklistLocation = { ...loc, id, projectId: targetProjId, companyId: compId, company_id: compId };
     setChecklistLocations((prev) => [...prev, newLoc]);
     upsertRecord(COLLECTIONS.CHECKLIST_LOCATIONS, newLoc).catch((err) => notifyServerError('menambah lokasi ceklis', err));
   };
@@ -3758,10 +3857,13 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
     const category = mapAreaTypeToChecklistCategory(area.type, area.name);
     const id = `cloc-${Date.now()}-${Math.floor(100 + Math.random() * 900)}`;
+    const compId = getProjectCompanyId(targetProjectId);
     const newLoc: ChecklistLocation = {
       id,
       areaId: area.id,
       projectId: targetProjectId,
+      companyId: compId,
+      company_id: compId,
       name: area.name,
       floor: area.floor || 'Lantai 1',
       code: area.code || `CHK-${Math.floor(100 + Math.random() * 900)}`,
@@ -3809,10 +3911,13 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       } else {
         const category = mapAreaTypeToChecklistCategory(area.type, area.name);
         const id = `cloc-${Date.now()}-${Math.floor(100 + Math.random() * 900)}-${createdCount}`;
+        const compId = getProjectCompanyId(targetProjectId);
         const newLoc: ChecklistLocation = {
           id,
           areaId: area.id,
           projectId: targetProjectId,
+          companyId: compId,
+          company_id: compId,
           name: area.name,
           floor: area.floor || 'Lantai 1',
           code: area.code || `CHK-${Math.floor(100 + Math.random() * 900)}`,
@@ -4345,9 +4450,12 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const buildDailyChecklistObject = (projectId: string, locationId: string, date: string): DailyAreaChecklist => {
     const location = checklistLocations.find((l) => l.id === locationId);
     const category = location?.category || 'toilet';
+    const compId = getProjectCompanyId(projectId);
     return {
       id: `dchk-${projectId}-${locationId}-${date}`,
       projectId,
+      companyId: compId,
+      company_id: compId,
       locationId,
       locationName: location?.name || 'Area',
       category,
@@ -4360,6 +4468,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   const ensureDailyChecklist = (projectId: string, locationId: string, date: string) => {
+    if (!projectId || !locationId) return;
     let created: DailyAreaChecklist | null = null;
     setDailyChecklists((prev) => {
       const existing = prev.find(
@@ -4387,57 +4496,66 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     return buildDailyChecklistObject(projectId, locationId, date);
   };
 
+  const matchesActiveProject = (itemProjectId?: string): boolean => {
+    if (!safeActiveProjectId) return false;
+    return itemProjectId ? itemProjectId === safeActiveProjectId : defaultProjectId === safeActiveProjectId;
+  };
+
   // Filter operational data by the active project location (strictly isolate locations)
-  const filteredAreas = areas.filter((a) => (a.projectId || defaultProjectId) === safeActiveProjectId);
-  const filteredCleaners = cleaners.filter((c) => (c.projectId || defaultProjectId) === safeActiveProjectId);
-  const filteredSchedules = schedules.filter((s) => (s.projectId || defaultProjectId) === safeActiveProjectId);
-  const filteredUploadedWorkSchedules = uploadedWorkSchedules.filter(
-    (s) => (s.projectId || defaultProjectId) === safeActiveProjectId
+  const filteredAreas = areas.filter((a) => matchesActiveProject(a.projectId));
+  const filteredCleaners = cleaners.filter((c) => matchesActiveProject(c.projectId));
+  const filteredSchedules = schedules.filter((s) => matchesActiveProject(s.projectId));
+  const filteredUploadedWorkSchedules = uploadedWorkSchedules.filter((s) =>
+    matchesActiveProject(s.projectId)
   );
-  const filteredUploadedMcpPrograms = uploadedMcpPrograms.filter(
-    (m) => (m.projectId || defaultProjectId) === safeActiveProjectId
+  const filteredUploadedMcpPrograms = uploadedMcpPrograms.filter((m) =>
+    matchesActiveProject(m.projectId)
   );
-  const filteredMcpChecklistResults = mcpChecklistResults.filter(
-    (r) => (r.projectId || defaultProjectId) === safeActiveProjectId
+  const filteredMcpChecklistResults = mcpChecklistResults.filter((r) =>
+    matchesActiveProject(r.projectId)
   );
-  const filteredTasks = tasks.filter((t) => (t.projectId || defaultProjectId) === safeActiveProjectId);
-  const filteredInspections = inspections.filter((i) => (i.projectId || defaultProjectId) === safeActiveProjectId);
-  const filteredComplaints = complaints.filter((c) => (c.projectId || defaultProjectId) === safeActiveProjectId);
-  const filteredChecklistLocations = checklistLocations.filter(
-    (cl) => (cl.projectId || defaultProjectId) === safeActiveProjectId
+  const filteredTasks = tasks.filter((t) => matchesActiveProject(t.projectId));
+  const filteredInspections = inspections.filter((i) => matchesActiveProject(i.projectId));
+  const filteredComplaints = complaints.filter((c) => matchesActiveProject(c.projectId));
+  const filteredChecklistLocations = checklistLocations.filter((cl) =>
+    matchesActiveProject(cl.projectId)
   );
-  const filteredDailyChecklists = dailyChecklists.filter(
-    (d) => (d.projectId || defaultProjectId) === safeActiveProjectId
+  const filteredDailyChecklists = dailyChecklists.filter((d) =>
+    matchesActiveProject(d.projectId)
   );
-  const filteredMasterPrograms = masterPrograms.filter(
-    (m) => (m.projectId || defaultProjectId) === safeActiveProjectId
+  const filteredMasterPrograms = masterPrograms.filter((m) =>
+    matchesActiveProject(m.projectId)
   );
-  const filteredDamageReports = damageReports.filter(
-    (r) => (r.projectId || defaultProjectId) === safeActiveProjectId
+  const filteredDamageReports = damageReports.filter((r) =>
+    matchesActiveProject(r.projectId)
   );
 
   // Klien Mode Filtered Data by Active Project
-  const filteredTurnovers = employeeTurnovers.filter(
-    (to) => (to.projectId || defaultProjectId) === safeActiveProjectId
+  const filteredTurnovers = employeeTurnovers.filter((to) =>
+    matchesActiveProject(to.projectId)
   );
-  const filteredKlienChecklistItems = klienChecklistItems.filter(
-    (item) => (item.projectId || defaultProjectId) === safeActiveProjectId
+  const filteredKlienChecklistItems = klienChecklistItems.filter((item) =>
+    matchesActiveProject(item.projectId)
   );
-  const filteredKlienChecklistInspections = klienChecklistInspections.filter(
-    (insp) => (insp.projectId || defaultProjectId) === safeActiveProjectId
+  const filteredKlienChecklistInspections = klienChecklistInspections.filter((insp) =>
+    matchesActiveProject(insp.projectId)
   );
-  const filteredSpecialJobs = specialJobs.filter(
-    (job) => (job.projectId || defaultProjectId) === safeActiveProjectId
+  const filteredSpecialJobs = specialJobs.filter((job) =>
+    matchesActiveProject(job.projectId)
   );
 
   const addSpecialJob = (job: Omit<SpecialJobItem, 'id' | 'ticketNo' | 'createdAt'>): SpecialJobItem => {
     const now = new Date();
     const ticketNo = `SPJ-${now.getFullYear()}-${String(specialJobs.length + 1).padStart(3, '0')}`;
+    const targetProjId = job.projectId || safeActiveProjectId;
+    const compId = getProjectCompanyId(targetProjId);
     const newJob: SpecialJobItem = {
       ...job,
       id: `spj-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
       ticketNo,
-      projectId: job.projectId || safeActiveProjectId,
+      projectId: targetProjId,
+      companyId: compId,
+      company_id: compId,
       createdAt: now.toISOString(),
     };
     setSpecialJobs((prev) => [newJob, ...prev]);
@@ -4458,7 +4576,9 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       type: job.priority === 'urgent' ? 'urgent' : 'info',
       targetRole: ['super_admin', 'admin', 'supervisor', 'petugas', 'klien'],
       read: false,
-      projectId: job.projectId || safeActiveProjectId,
+      projectId: targetProjId,
+      companyId: compId,
+      company_id: compId,
     };
     setNotifications((prev) => [notif, ...prev]);
     upsertRecord(COLLECTIONS.NOTIFICATIONS, notif).catch(() => {});
@@ -4487,10 +4607,14 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   const addEmployeeTurnover = (record: Omit<EmployeeTurnoverRecord, 'id' | 'createdAt'>) => {
+    const targetProjId = record.projectId || safeActiveProjectId;
+    const compId = getProjectCompanyId(targetProjId);
     const newRecord: EmployeeTurnoverRecord = {
       ...record,
       id: `to-${Date.now()}`,
-      projectId: record.projectId || safeActiveProjectId,
+      projectId: targetProjId,
+      companyId: compId,
+      company_id: compId,
       createdAt: new Date().toISOString(),
     };
     setEmployeeTurnovers((prev) => [newRecord, ...prev]);
@@ -4503,10 +4627,14 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   const addKlienChecklistItem = (item: Omit<KlienChecklistItem, 'id'>) => {
+    const targetProjId = item.projectId || safeActiveProjectId;
+    const compId = getProjectCompanyId(targetProjId);
     const newItem: KlienChecklistItem = {
       ...item,
       id: `kci-${Date.now()}`,
-      projectId: item.projectId || safeActiveProjectId,
+      projectId: targetProjId,
+      companyId: compId,
+      company_id: compId,
     };
     setKlienChecklistItems((prev) => [...prev, newItem]);
     upsertRecord(COLLECTIONS.KLIEN_CHECKLIST_ITEMS, newItem).catch((err) => notifyServerError('menambah item checklist klien', err));
@@ -4535,10 +4663,13 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const resetKlienChecklistItems = () => {
     if (!safeActiveProjectId) return;
+    const compId = getProjectCompanyId(safeActiveProjectId);
     const defaults: KlienChecklistItem[] = DEFAULT_KLIEN_CHECKLIST_TEMPLATES.map((item) => ({
       ...item,
       id: `${item.id}-${safeActiveProjectId}`,
       projectId: safeActiveProjectId,
+      companyId: compId,
+      company_id: compId,
     }));
     const oldItems = klienChecklistItems.filter((item) => (item.projectId || '') === safeActiveProjectId);
     setKlienChecklistItems((prev) => [
@@ -4556,10 +4687,14 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const submitKlienChecklistInspection = (
     insp: Omit<KlienChecklistInspection, 'id' | 'timestamp'>
   ) => {
+    const targetProjId = insp.projectId || safeActiveProjectId;
+    const compId = getProjectCompanyId(targetProjId);
     const newInsp: KlienChecklistInspection = {
       ...insp,
       id: `kci-insp-${Date.now()}`,
-      projectId: insp.projectId || safeActiveProjectId,
+      projectId: targetProjId,
+      companyId: compId,
+      company_id: compId,
       timestamp: new Date().toISOString(),
     };
     setKlienChecklistInspections((prev) => [newInsp, ...prev]);
@@ -4578,7 +4713,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       : areas.filter((a) => (a.companyId || a.company_id || 'comp-main') === userCompanyId);
     if (isAdminOrSuper) return companyAreas;
     const userProjs = currentUser?.assignedProjectIds;
-    if (Array.isArray(userProjs) && userProjs.length > 0) {
+    if (Array.isArray(userProjs)) {
       return companyAreas.filter((a) => userProjs.includes(a.projectId || defaultProjectId));
     }
     return companyAreas;
@@ -4590,17 +4725,21 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       : tasks.filter((t) => (t.companyId || t.company_id || 'comp-main') === userCompanyId);
     if (isAdminOrSuper) return companyTasks;
     const userProjs = currentUser?.assignedProjectIds;
-    if (Array.isArray(userProjs) && userProjs.length > 0) {
+    if (Array.isArray(userProjs)) {
       return companyTasks.filter((t) => userProjs.includes(t.projectId || defaultProjectId));
     }
     return companyTasks;
   }, [isSuper, isAdminOrSuper, tasks, userCompanyId, currentUser?.assignedProjectIds, defaultProjectId]);
 
   const addMasterProgram = (item: Omit<MasterCleaningProgramItem, 'id' | 'createdAt' | 'updatedAt'>) => {
+    const targetProjId = item.projectId || safeActiveProjectId;
+    const compId = getProjectCompanyId(targetProjId);
     const newItem: MasterCleaningProgramItem = {
       ...item,
       id: `mcp-${Date.now()}`,
-      projectId: item.projectId || safeActiveProjectId,
+      projectId: targetProjId,
+      companyId: compId,
+      company_id: compId,
       frequency: normalizeFrequencyCode(item.frequency),
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -4680,9 +4819,14 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const duplicateMasterProgram = (id: string) => {
     const existing = masterPrograms.find((m) => m.id === id);
     if (!existing) return;
+    const targetProjId = existing.projectId || safeActiveProjectId;
+    const compId = getProjectCompanyId(targetProjId);
     const duplicated: MasterCleaningProgramItem = {
       ...existing,
       id: `mcp-${Date.now()}`,
+      projectId: targetProjId,
+      companyId: compId,
+      company_id: compId,
       workDescription: `${existing.workDescription} (Salinan)`,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -4772,10 +4916,14 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const addCleaningTask = (payload: Omit<CleaningTask, 'id'>) => {
     const newId = `task-${Date.now().toString().slice(-4)}`;
+    const targetProjId = payload.projectId || safeActiveProjectId;
+    const compId = getProjectCompanyId(targetProjId);
     const newTask: CleaningTask = {
       ...payload,
       id: newId,
-      projectId: payload.projectId || safeActiveProjectId,
+      projectId: targetProjId,
+      companyId: compId,
+      company_id: compId,
     };
     setTasks((prev) => [newTask, ...prev]);
     upsertRecord(COLLECTIONS.TASKS, newTask).catch((err) => notifyServerError('menambah tugas cleaning', err));
@@ -4997,6 +5145,8 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         )
       );
 
+      const taskProjId = currentTask.projectId || safeActiveProjectId;
+      const taskCompId = getProjectCompanyId(taskProjId);
       const newNotif: AppNotification = {
         id: `notif-${Date.now()}`,
         title: '📋 Tugas Baru Menunggu QC',
@@ -5006,7 +5156,9 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         targetRole: ['supervisor', 'super_admin', 'admin'],
         read: false,
         taskId: currentTask.id,
-        projectId: currentTask.projectId || safeActiveProjectId,
+        projectId: taskProjId,
+        companyId: taskCompId,
+        company_id: taskCompId,
       };
       setNotifications((prev) => [newNotif, ...prev]);
       upsertRecord(COLLECTIONS.NOTIFICATIONS, newNotif).catch(() => {});
@@ -5060,12 +5212,16 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     const resolvedCleanerName = payload.cleanerName || task?.cleanerName || 'Tim Kebersihan';
     const resolvedPhoto = payload.photoAfter || payload.photoProof || task?.photoAfter;
     const inspectorLabel = currentUser?.name || 'Auditor QC';
+    const targetProjId = task?.projectId || safeActiveProjectId;
+    const compId = getProjectCompanyId(targetProjId);
 
     const nowStr = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB';
 
     const newInspection: QCInspection = {
       id: `qc-${Date.now()}`,
-      projectId: task?.projectId || safeActiveProjectId,
+      projectId: targetProjId,
+      companyId: compId,
+      company_id: compId,
       taskId: payload.taskId,
       areaName: resolvedAreaName,
       cleanerName: resolvedCleanerName,
@@ -5116,6 +5272,8 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       }
     }
 
+    const qcNotifProjId = task?.projectId || safeActiveProjectId;
+    const qcNotifCompId = getProjectCompanyId(qcNotifProjId);
     const notif: AppNotification = {
       id: `notif-${Date.now()}`,
       title: payload.status === 'passed' ? '🎉 Inspeksi QC Lolos!' : '⚠️ Revisi Inspeksi Diperlukan',
@@ -5125,7 +5283,9 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       targetRole: ['petugas', 'super_admin', 'admin'],
       read: false,
       taskId: task?.id || payload.taskId,
-      projectId: task?.projectId || safeActiveProjectId,
+      projectId: qcNotifProjId,
+      companyId: qcNotifCompId,
+      company_id: qcNotifCompId,
     };
     setNotifications((prev) => [notif, ...prev]);
     upsertRecord(COLLECTIONS.NOTIFICATIONS, notif).catch(() => {});
@@ -5164,7 +5324,16 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     slaHours?: number;
     photoBefore?: string;
   }) => {
-    const area = payload.areaId ? areas.find((a) => a.id === payload.areaId) : undefined;
+    const areaById = payload.areaId ? areas.find((a) => a.id === payload.areaId) : undefined;
+    const areaNameNorm = payload.areaName?.trim().toLowerCase() || '';
+    const areaByName =
+      !areaById && areaNameNorm
+        ? filteredAreas.find((a) => a.name.trim().toLowerCase() === areaNameNorm)
+        : undefined;
+    const area = areaById || areaByName;
+    const targetProjId = area?.projectId || safeActiveProjectId;
+    const compId = getProjectCompanyId(targetProjId);
+
     const resolvedAreaName =
       payload.areaName?.trim() || area?.name || payload.areaId?.trim() || 'Area Gedung';
     const resolvedFloor =
@@ -5183,11 +5352,13 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
     const newTicket: Complaint = {
       id: `comp-${Date.now()}`,
-      projectId: area?.projectId || safeActiveProjectId,
+      projectId: targetProjId,
+      companyId: compId,
+      company_id: compId,
       ticketNumber: `TKT-${Math.floor(1000 + Math.random() * 9000)}`,
       reporterName: payload.reporterName,
       reporterRole: payload.reporterRole,
-      areaId: payload.areaId || `manual-${Date.now()}`,
+      areaId: area?.id || payload.areaId || `manual-${Date.now()}`,
       areaName: resolvedAreaName,
       floor: resolvedFloor,
       category: resolvedCategory,
@@ -5215,7 +5386,9 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       type: 'urgent',
       targetRole: ['super_admin', 'admin', 'supervisor', 'petugas', 'klien'],
       read: false,
-      projectId: area?.projectId || safeActiveProjectId,
+      projectId: targetProjId,
+      companyId: compId,
+      company_id: compId,
       isNewComplaint: true,
       complaintId: newTicket.id,
     };
@@ -5264,6 +5437,8 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       notifyServerError('memulai penanganan komplain', err)
     );
 
+    const startProjId = targetTicket.projectId || safeActiveProjectId;
+    const startCompId = getProjectCompanyId(startProjId);
     const notif: AppNotification = {
       id: `notif-${Date.now()}`,
       title: '⚙️ Komplain Dalam Pengerjaan (Di Kerjakan)',
@@ -5272,7 +5447,9 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       type: 'info',
       targetRole: ['super_admin', 'admin', 'supervisor', 'petugas', 'klien'],
       read: false,
-      projectId: targetTicket.projectId || safeActiveProjectId,
+      projectId: startProjId,
+      companyId: startCompId,
+      company_id: startCompId,
     };
     setNotifications((prev) => [notif, ...prev]);
     upsertRecord(COLLECTIONS.NOTIFICATIONS, notif).catch(() => {});
@@ -5305,6 +5482,8 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       notifyServerError('mengajukan perpanjangan komplain', err)
     );
 
+    const extProjId = updatedTicket.projectId || safeActiveProjectId;
+    const extCompId = getProjectCompanyId(extProjId);
     const notif: AppNotification = {
       id: `notif-${Date.now()}`,
       title: '⏳ Pengajuan Tambahan Waktu Penanganan!',
@@ -5313,7 +5492,9 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       type: 'warning',
       targetRole: ['super_admin', 'admin', 'supervisor', 'klien'],
       read: false,
-      projectId: updatedTicket.projectId || safeActiveProjectId,
+      projectId: extProjId,
+      companyId: extCompId,
+      company_id: extCompId,
     };
     setNotifications((prev) => [notif, ...prev]);
     upsertRecord(COLLECTIONS.NOTIFICATIONS, notif).catch(() => {});
@@ -5414,6 +5595,8 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         notifType = 'urgent';
       }
 
+      const respProjId = ticketAfter.projectId || safeActiveProjectId;
+      const respCompId = getProjectCompanyId(respProjId);
       const notif: AppNotification = {
         id: `notif-${Date.now()}`,
         title: notifTitle,
@@ -5422,7 +5605,9 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         type: notifType,
         targetRole: ['petugas', 'supervisor', 'super_admin', 'admin'],
         read: false,
-        projectId: ticketAfter.projectId || safeActiveProjectId,
+        projectId: respProjId,
+        companyId: respCompId,
+        company_id: respCompId,
       };
       setNotifications((prev) => [notif, ...prev]);
       upsertRecord(COLLECTIONS.NOTIFICATIONS, notif).catch(() => {});
@@ -5452,6 +5637,8 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       );
     }
 
+    const resCompProjId = targetComplaint?.projectId || safeActiveProjectId;
+    const resCompCompanyId = getProjectCompanyId(resCompProjId);
     const notif: AppNotification = {
       id: `notif-${Date.now()}`,
       title: '✅ Komplain Berhasil Ditangani!',
@@ -5460,7 +5647,9 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       type: 'success',
       targetRole: ['super_admin', 'admin', 'supervisor', 'petugas', 'klien'],
       read: false,
-      projectId: targetComplaint?.projectId || safeActiveProjectId,
+      projectId: resCompProjId,
+      companyId: resCompCompanyId,
+      company_id: resCompCompanyId,
     };
     setNotifications((prev) => [notif, ...prev]);
     upsertRecord(COLLECTIONS.NOTIFICATIONS, notif).catch(() => {});
@@ -5483,12 +5672,16 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     const dateStr = report.reportDate || now.toISOString().split('T')[0];
     const ticketNo = `DMG-${now.getFullYear()}-${String(damageReports.length + 1).padStart(3, '0')}`;
     const id = `dmg-${Date.now()}`;
+    const targetProjId = report.projectId || safeActiveProjectId;
+    const compId = getProjectCompanyId(targetProjId);
 
     const newReport: FacilityDamageReport = {
       ...report,
       id,
       ticketNo,
-      projectId: report.projectId || safeActiveProjectId,
+      projectId: targetProjId,
+      companyId: compId,
+      company_id: compId,
       reportDate: dateStr,
       reportTime: report.reportTime || nowStr,
       createdAt: now.toISOString(),
@@ -5508,7 +5701,9 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       type: report.priority === 'urgent' || report.damageLevel === 'kritis' ? 'urgent' : 'warning',
       targetRole: ['super_admin', 'admin', 'supervisor'],
       read: false,
-      projectId: report.projectId || safeActiveProjectId,
+      projectId: targetProjId,
+      companyId: compId,
+      company_id: compId,
     };
     setNotifications((prev) => [notif, ...prev]);
     upsertRecord(COLLECTIONS.NOTIFICATIONS, notif).catch(() => {});
@@ -5578,6 +5773,8 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       );
     }
 
+    const resProjId = target?.projectId || safeActiveProjectId;
+    const resCompId = getProjectCompanyId(resProjId);
     const notif: AppNotification = {
       id: `notif-res-${Date.now()}`,
       title: `✅ Kerusakan Selesai Diperbaiki: ${target?.ticketNo || ''}`,
@@ -5586,7 +5783,9 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       type: 'success',
       targetRole: ['super_admin', 'admin', 'supervisor', 'petugas'],
       read: false,
-      projectId: target?.projectId || safeActiveProjectId,
+      projectId: resProjId,
+      companyId: resCompId,
+      company_id: resCompId,
     };
     setNotifications((prev) => [notif, ...prev]);
     upsertRecord(COLLECTIONS.NOTIFICATIONS, notif).catch(() => {});
@@ -5594,7 +5793,9 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const addArea = (newArea: Omit<Area, 'id'>) => {
     const id = `area-${Date.now()}`;
-    const item: Area = { ...newArea, id, projectId: newArea.projectId || safeActiveProjectId };
+    const targetProjId = newArea.projectId || safeActiveProjectId;
+    const compId = getProjectCompanyId(targetProjId);
+    const item: Area = { ...newArea, id, projectId: targetProjId, companyId: compId, company_id: compId };
     setAreas((prev) => [...prev, item]);
     upsertRecord(COLLECTIONS.AREAS, item).catch((err) => notifyServerError('menambah area', err));
   };
@@ -5622,7 +5823,9 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const addCleaner = (newCleaner: Omit<Cleaner, 'id'>) => {
     const id = `cln-${Date.now()}`;
-    const item: Cleaner = { ...newCleaner, id, projectId: newCleaner.projectId || safeActiveProjectId };
+    const targetProjId = newCleaner.projectId || safeActiveProjectId;
+    const compId = getProjectCompanyId(targetProjId);
+    const item: Cleaner = { ...newCleaner, id, projectId: targetProjId, companyId: compId, company_id: compId };
     cleanersRef.current = [...cleanersRef.current, item];
     setCleaners((prev) => [...prev, item]);
     const writePromise = upsertRecord(COLLECTIONS.CLEANERS, item)
@@ -5701,10 +5904,14 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const addShift = (newShift: Omit<Shift, 'id'>) => {
     const id = `shift-${Date.now()}`;
     const duration = calculateShiftDuration(newShift.startTime, newShift.endTime);
+    const targetProjId = newShift.projectId || safeActiveProjectId || undefined;
+    const compId = getProjectCompanyId(targetProjId);
     const created: Shift = {
       ...newShift,
       id,
-      projectId: newShift.projectId || safeActiveProjectId || undefined,
+      projectId: targetProjId,
+      companyId: compId,
+      company_id: compId,
       workHoursDuration: duration.totalHoursDecimal,
       durationText: duration.text,
     };
@@ -5786,6 +5993,8 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     const nowStr = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB';
     const firstPendingTask = tasks.find((t) => t.status === 'pending' || t.status === 'in_progress');
     const areaLabel = firstPendingTask?.areaName || 'area tugas aktif';
+    const dlProjId = firstPendingTask?.projectId || safeActiveProjectId;
+    const dlCompId = getProjectCompanyId(dlProjId);
     const notif: AppNotification = {
       id: `notif-${Date.now()}`,
       title: '⏰ Pengingat Batas Waktu!',
@@ -5795,7 +6004,9 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       targetRole: ['petugas', 'supervisor', 'super_admin', 'admin'],
       read: false,
       taskId: firstPendingTask?.id,
-      projectId: safeActiveProjectId,
+      projectId: dlProjId,
+      companyId: dlCompId,
+      company_id: dlCompId,
     };
     setNotifications((prev) => [notif, ...prev]);
     upsertRecord(COLLECTIONS.NOTIFICATIONS, notif).catch(() => {});
@@ -6377,6 +6588,7 @@ export const CleaningProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         deleteUser,
         updateUserProjectAssignment,
         allowedProjects,
+        projectAssignedUsers,
 
         // Connection & Offline Sync Management
         isOnline,

@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import {
   AlertCircle,
   Clock,
@@ -85,6 +85,14 @@ export const KlienComplaintSection: React.FC = () => {
     setToastMsg(msg);
     setTimeout(() => setToastMsg(null), 3500);
   };
+
+  useEffect(() => {
+    setSelectedComplaint(null);
+    setShowCreateModal(false);
+    setShowResolveModal(false);
+    setResolvingComplaint(null);
+    setPhotoError(null);
+  }, [activeProject?.id]);
 
   // Filtered by project (context provides project-filtered complaints)
   const filteredComplaints = useMemo(() => {
@@ -256,6 +264,10 @@ export const KlienComplaintSection: React.FC = () => {
   // Submit New Complaint
   const handleCreateComplaint = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!activeProject?.id) {
+      setPhotoError('Pilih lokasi proyek terlebih dahulu sebelum membuat keluhan.');
+      return;
+    }
     if (!newAreaLocation.trim()) {
       setPhotoError('Lokasi / Area wajib diisi secara manual.');
       return;
@@ -274,9 +286,7 @@ export const KlienComplaintSection: React.FC = () => {
       description: newDescription.trim(),
       priority: 'high',
       slaHours: 2,
-      photoBefore:
-        newPhotoBefore ||
-        'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?w=600&auto=format&fit=crop&q=80',
+      photoBefore: newPhotoBefore || undefined,
     });
 
     showToast('Tiket keluhan berhasil dikirim — durasi penanganan sedang berjalan.');
@@ -299,8 +309,7 @@ export const KlienComplaintSection: React.FC = () => {
       resolvingComplaint.id,
       resolutionNotes || 'Penanganan keluhan telah tuntas dibersihkan dan disterilkan.',
       undefined,
-      resolutionPhotoAfter ||
-        'https://images.unsplash.com/photo-1527515637462-cff94eecc1ac?w=600&auto=format&fit=crop&q=80'
+      resolutionPhotoAfter || undefined
     );
 
     showToast(`Keluhan ${resolvingComplaint.ticketNumber} telah diselesaikan.`);
@@ -325,7 +334,7 @@ export const KlienComplaintSection: React.FC = () => {
       case 'open':
         return (
           <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-rose-50 text-rose-700 border border-rose-200 inline-flex items-center gap-1.5">
-            <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse" />
+            <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
             Tiket Baru
           </span>
         );
@@ -612,7 +621,7 @@ export const KlienComplaintSection: React.FC = () => {
                         </span>
                       )}
                       {isInProgress && (
-                        <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800 animate-pulse">
+                        <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800">
                           Di Kerjakan
                         </span>
                       )}
@@ -728,15 +737,19 @@ export const KlienComplaintSection: React.FC = () => {
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <span className="text-xs font-bold text-slate-700 block mb-1">Foto Kondisi Awal</span>
-                <div className="h-36 rounded-xl bg-slate-100 overflow-hidden border border-slate-200">
-                  <img
-                    src={
-                      selectedComplaint.photoBefore ||
-                      'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?w=600&auto=format&fit=crop&q=80'
-                    }
-                    alt="Before"
-                    className="w-full h-full object-cover"
-                  />
+                <div className="h-36 rounded-xl bg-slate-100 overflow-hidden border border-slate-200 flex items-center justify-center">
+                  {selectedComplaint.photoBefore ? (
+                    <img
+                      src={selectedComplaint.photoBefore}
+                      alt="Before"
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <div className="text-center p-3 text-slate-400">
+                      <Camera className="w-6 h-6 mx-auto mb-1 opacity-50" />
+                      <p className="text-xs">Belum ada foto awal</p>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -852,11 +865,19 @@ export const KlienComplaintSection: React.FC = () => {
                 <input
                   type="text"
                   required
-                  placeholder="Ketik manual lokasi / area (contoh: Toilet Pria Lt. 1, Lobby Utama...)"
+                  list="klien-complaint-area-options"
+                  placeholder="Pilih atau ketik lokasi / area (contoh: Toilet Pria Lt. 1, Lobby Utama...)"
                   value={newAreaLocation}
                   onChange={(e) => setNewAreaLocation(e.target.value)}
                   className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500"
                 />
+                <datalist id="klien-complaint-area-options">
+                  {areas.map((a) => (
+                    <option key={a.id} value={a.name}>
+                      {a.floor ? `${a.name} (${a.floor})` : a.name}
+                    </option>
+                  ))}
+                </datalist>
               </div>
 
               <div>

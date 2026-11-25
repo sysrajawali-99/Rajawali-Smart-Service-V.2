@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import {
   Users,
   Clock,
@@ -15,9 +15,10 @@ import {
   ChevronRight,
   RotateCcw,
   Layers,
+  ShieldCheck,
 } from 'lucide-react';
 import { useCleaning } from '../../../context/CleaningContext';
-import { AttendanceStatusCode, Cleaner, Shift } from '../../../types';
+import { AttendanceStatusCode, Cleaner, Shift, UserRole } from '../../../types';
 import {
   DailyRosterPersonStatus,
   deriveManpowerPlottingAndManday,
@@ -55,6 +56,7 @@ export const KlienManpowerSection: React.FC = () => {
     addEmployeeTurnover,
     deleteEmployeeTurnover,
     activeProject,
+    projectAssignedUsers,
   } = useCleaning();
 
   const shifts = useMemo(() => {
@@ -103,6 +105,16 @@ export const KlienManpowerSection: React.FC = () => {
     setFeedbackToast(msg);
     setTimeout(() => setFeedbackToast(null), 3500);
   };
+
+  // Reset modal & local filter state when active location changes
+  useEffect(() => {
+    setEditingShift(null);
+    setEditingCleanerPlotting(null);
+    setShowTurnoverModal(false);
+    setConfirmDeleteTurnoverId(null);
+    setTurnoverFormError(null);
+    setTurnoverShift(shifts[0]?.name || 'Shift 1');
+  }, [activeProject?.id]);
 
   // Unified derivation from Roster Petugas + Presensi Interaktif + Plotingan Kerja per Shift for selectedDate
   const summary = useMemo(
@@ -225,6 +237,10 @@ export const KlienManpowerSection: React.FC = () => {
   // Handle Submit Turnover Resign
   const handleCreateTurnover = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!activeProject?.id) {
+      setTurnoverFormError('Lokasi proyek aktif belum dipilih.');
+      return;
+    }
     if (!turnoverName.trim()) {
       setTurnoverFormError('Silakan masukkan nama karyawan yang resign.');
       return;
@@ -577,15 +593,22 @@ export const KlienManpowerSection: React.FC = () => {
                       {/* Name & Photo */}
                       <td className="py-3 pl-2">
                         <div className="flex items-center gap-2.5">
-                          <img
-                            src={cleaner?.photoUrl || ''}
-                            alt={item.nama}
-                            className="w-9 h-9 rounded-full object-cover border border-slate-200 shrink-0"
-                            onError={(e) => {
-                              (e.target as HTMLImageElement).src =
-                                'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80';
-                            }}
-                          />
+                          {cleaner?.photoUrl ? (
+                            <img
+                              src={cleaner.photoUrl}
+                              alt={item.nama}
+                              className="w-9 h-9 rounded-full object-cover border border-slate-200 shrink-0"
+                            />
+                          ) : (
+                            <div className="w-9 h-9 rounded-full bg-sky-100 text-sky-700 border border-sky-200 flex items-center justify-center text-xs font-bold shrink-0">
+                              {(item.nama || '?')
+                                .split(' ')
+                                .filter(Boolean)
+                                .slice(0, 2)
+                                .map((n) => n[0]?.toUpperCase() || '')
+                                .join('') || '?'}
+                            </div>
+                          )}
                           <div>
                             <div className="font-bold text-slate-900 text-xs sm:text-sm flex items-center gap-1.5 flex-wrap">
                               <span>{item.nama}</span>
@@ -1111,6 +1134,51 @@ export const KlienManpowerSection: React.FC = () => {
                   </div>
                 )}
               </div>
+            </div>
+
+            {/* Connected Users for Active Location */}
+            <div className="mt-4 pt-4 border-t border-slate-200">
+              <div className="flex items-center justify-between gap-2 mb-2">
+                <h5 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>User Terhubung ke Lokasi ({projectAssignedUsers.length})</span>
+                </h5>
+              </div>
+              {projectAssignedUsers.length === 0 ? (
+                <p className="text-[11px] text-slate-400">
+                  Belum ada user yang ditetapkan khusus ke lokasi ini.
+                </p>
+              ) : (
+                <div className="flex flex-wrap gap-1.5">
+                  {projectAssignedUsers.map((u) => {
+                    const roleText: Record<UserRole, string> = {
+                      super_admin: 'Super Admin',
+                      admin: 'Super Admin',
+                      admin_perusahaan: 'Admin',
+                      service_manager: 'Service Mgr',
+                      supervisor: 'Supervisor',
+                      team_leader: 'Team Leader',
+                      petugas: 'Petugas',
+                      klien: 'Klien',
+                    };
+                    const syncedToRoster =
+                      u.role !== 'petugas' ||
+                      cleaners.some((c) => c.name.trim().toLowerCase() === u.name.trim().toLowerCase());
+                    return (
+                      <span
+                        key={u.id}
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] bg-slate-50 border border-slate-200 text-slate-700"
+                        title={syncedToRoster ? u.email : `${u.name} (Akun Petugas Terhubung)`}
+                      >
+                        <span className="font-semibold text-slate-900">{u.name}</span>
+                        <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-white border border-slate-200 text-slate-600">
+                          {roleText[u.role] || u.role}
+                        </span>
+                      </span>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           </div>
         </div>

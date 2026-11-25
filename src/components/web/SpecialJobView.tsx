@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import {
   Sparkles,
   CalendarRange,
@@ -49,12 +49,19 @@ export const SpecialJobView: React.FC<SpecialJobViewProps> = ({ readOnlyStatus =
     masterPrograms,
     cleaners,
     areas,
-    shifts,
+    shifts: allShifts,
+    getProjectShifts,
     activeProject,
     currentUser,
     userRole,
     users,
+    projectAssignedUsers,
   } = useCleaning();
+
+  const shifts = useMemo(() => {
+    const scoped = getProjectShifts(activeProject?.id);
+    return scoped.length > 0 ? scoped : allShifts;
+  }, [getProjectShifts, activeProject?.id, activeProject?.shiftIds, allShifts]);
 
   // Filters
   const [searchQuery, setSearchQuery] = useState('');
@@ -147,19 +154,56 @@ export const SpecialJobView: React.FC<SpecialJobViewProps> = ({ readOnlyStatus =
     { value: '12', label: 'Desember' },
   ];
 
-  // Supervisors list for Requestor dropdown / suggestion
+  // Reset filters/modals & sync default shift when switching activeProject
+  useEffect(() => {
+    setLocationFilter('all');
+    setShiftFilter('all');
+    setSelectedJob(null);
+    setShowCreateModal(false);
+    setShowImportModal(false);
+    setShowCompleteModal(false);
+    setCompletingJob(null);
+  }, [activeProject?.id]);
+
+  useEffect(() => {
+    if (shifts.length > 0) {
+      setNewShiftName((prev) =>
+        shifts.some((s) => s.name === prev) ? prev : shifts[0].name
+      );
+      setImportShiftName((prev) =>
+        shifts.some((s) => s.name === prev) ? prev : shifts[0].name
+      );
+    }
+  }, [shifts, activeProject?.id]);
+
+  // Supervisors list connected to activeProject
   const supervisorUsers = useMemo(() => {
-    return users.filter((u) => u.role === 'supervisor' || isSuperAdminRole(u.role));
-  }, [users]);
+    const assigned = (projectAssignedUsers || []).filter(
+      (u) =>
+        u.role === 'supervisor' ||
+        u.role === 'team_leader' ||
+        u.role === 'service_manager' ||
+        isSuperAdminRole(u.role)
+    );
+    if (assigned.length > 0) return assigned;
+    return users.filter(
+      (u) =>
+        (u.role === 'supervisor' || u.role === 'team_leader' || isSuperAdminRole(u.role)) &&
+        (!activeProject?.id ||
+          !u.assignedProjectIds ||
+          u.assignedProjectIds.length === 0 ||
+          u.assignedProjectIds.includes(activeProject.id))
+    );
+  }, [projectAssignedUsers, users, activeProject?.id]);
 
   const defaultSupervisorName = useMemo(() => {
     if (currentUser?.role === 'supervisor' || isSuperAdminRole(currentUser?.role)) {
       return currentUser?.name || 'Supervisor Operasional';
     }
-    const projSpv = supervisorUsers.find((u) =>
-      u.assignedProjectIds?.includes(activeProject.id) && u.role === 'supervisor'
+    const projSpv = supervisorUsers.find(
+      (u) => u.assignedProjectIds?.includes(activeProject.id) && u.role === 'supervisor'
     );
-    return projSpv?.name || activeProject.managerName || 'Supervisor Operasional';
+    return projSpv?.name || supervisorUsers[0]?.name || activeProject.managerName || 'Supervisor Operasional';
   }, [currentUser, supervisorUsers, activeProject]);
 
   // Weekly & Monthly Programs from Master Cleaning Program
@@ -648,7 +692,7 @@ export const SpecialJobView: React.FC<SpecialJobViewProps> = ({ readOnlyStatus =
       case 'requested':
         return (
           <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-rose-50 text-rose-700 border border-rose-200 flex items-center gap-1.5">
-            <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse" />
+            <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
             {readOnlyStatus ? 'Menunggu Tindakan' : 'Request Baru'}
           </span>
         );
@@ -901,7 +945,7 @@ export const SpecialJobView: React.FC<SpecialJobViewProps> = ({ readOnlyStatus =
               {readOnlyStatus ? 'Menunggu Tindakan' : 'Request Baru'}
             </div>
             {statusFilter === 'requested' && (
-              <span className="w-2 h-2 rounded-full bg-indigo-600 animate-pulse shrink-0" />
+              <span className="w-2 h-2 rounded-full bg-indigo-600 shrink-0" />
             )}
           </div>
           <div className="text-2xl font-extrabold text-indigo-700 tabular-nums">{requestedCount}</div>
@@ -924,7 +968,7 @@ export const SpecialJobView: React.FC<SpecialJobViewProps> = ({ readOnlyStatus =
               Sedang Dikerjakan
             </div>
             {statusFilter === 'in_progress' && (
-              <span className="w-2 h-2 rounded-full bg-amber-600 animate-pulse shrink-0" />
+              <span className="w-2 h-2 rounded-full bg-amber-600 shrink-0" />
             )}
           </div>
           <div className="text-2xl font-extrabold text-amber-700 tabular-nums">{inProgressCount}</div>

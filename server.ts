@@ -1405,6 +1405,11 @@ app.post('/api/records/:collection', async (req: Request, res: Response) => {
     data.companyId = data.company_id;
   } else if (isSuper && data.companyId) {
     data.company_id = data.companyId;
+  } else if (isSuper && data.projectId && collection !== 'projects' && collection !== 'companies') {
+    const targetProj = await getDbRecord('projects', String(data.projectId));
+    const resolvedComp = targetProj?.company_id || targetProj?.companyId || sessionCompanyId;
+    data.company_id = resolvedComp;
+    data.companyId = resolvedComp;
   } else {
     data.company_id = sessionCompanyId;
     data.companyId = sessionCompanyId;
@@ -1548,7 +1553,12 @@ app.put('/api/records/:collection/:id', async (req: Request, res: Response) => {
   } else {
     // Requirement 1: company_id dari sesi, BUKAN dari klien (kecuali Super Admin)
     if (isSuper) {
-      const cId = data.company_id || data.companyId || existing?.company_id || existing?.companyId || sessionCompanyId;
+      let cId = data.company_id || data.companyId;
+      if (!cId && (data.projectId || existing?.projectId) && collection !== 'projects') {
+        const targetProj = await getDbRecord('projects', String(data.projectId || existing?.projectId));
+        cId = targetProj?.company_id || targetProj?.companyId;
+      }
+      cId = cId || existing?.company_id || existing?.companyId || sessionCompanyId;
       data.company_id = cId;
       data.companyId = cId;
     } else {

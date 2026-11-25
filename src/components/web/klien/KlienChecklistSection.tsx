@@ -31,6 +31,10 @@ import {
   getCurrentHourRangeLabel,
   findShiftForCurrentTime,
 } from '../../../utils/shiftUtils';
+import {
+  findSavedResultForItem,
+  getTodayScheduledMcpItems,
+} from '../../../utils/mcpChecklist';
 
 interface ShiftSlotDefinition {
   hour: number;
@@ -46,13 +50,21 @@ export const KlienChecklistSection: React.FC = () => {
     checklistTemplates,
     getOrCreateDailyChecklist,
     ensureDailyChecklist,
-    shifts,
+    shifts: allShifts,
+    getProjectShifts,
+    uploadedMcpPrograms,
+    mcpChecklistResults,
     companyProfile,
   } = useCleaning();
 
+  const shifts = useMemo(() => {
+    const scoped = getProjectShifts(activeProject?.id);
+    return scoped.length > 0 ? scoped : allShifts;
+  }, [getProjectShifts, activeProject?.id, activeProject?.shiftIds, allShifts]);
+
   const [selectedDate, setSelectedDate] = useState<string>(() => getTodayDateString());
   const [selectedLocationId, setSelectedLocationId] = useState<string>(
-    checklistLocations[0]?.id || 'cloc-1'
+    checklistLocations[0]?.id || ''
   );
   const [selectedShiftId, setSelectedShiftId] = useState<string>(() => findShiftForCurrentTime(shifts));
   const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
@@ -66,7 +78,7 @@ export const KlienChecklistSection: React.FC = () => {
     return () => clearInterval(timer);
   }, []);
 
-  // Sync selectedShiftId if shifts load asynchronously
+  // Sync selectedShiftId if shifts load or active project changes
   useEffect(() => {
     if (shifts && shifts.length > 0) {
       const exists = shifts.some((s) => s.id === selectedShiftId);
@@ -74,17 +86,19 @@ export const KlienChecklistSection: React.FC = () => {
         setSelectedShiftId(findShiftForCurrentTime(shifts));
       }
     }
-  }, [shifts]);
+  }, [shifts, activeProject?.id]);
 
   // Synchronize selectedLocationId when active project changes or checklist locations update
   useEffect(() => {
-    if (checklistLocations.length > 0) {
-      const exists = checklistLocations.some((loc) => loc.id === selectedLocationId);
-      if (!exists) {
-        setSelectedLocationId(checklistLocations[0].id);
-      }
+    if (checklistLocations.length === 0) {
+      if (selectedLocationId !== '') setSelectedLocationId('');
+      return;
     }
-  }, [checklistLocations, selectedLocationId]);
+    const exists = checklistLocations.some((loc) => loc.id === selectedLocationId);
+    if (!exists) {
+      setSelectedLocationId(checklistLocations[0].id);
+    }
+  }, [activeProject?.id, checklistLocations, selectedLocationId]);
 
   const currentLocation =
     checklistLocations.find((l) => l.id === selectedLocationId) ||
@@ -96,9 +110,24 @@ export const KlienChecklistSection: React.FC = () => {
     }
   }, [activeProject?.id, currentLocation?.id, selectedDate, ensureDailyChecklist]);
 
-  const currentDailyChecklist = currentLocation
-    ? getOrCreateDailyChecklist(activeProject.id, currentLocation.id, selectedDate)
-    : null;
+  const currentDailyChecklist =
+    activeProject?.id && currentLocation?.id
+      ? getOrCreateDailyChecklist(activeProject.id, currentLocation.id, selectedDate)
+      : null;
+
+  // Scheduled MCP checklist items for selectedDate & activeProject
+  const selectedDateObj = useMemo(() => {
+    const parts = selectedDate.split('-').map(Number);
+    if (parts.length === 3 && !parts.some(Number.isNaN)) {
+      return new Date(parts[0], parts[1] - 1, parts[2]);
+    }
+    return new Date();
+  }, [selectedDate]);
+
+  const scheduledMcpItemsForDate = useMemo(() => {
+    if (!activeProject?.id) return [];
+    return getTodayScheduledMcpItems(uploadedMcpPrograms, checklistLocations, selectedDateObj);
+  }, [activeProject?.id, uploadedMcpPrograms, checklistLocations, selectedDateObj]);
 
   // Helper date formatter (DD/MM/YYYY) with optional day offset
   const computeDateFormatted = (dateInput: string, offsetDays = 0): string => {
@@ -390,9 +419,8 @@ export const KlienChecklistSection: React.FC = () => {
                   : 'Pemantauan checklist kebersihan 24 jam penuh'}
               </p>
               <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-amber-50 text-amber-900 border border-amber-200 font-bold shrink-0 text-[10.5px]">
-                <Clock className="w-3.5 h-3.5 text-amber-600 animate-spin" style={{ animationDuration: '6s' }} />
+                <Clock className="w-3.5 h-3.5 text-amber-600" />
                 <span>Rentang Jam Sekarang: <strong className="text-amber-950 font-extrabold">{getCurrentHourRangeLabel(currentTime, true)}</strong></span>
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping"></span>
               </span>
             </div>
           </div>
@@ -502,7 +530,7 @@ export const KlienChecklistSection: React.FC = () => {
               🕒 {activeShift ? `${activeShift.name} (${activeShift.startTime} - ${activeShift.endTime} WIB)` : '24 Jam Penuh'}
             </span>
             <span className="px-2.5 py-1 bg-amber-50 text-amber-900 border border-amber-200 rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-2xs">
-              <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
+              <Clock className="w-3.5 h-3.5 text-amber-600" />
               <span>Jam Buka Sekarang: {getCurrentHourRangeLabel(currentTime, true)}</span>
             </span>
           </div>
@@ -580,9 +608,8 @@ export const KlienChecklistSection: React.FC = () => {
                       <div className="flex flex-col items-center justify-center gap-0.5">
                         <span className="font-mono">{slot.timeLabel}</span>
                         {isCurrentHourSlot && (
-                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-extrabold bg-amber-500 text-white shadow-2xs animate-pulse">
-                            <span className="w-1.5 h-1.5 rounded-full bg-white"></span>
-                            <span>Realtime</span>
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-extrabold bg-amber-500 text-white shadow-2xs">
+                            <span>Berjalan</span>
                           </span>
                         )}
                       </div>
@@ -640,6 +667,12 @@ export const KlienChecklistSection: React.FC = () => {
             </table>
           </div>
 
+          {!currentLocation && (
+            <div className="p-6 text-center rounded-xl bg-slate-50 border border-dashed border-slate-200 text-xs text-slate-500">
+              Belum ada titik area ceklist 24 jam yang terdaftar pada lokasi proyek <strong>{activeProject.name}</strong>.
+            </div>
+          )}
+
           {/* Keterangan Kode B / K / R / T */}
           <div className="flex items-center flex-wrap gap-2 sm:gap-4 text-[11px] sm:text-xs text-slate-600 pt-1">
             <span className="font-bold text-slate-700 shrink-0">Keterangan Status:</span>
@@ -670,6 +703,81 @@ export const KlienChecklistSection: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* CEKLIST KEBERSIHAN HARIAN (MCP UPLOAD) UNTUK LOKASI AKTIF */}
+      {scheduledMcpItemsForDate.length > 0 && (
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
+          <div className="p-4 border-b border-slate-200 bg-slate-50/70 flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <h4 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                <span>Ceklist Pekerjaan MCP Harian — {activeProject.name}</span>
+              </h4>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Progres pekerjaan terjadwal MCP pada tanggal {formattedSelectedDate}
+              </p>
+            </div>
+            <span className="px-2.5 py-1 rounded-lg text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+              {scheduledMcpItemsForDate.length} Item Terjadwal
+            </span>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs border-collapse">
+              <thead>
+                <tr className="bg-slate-50 border-b border-slate-200 text-slate-600">
+                  <th className="px-4 py-2.5 font-bold">Lokasi Kerja</th>
+                  <th className="px-4 py-2.5 font-bold">Area</th>
+                  <th className="px-4 py-2.5 font-bold">Jenis Pekerjaan</th>
+                  <th className="px-4 py-2.5 font-bold">Frekuensi</th>
+                  <th className="px-4 py-2.5 font-bold text-center">Status (R / X)</th>
+                  <th className="px-4 py-2.5 font-bold">Pemeriksa</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {scheduledMcpItemsForDate.map((item) => {
+                  const saved = findSavedResultForItem(
+                    item,
+                    mcpChecklistResults,
+                    selectedDate
+                  );
+                  const status = saved?.status;
+                  return (
+                    <tr key={`${item.docId}-${item.rowId}`} className="hover:bg-slate-50/70">
+                      <td className="px-4 py-2.5 font-semibold text-slate-800">{item.lokasi_kerja}</td>
+                      <td className="px-4 py-2.5 text-slate-600">{item.area_pekerjaan || '-'}</td>
+                      <td className="px-4 py-2.5 text-slate-800">{item.jenis_pekerjaan}</td>
+                      <td className="px-4 py-2.5">
+                        <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-700 font-semibold text-[11px]">
+                          {item.frq || '-'}
+                        </span>
+                      </td>
+                      <td className="px-4 py-2.5 text-center">
+                        {status === 'R' ? (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 border border-emerald-200 font-bold text-[11px]">
+                            R • Terlaksana
+                          </span>
+                        ) : status === 'X' ? (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded bg-rose-100 text-rose-800 border border-rose-200 font-bold text-[11px]">
+                            X • Belum
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded bg-slate-100 text-slate-500 border border-slate-200 font-semibold text-[11px]">
+                            Menunggu Ceklist
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-4 py-2.5 text-slate-600">
+                        {saved?.checkedBy || '-'}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

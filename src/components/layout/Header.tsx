@@ -218,12 +218,17 @@ export const Header: React.FC = () => {
                     <span className="text-slate-500 hidden sm:inline truncate max-w-[100px]">{activeProject.city}</span>
                   </>
                 )}
-                {isSuperAdminRole(userRole) || userRole === 'admin_perusahaan' ? (
+                {isSuperAdminRole(userRole) || userRole === 'admin_perusahaan' || userRole === 'service_manager' ? (
                   <ChevronDown className="w-3 h-3 text-slate-400 group-hover:text-slate-700 shrink-0" />
                 ) : (
-                  <span className="hidden sm:inline-flex items-center gap-0.5 px-1 py-0.2 rounded text-[9px] bg-slate-100 text-slate-600 font-medium shrink-0">
-                    <Lock className="w-2.5 h-2.5 text-slate-400" />
-                    Terbatas
+                  <span className="inline-flex items-center gap-1 shrink-0">
+                    <span className="hidden sm:inline-flex items-center gap-0.5 px-1 py-0.2 rounded text-[9px] bg-slate-100 text-slate-600 font-medium">
+                      <Lock className="w-2.5 h-2.5 text-slate-400" />
+                      Terbatas
+                    </span>
+                    {allowedProjects.length > 1 && (
+                      <ChevronDown className="w-3 h-3 text-slate-400 group-hover:text-slate-700 shrink-0" />
+                    )}
                   </span>
                 )}
               </button>
@@ -339,12 +344,26 @@ export const Header: React.FC = () => {
                       key={role}
                       onClick={() => {
                         setUserRole(role);
-                        const matchingUser = users.find((u) => u.role === role);
+                        const activeCompId = activeProject?.companyId || activeProject?.company_id || 'comp-main';
+                        const matchingUser =
+                          users.find(
+                            (u) =>
+                              u.role === role &&
+                              Boolean(activeProject?.id) &&
+                              Array.isArray(u.assignedProjectIds) &&
+                              u.assignedProjectIds.includes(activeProject.id)
+                          ) ||
+                          users.find(
+                            (u) =>
+                              u.role === role &&
+                              (u.companyId || (u as any).company_id || 'comp-main') === activeCompId
+                          ) ||
+                          users.find((u) => u.role === role);
                         if (matchingUser) {
                           setActiveUserId(matchingUser.id);
                           if (!isSuperAdminRole(matchingUser.role)) {
                             const userProjs = matchingUser.assignedProjectIds || [];
-                            if (userProjs.length > 0) {
+                            if (userProjs.length > 0 && (!activeProject?.id || !userProjs.includes(activeProject.id))) {
                               setActiveProjectId(userProjs[0]);
                             }
                           }
@@ -487,12 +506,28 @@ export const Header: React.FC = () => {
                         onChange={(e) => {
                           const role = e.target.value as UserRole;
                           setUserRole(role);
-                          const matchingUser = users.find((u) => u.role === role);
+                          const activeCompId = activeProject?.companyId || activeProject?.company_id || 'comp-main';
+                          const matchingUser =
+                            users.find(
+                              (u) =>
+                                u.role === role &&
+                                Boolean(activeProject?.id) &&
+                                Array.isArray(u.assignedProjectIds) &&
+                                u.assignedProjectIds.includes(activeProject.id)
+                            ) ||
+                            users.find(
+                              (u) =>
+                                u.role === role &&
+                                (u.companyId || (u as any).company_id || 'comp-main') === activeCompId
+                            ) ||
+                            users.find((u) => u.role === role);
                           if (matchingUser) {
                             setActiveUserId(matchingUser.id);
                             if (!isSuperAdminRole(matchingUser.role)) {
                               const userProjs = matchingUser.assignedProjectIds || [];
-                              if (userProjs.length > 0) setActiveProjectId(userProjs[0]);
+                              if (userProjs.length > 0 && (!activeProject?.id || !userProjs.includes(activeProject.id))) {
+                                setActiveProjectId(userProjs[0]);
+                              }
                             }
                           }
                         }}
