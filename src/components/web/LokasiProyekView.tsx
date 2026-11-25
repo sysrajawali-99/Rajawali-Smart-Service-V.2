@@ -22,17 +22,18 @@ import { UserManagementSection } from './UserManagementSection';
 export const LokasiProyekView: React.FC = () => {
   const {
     projects,
+    companies,
     activeProjectId,
     setActiveProjectId,
     addProject,
     updateProject,
     deleteProject,
     users,
-    updateUserProjectAssignment,
     userRole,
-    currentUser,
     allowedProjects,
   } = useCleaning();
+
+  const isSuperAdmin = isSuperAdminRole(userRole);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
@@ -46,6 +47,7 @@ export const LokasiProyekView: React.FC = () => {
   const [formFloors, setFormFloors] = useState(1);
   const [formManager, setFormManager] = useState('');
   const [formClient, setFormClient] = useState('');
+  const [formCompanyId, setFormCompanyId] = useState('comp-main');
 
   // User assignment tab state
   const [activeSubTab, setActiveSubTab] = useState<'projects' | 'user_access'>('projects');
@@ -73,7 +75,8 @@ export const LokasiProyekView: React.FC = () => {
     };
   }, [showAddModal]);
 
-  const filteredProjects = projects.filter(
+  const baseProjects = isSuperAdmin ? projects : allowedProjects;
+  const filteredProjects = baseProjects.filter(
     (p) =>
       p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       p.city.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -81,6 +84,7 @@ export const LokasiProyekView: React.FC = () => {
   );
 
   const openAddModal = () => {
+    if (!isSuperAdmin) return;
     setEditingProject(null);
     setFormCode(`PRJ-${Math.floor(100 + Math.random() * 900)}`);
     setFormName('');
@@ -89,10 +93,14 @@ export const LokasiProyekView: React.FC = () => {
     setFormFloors(5);
     setFormManager('');
     setFormClient('');
+    const defaultCompId =
+      companies.find((c) => c.status === 'aktif')?.id || companies[0]?.id || 'comp-main';
+    setFormCompanyId(defaultCompId);
     setShowAddModal(true);
   };
 
   const openEditModal = (proj: ProjectLocation) => {
+    if (!isSuperAdmin) return;
     setEditingProject(proj);
     setFormCode(proj.code);
     setFormName(proj.name);
@@ -101,12 +109,15 @@ export const LokasiProyekView: React.FC = () => {
     setFormFloors(proj.totalFloors);
     setFormManager(proj.managerName || '');
     setFormClient(proj.clientName || '');
+    setFormCompanyId(proj.companyId || proj.company_id || 'comp-main');
     setShowAddModal(true);
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formName.trim()) return;
+    if (!isSuperAdmin || !formName.trim()) return;
+
+    const selectedCompanyId = formCompanyId || 'comp-main';
 
     if (editingProject) {
       updateProject(editingProject.id, {
@@ -117,6 +128,8 @@ export const LokasiProyekView: React.FC = () => {
         totalFloors: Number(formFloors),
         managerName: formManager,
         clientName: formClient,
+        companyId: selectedCompanyId,
+        company_id: selectedCompanyId,
       });
     } else {
       addProject({
@@ -127,14 +140,14 @@ export const LokasiProyekView: React.FC = () => {
         totalFloors: Number(formFloors),
         managerName: formManager,
         clientName: formClient,
+        companyId: selectedCompanyId,
+        company_id: selectedCompanyId,
         status: 'active',
       });
     }
 
     setShowAddModal(false);
   };
-
-  const isSuperAdmin = isSuperAdminRole(userRole);
 
   return (
     <div className="space-y-6">
@@ -289,6 +302,19 @@ export const LokasiProyekView: React.FC = () => {
                           <span className="font-semibold text-slate-800 truncate max-w-[180px]">{proj.clientName}</span>
                         </div>
                       )}
+                      {(() => {
+                        const projCompanyId = proj.companyId || proj.company_id || 'comp-main';
+                        const projCompany = companies.find((c) => c.id === projCompanyId);
+                        return (
+                          <div className="flex items-center justify-between text-slate-500">
+                            <span>Perusahaan:</span>
+                            <span className="inline-flex items-center gap-1.5 font-semibold text-indigo-800 bg-indigo-50 px-2 py-0.5 rounded text-[11px] truncate max-w-[190px]">
+                              <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 shrink-0" />
+                              <span className="truncate">{projCompany?.nama || projCompanyId}</span>
+                            </span>
+                          </div>
+                        );
+                      })()}
                       {proj.managerName && (
                         <div className="flex items-center justify-between text-slate-500">
                           <span>Facility Manager:</span>
@@ -466,6 +492,42 @@ export const LokasiProyekView: React.FC = () => {
                   placeholder="PT..."
                 />
               </div>
+
+              {isSuperAdmin && (
+                <div>
+                  <label className="flex items-center justify-between gap-2 font-semibold text-slate-700 mb-1">
+                    <span>Nama Perusahaan</span>
+                    <span className="px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-200 text-[10px] font-semibold">
+                      Diatur Super Administrator
+                    </span>
+                  </label>
+                  <select
+                    value={formCompanyId}
+                    onChange={(e) => setFormCompanyId(e.target.value)}
+                    required
+                    className="w-full px-3 py-2 border border-slate-200 rounded-xl bg-white focus:ring-2 focus:ring-sky-500 font-medium text-slate-800"
+                  >
+                    {companies.length === 0 ? (
+                      <option value="comp-main">Perusahaan Utama (comp-main)</option>
+                    ) : (
+                      <>
+                        {!companies.some((c) => c.id === formCompanyId) && formCompanyId && (
+                          <option value={formCompanyId}>{formCompanyId}</option>
+                        )}
+                        {companies.map((comp) => (
+                          <option key={comp.id} value={comp.id}>
+                            {comp.nama}
+                            {comp.status !== 'aktif' ? ` [${comp.status}]` : ''}
+                          </option>
+                        ))}
+                      </>
+                    )}
+                  </select>
+                  <p className="text-[11px] text-slate-500 mt-1">
+                    Diambil dari Manajemen Perusahaan Multi-Tenant. Saat user perusahaan login, hanya lokasi proyek sesuai perusahaannya yang tampil.
+                  </p>
+                </div>
+              )}
 
               <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-2 pt-3 border-t border-slate-100">
                 <button

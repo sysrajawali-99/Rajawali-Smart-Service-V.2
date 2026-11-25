@@ -1547,8 +1547,8 @@ app.put('/api/records/:collection/:id', async (req: Request, res: Response) => {
     data.companyId = id;
   } else {
     // Requirement 1: company_id dari sesi, BUKAN dari klien (kecuali Super Admin)
-    if (isSuper && (data.company_id || data.companyId)) {
-      const cId = data.company_id || data.companyId;
+    if (isSuper) {
+      const cId = data.company_id || data.companyId || existing?.company_id || existing?.companyId || sessionCompanyId;
       data.company_id = cId;
       data.companyId = cId;
     } else {
@@ -1560,6 +1560,11 @@ app.put('/api/records/:collection/:id', async (req: Request, res: Response) => {
   data.id = id;
 
   try {
+    const oldCompanyId =
+      existing && collection !== 'companies'
+        ? existing.company_id || existing.companyId || 'comp-main'
+        : null;
+
     const savedRev = await upsertDbRecord(collection, id, data);
     scheduleSaveMemoryStore();
 
@@ -1581,6 +1586,21 @@ app.put('/api/records/:collection/:id', async (req: Request, res: Response) => {
     };
 
     emitTenantRecordChange('record:change', payload);
+
+    // Jika Super Admin memindahkan record (misal Proyek) ke perusahaan lain, hapus dari tampilan perusahaan lama
+    if (oldCompanyId && data.company_id && oldCompanyId !== data.company_id) {
+      io.to(`company:${oldCompanyId}`)
+        .except('role:super_admin')
+        .emit('record:change', {
+          action: 'delete' as const,
+          isDeleted: true,
+          collection,
+          id,
+          company_id: oldCompanyId,
+          timestamp: new Date().toISOString(),
+          originSocketId,
+        });
+    }
 
     return res.json({ success: true, collection, id, data: { ...data, _rev: savedRev } });
   } catch (err: any) {
