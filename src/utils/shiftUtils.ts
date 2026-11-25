@@ -288,6 +288,19 @@ export function getCurrentHourRangeLabel(d: Date = new Date(), withWib = true): 
   return `${hStr}.00 - ${nextHStr}.00${withWib ? ' WIB' : ''}`;
 }
 
+function parseShiftTimeMinutes(raw: string | undefined, fallbackH: number): number {
+  if (!raw) return fallbackH * 60;
+  const cleaned = String(raw).trim();
+  const match = cleaned.match(/^(\d{1,2})[:.](\d{1,2})/);
+  if (!match) {
+    const hOnly = parseInt(cleaned, 10);
+    return Number.isNaN(hOnly) ? fallbackH * 60 : hOnly * 60;
+  }
+  const h = parseInt(match[1], 10) || 0;
+  const m = parseInt(match[2], 10) || 0;
+  return h * 60 + m;
+}
+
 /**
  * Determines which shift from the given list covers the specified or current real-time hour.
  */
@@ -298,15 +311,15 @@ export function findShiftForCurrentTime(
   if (!shiftsList || shiftsList.length === 0) return 'all_24';
   const currentTotalMins = d.getHours() * 60 + d.getMinutes();
 
-  for (const s of shiftsList) {
-    const [startH, startM] = (s.startTime || '07:00').split(':').map((v) => parseInt(v, 10) || 0);
-    const [endH, endM] = (s.endTime || '15:00').split(':').map((v) => parseInt(v, 10) || 0);
-    const startMins = startH * 60 + startM;
-    const endMins = endH * 60 + endM;
+  const is24HourShift = (startMins: number, endMins: number) =>
+    startMins === endMins || (startMins === 0 && endMins >= 24 * 60);
 
-    if (startMins === endMins) {
-      return s.id;
-    }
+  // Pass 1: Match specific bounded shifts first (e.g., 07:00-15:00, 15:00-23:00, 23:00-07:00)
+  for (const s of shiftsList) {
+    const startMins = parseShiftTimeMinutes(s.startTime, 7);
+    const endMins = parseShiftTimeMinutes(s.endTime, 15);
+    if (is24HourShift(startMins, endMins)) continue;
+
     if (startMins < endMins) {
       if (currentTotalMins >= startMins && currentTotalMins < endMins) {
         return s.id;
@@ -316,6 +329,15 @@ export function findShiftForCurrentTime(
       if (currentTotalMins >= startMins || currentTotalMins < endMins) {
         return s.id;
       }
+    }
+  }
+
+  // Pass 2: Fall back to any 24-hour shift if no bounded shift matched
+  for (const s of shiftsList) {
+    const startMins = parseShiftTimeMinutes(s.startTime, 7);
+    const endMins = parseShiftTimeMinutes(s.endTime, 15);
+    if (is24HourShift(startMins, endMins)) {
+      return s.id;
     }
   }
 

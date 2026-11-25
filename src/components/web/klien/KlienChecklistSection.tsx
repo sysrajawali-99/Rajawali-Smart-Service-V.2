@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   ClipboardList,
   Calendar,
@@ -66,7 +66,11 @@ export const KlienChecklistSection: React.FC = () => {
   const [selectedLocationId, setSelectedLocationId] = useState<string>(
     checklistLocations[0]?.id || ''
   );
-  const [selectedShiftId, setSelectedShiftId] = useState<string>(() => findShiftForCurrentTime(shifts));
+  const [selectedShiftId, setSelectedShiftId] = useState<string>(() =>
+    shifts.length > 0 ? findShiftForCurrentTime(shifts) : ''
+  );
+  const hasUserSelectedShiftRef = useRef(false);
+  const lastProjectIdRef = useRef<string | undefined>(activeProject?.id);
   const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
   const [currentTime, setCurrentTime] = useState<Date>(new Date());
 
@@ -78,15 +82,28 @@ export const KlienChecklistSection: React.FC = () => {
     return () => clearInterval(timer);
   }, []);
 
-  // Sync selectedShiftId if shifts load or active project changes
+  // Automatically select the shift matching current opening time on mount, project switch, or async shifts load
   useEffect(() => {
-    if (shifts && shifts.length > 0) {
-      const exists = shifts.some((s) => s.id === selectedShiftId);
-      if (!exists && selectedShiftId !== 'all_24') {
-        setSelectedShiftId(findShiftForCurrentTime(shifts));
+    if (lastProjectIdRef.current !== activeProject?.id) {
+      lastProjectIdRef.current = activeProject?.id;
+      hasUserSelectedShiftRef.current = false;
+    }
+
+    if (!shifts || shifts.length === 0) {
+      if (selectedShiftId !== '') setSelectedShiftId('');
+      return;
+    }
+
+    const exists = shifts.some((s) => s.id === selectedShiftId);
+    if (!hasUserSelectedShiftRef.current || !exists) {
+      const matchedShiftId = findShiftForCurrentTime(shifts, new Date());
+      if (matchedShiftId && matchedShiftId !== 'all_24' && matchedShiftId !== selectedShiftId) {
+        setSelectedShiftId(matchedShiftId);
+      } else if (!exists && shifts[0]?.id) {
+        setSelectedShiftId(shifts[0].id);
       }
     }
-  }, [shifts, activeProject?.id]);
+  }, [shifts, activeProject?.id, selectedShiftId]);
 
   // Synchronize selectedLocationId when active project changes or checklist locations update
   useEffect(() => {
@@ -161,39 +178,42 @@ export const KlienChecklistSection: React.FC = () => {
     }
   }, [selectedDate]);
 
-  const activeShift = shifts.find((s) => s.id === selectedShiftId);
+  const activeShift = useMemo(() => {
+    if (!shifts || shifts.length === 0) return undefined;
+    const matched = shifts.find((s) => s.id === selectedShiftId);
+    if (matched) return matched;
+    const autoId = findShiftForCurrentTime(shifts, currentTime);
+    return shifts.find((s) => s.id === autoId) || shifts[0];
+  }, [shifts, selectedShiftId, currentTime]);
 
-  // Dynamically compute the time slots and corresponding dates based on the selected shift
+  // Dynamically compute the time slots and corresponding dates strictly from the selected shift
   const shiftSlotDefs = useMemo<ShiftSlotDefinition[]>(() => {
+    if (!activeShift) return [];
+
     const curDateStr = computeDateFormatted(selectedDate, 0);
     const nextDateStr = computeDateFormatted(selectedDate, 1);
 
-    if (selectedShiftId === 'all_24' || !activeShift) {
-      return Array.from({ length: 24 }, (_, h) => {
-        const hStr = h.toString().padStart(2, '0');
-        const nextHStr = ((h + 1) === 24 ? 24 : (h + 1) % 24).toString().padStart(2, '0');
-        return {
-          hour: h,
-          dateStr: curDateStr,
-          isNextDay: false,
-          timeLabel: `${hStr}.00 - ${nextHStr}.00`,
-        };
-      });
-    }
+    const parseHour = (raw: string | undefined, fallbackH: number) => {
+      if (!raw) return fallbackH;
+      const num = parseInt(String(raw).trim().split(/[:.]/)[0] || '', 10);
+      return Number.isNaN(num) ? fallbackH : num;
+    };
 
-    const startH = parseInt((activeShift.startTime || '07:00').split(':')[0], 10) || 0;
-    const endH = parseInt((activeShift.endTime || '15:00').split(':')[0], 10) || 0;
+    const startH = parseHour(activeShift.startTime, 7);
+    const endH = parseHour(activeShift.endTime, 15);
 
     const defs: ShiftSlotDefinition[] = [];
 
     if (startH === endH) {
-      for (let h = 0; h < 24; h++) {
+      for (let i = 0; i < 24; i++) {
+        const h = (startH + i) % 24;
+        const isNext = startH + i >= 24;
         const hStr = h.toString().padStart(2, '0');
         const nextHStr = ((h + 1) === 24 ? 24 : (h + 1) % 24).toString().padStart(2, '0');
         defs.push({
           hour: h,
-          dateStr: curDateStr,
-          isNextDay: false,
+          dateStr: isNext ? nextDateStr : curDateStr,
+          isNextDay: isNext,
           timeLabel: `${hStr}.00 - ${nextHStr}.00`,
         });
       }
@@ -232,7 +252,7 @@ export const KlienChecklistSection: React.FC = () => {
     }
 
     return defs;
-  }, [selectedShiftId, activeShift, selectedDate]);
+  }, [activeShift, selectedDate]);
 
   const shiftSlotHours = useMemo(() => shiftSlotDefs.map((d) => d.hour), [shiftSlotDefs]);
 
@@ -296,7 +316,7 @@ export const KlienChecklistSection: React.FC = () => {
   );
 
   const handleDownloadPDF = () => {
-    if (!currentDailyChecklist || !currentLocation) return;
+    if (!currentDailyChecklist || !currentLocation || !activeShift) return;
     setIsDownloadingPdf(true);
 
     const slotDateMap: Record<number, string> = {};
@@ -311,10 +331,8 @@ export const KlienChecklistSection: React.FC = () => {
         project: activeProject,
         kopSurat: getProjectKop(activeProject, companyProfile),
         allowedHours: shiftSlotHours,
-        shiftName: activeShift ? activeShift.name : '24 Jam Penuh',
-        shiftHoursText: activeShift
-          ? `${activeShift.startTime} - ${activeShift.endTime} WIB (${activeShift.durationText || `${activeShift.workHoursDuration || 8} Jam`})`
-          : '00:00 - 24:00 WIB (24 Jam Penuh)',
+        shiftName: activeShift.name,
+        shiftHoursText: `${activeShift.startTime} - ${activeShift.endTime} WIB (${activeShift.durationText || `${activeShift.workHoursDuration || 8} Jam`})`,
         slotDateMap,
       });
     } catch (err) {
@@ -343,7 +361,7 @@ export const KlienChecklistSection: React.FC = () => {
           <button
             type="button"
             onClick={handleDownloadPDF}
-            disabled={isDownloadingPdf}
+            disabled={isDownloadingPdf || !activeShift || !currentLocation}
             className="flex items-center justify-center gap-1.5 px-4 py-2 bg-sky-700 hover:bg-sky-800 text-white rounded-xl text-xs font-bold transition-all shadow-xs disabled:opacity-60 cursor-pointer shrink-0"
           >
             <FileDown className="w-4 h-4" />
@@ -396,19 +414,24 @@ export const KlienChecklistSection: React.FC = () => {
             </div>
             <div className="relative">
               <select
-                value={selectedShiftId}
-                onChange={(e) => setSelectedShiftId(e.target.value)}
+                value={activeShift?.id || ''}
+                onChange={(e) => {
+                  hasUserSelectedShiftRef.current = true;
+                  setSelectedShiftId(e.target.value);
+                }}
+                disabled={shifts.length === 0}
                 aria-label="Pilih Shift dan Waktu"
-                className="w-full pl-3 pr-8 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:ring-2 focus:ring-sky-500 appearance-none cursor-pointer"
+                className="w-full pl-3 pr-8 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:ring-2 focus:ring-sky-500 appearance-none cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
               >
-                {shifts.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name} ({s.startTime} - {s.endTime} WIB • {s.durationText || `${s.workHoursDuration || 8} Jam`})
-                  </option>
-                ))}
-                <option value="all_24">
-                  Semua Jam (24 Jam Penuh: 00:00 - 24:00 WIB)
-                </option>
+                {shifts.length === 0 ? (
+                  <option value="">Belum ada shift ditetapkan</option>
+                ) : (
+                  shifts.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name} ({s.startTime} - {s.endTime} WIB • {s.durationText || `${s.workHoursDuration || 8} Jam`})
+                    </option>
+                  ))
+                )}
               </select>
               <ChevronDown className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
             </div>
@@ -416,7 +439,7 @@ export const KlienChecklistSection: React.FC = () => {
               <p className="text-slate-500 truncate">
                 {activeShift
                   ? `${activeShift.description || 'Pembersihan operasional'}`
-                  : 'Pemantauan checklist kebersihan 24 jam penuh'}
+                  : 'Belum ada jadwal shift yang ditetapkan untuk lokasi ini'}
               </p>
               <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-amber-50 text-amber-900 border border-amber-200 font-bold shrink-0 text-[10.5px]">
                 <Clock className="w-3.5 h-3.5 text-amber-600" />
@@ -465,7 +488,7 @@ export const KlienChecklistSection: React.FC = () => {
               Total Slot Ditampilkan
             </span>
             <span className="text-[15px] font-bold text-slate-800">
-              {totalSlots} Jam ({activeShift ? activeShift.name.split('(')[0].trim() : '24 Jam'})
+              {totalSlots} Jam ({activeShift ? activeShift.name.split('(')[0].trim() : 'Belum ada shift'})
             </span>
           </div>
           <Clock className="w-6 h-6 text-slate-300 shrink-0" />
@@ -527,7 +550,7 @@ export const KlienChecklistSection: React.FC = () => {
               📍 {currentLocation?.name} ({currentLocation?.floor})
             </span>
             <span className="px-2.5 py-1 bg-sky-50 text-sky-800 border border-sky-200 rounded-lg text-xs font-bold">
-              🕒 {activeShift ? `${activeShift.name} (${activeShift.startTime} - ${activeShift.endTime} WIB)` : '24 Jam Penuh'}
+              🕒 {activeShift ? `${activeShift.name} (${activeShift.startTime} - ${activeShift.endTime} WIB)` : 'Shift belum ditetapkan'}
             </span>
             <span className="px-2.5 py-1 bg-amber-50 text-amber-900 border border-amber-200 rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-2xs">
               <Clock className="w-3.5 h-3.5 text-amber-600" />
@@ -667,11 +690,15 @@ export const KlienChecklistSection: React.FC = () => {
             </table>
           </div>
 
-          {!currentLocation && (
+          {!currentLocation ? (
             <div className="p-6 text-center rounded-xl bg-slate-50 border border-dashed border-slate-200 text-xs text-slate-500">
-              Belum ada titik area ceklist 24 jam yang terdaftar pada lokasi proyek <strong>{activeProject.name}</strong>.
+              Belum ada titik area ceklist yang terdaftar pada lokasi proyek <strong>{activeProject.name}</strong>.
             </div>
-          )}
+          ) : !activeShift ? (
+            <div className="p-6 text-center rounded-xl bg-slate-50 border border-dashed border-slate-200 text-xs text-slate-500">
+              Belum ada jadwal shift yang ditetapkan pada lokasi proyek <strong>{activeProject.name}</strong>.
+            </div>
+          ) : null}
 
           {/* Keterangan Kode B / K / R / T */}
           <div className="flex items-center flex-wrap gap-2 sm:gap-4 text-[11px] sm:text-xs text-slate-600 pt-1">
